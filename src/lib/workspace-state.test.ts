@@ -37,13 +37,23 @@ describe('SSE event handling', () => {
     expect(parseChangeEvent('change', '{')).toBeNull()
     expect(parseChangeEvent('change', JSON.stringify({ ...change, id: undefined }))).toBeNull()
   })
+
+  it('falls back to the SSE lastEventId when the payload omits eventId, matching the real API wire format', () => {
+    const { eventId: _eventId, ...payloadWithoutEventId } = change
+    expect(parseChangeEvent('change', JSON.stringify(payloadWithoutEventId), 'sse-42')).toEqual({
+      ...payloadWithoutEventId,
+      eventId: 'sse-42',
+    })
+    expect(parseChangeEvent('change', JSON.stringify(payloadWithoutEventId))).toBeNull()
+  })
 })
 
 describe('API errors and save isolation', () => {
   it('keeps the health endpoint at the API origin outside the versioned workspace routes', async () => {
     const get = vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { status: 'ok' } } as never)
     await checkHealth()
-    expect(get).toHaveBeenCalledWith('/health', { baseURL: '' })
+    const expectedOrigin = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+    expect(get).toHaveBeenCalledWith('/health', { baseURL: expectedOrigin })
     get.mockRestore()
   })
 

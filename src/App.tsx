@@ -117,11 +117,16 @@ function App() {
   const reloadAll = useCallback(async () => {
     setLoadingError(null)
     try {
-      const [nextCollections, nextEnvironments, nextTrash] = await Promise.all([
+      const [collectionSummaries, nextEnvironments, nextTrash] = await Promise.all([
         workspaceApi.collections(),
         workspaceApi.environments(),
         workspaceApi.trash(),
       ])
+      // The list endpoint returns bare collection metadata only; the nested
+      // item tree is only included on the single-collection detail response.
+      const nextCollections = await Promise.all(
+        collectionSummaries.map(({ id }) => workspaceApi.collection(id)),
+      )
       setCollections(sortByName(nextCollections))
       setEnvironments(sortByName(nextEnvironments))
       setTrash(nextTrash)
@@ -148,7 +153,7 @@ function App() {
       setSyncNotice(null)
     }
     const onChange = (message: MessageEvent<string>) => {
-      const event = parseChangeEvent(message.type, message.data)
+      const event = parseChangeEvent(message.type, message.data, message.lastEventId || undefined)
       if (event === 'resync') {
         lastEventId.current = ''
         setSyncNotice('Live event history expired. Workspace lists were refreshed; review open resources before replacing any local version.')
@@ -177,11 +182,11 @@ function App() {
       }
     }
     source.onmessage = onChange
+    // The API only ever emits `change` and `resync` as named SSE events (plus
+    // `ready`, which parseChangeEvent ignores); it does not emit per-kind
+    // event names.
     source.addEventListener('change', onChange as EventListener)
     source.addEventListener('resync', onChange as EventListener)
-    source.addEventListener('collection', onChange as EventListener)
-    source.addEventListener('item', onChange as EventListener)
-    source.addEventListener('environment', onChange as EventListener)
     source.onerror = () => {
       if (closed) return
       setConnected(false)

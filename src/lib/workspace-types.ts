@@ -145,6 +145,9 @@ export function applyChangeEvent(
 export function parseChangeEvent(
   type: string,
   data: string,
+  // The API sends the sequence id only in the SSE `id:` field (exposed by the
+  // browser as MessageEvent.lastEventId), never inside the JSON payload.
+  lastEventId?: string,
 ): ChangeEvent | 'resync' | null {
   if (type === 'resync') return 'resync'
   if (type === 'ready' || type === 'open' || type === 'error' || type === 'heartbeat') return null
@@ -157,12 +160,13 @@ export function parseChangeEvent(
   if (!parsed || typeof parsed !== 'object') return null
   const value = parsed as Partial<ChangeEvent>
   if (
-    typeof value.eventId !== 'string' ||
     (value.kind !== 'collection' && value.kind !== 'folder' && value.kind !== 'request' && value.kind !== 'environment') ||
     typeof value.id !== 'string' ||
     (value.collectionId !== null && typeof value.collectionId !== 'string') ||
     typeof value.operation !== 'string' ||
     typeof value.changedAt !== 'string'
   ) return null
-  return value as ChangeEvent
+  const eventId = typeof value.eventId === 'string' ? value.eventId : lastEventId
+  if (typeof eventId !== 'string') return null
+  return { ...value, eventId } as ChangeEvent
 }

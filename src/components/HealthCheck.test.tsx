@@ -22,7 +22,9 @@ describe('HealthCheck', () => {
     render(<HealthCheck />)
     await userEvent.click(screen.getByRole('button', { name: /check api health/i }))
 
-    expect(get).toHaveBeenCalledWith('/health', { baseURL: '' })
+    expect(get).toHaveBeenCalledWith('/health', {
+      baseURL: (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, ''),
+    })
     expect(screen.getByRole('button', { name: /checking/i })).toBeDisabled()
     expect(screen.getByText(/contacting api/i)).toBeInTheDocument()
 

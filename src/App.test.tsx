@@ -55,6 +55,7 @@ describe('workspace live update flow', () => {
   beforeEach(() => {
     vi.stubGlobal('EventSource', MockEventSource)
     vi.spyOn(workspaceApi, 'collections').mockResolvedValue([collection])
+    vi.spyOn(workspaceApi, 'collection').mockResolvedValue(collection)
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'item').mockResolvedValue({ ...request, url: '/server-version' })
