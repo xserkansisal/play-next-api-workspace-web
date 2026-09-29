@@ -7,6 +7,7 @@ import type {
   RestoreCheck,
   RequestResource,
   TrashEntry,
+  TreeNodeInput,
   WorkspaceItem,
 } from '@/lib/workspace-types'
 
@@ -44,7 +45,7 @@ export const workspaceApi = {
     const { data } = await apiClient.get<CollectionResource>(`/collections/${id}`)
     return data
   },
-  async createCollection(input: Pick<CollectionResource, 'name' | 'description'>) {
+  async createCollection(input: Pick<CollectionResource, 'name' | 'description'> & { items?: TreeNodeInput[] }) {
     const { data } = await apiClient.post<CollectionResource>('/collections', input)
     return data
   },

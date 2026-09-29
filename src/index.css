@@ -203,6 +203,9 @@ button:disabled { cursor: not-allowed; }
 .trash-entry span { color: #858b97; font-size: 10px; text-transform: capitalize; }
 .modal-backdrop { z-index: 10; position: fixed; inset: 0; display: grid; place-items: center; padding: 18px; background: #15192377; }
 .restore-dialog { width: min(560px, 100%); max-height: 90vh; overflow: auto; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: #fff; box-shadow: 0 18px 60px #11182735; }
+.import-dialog { width: min(680px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.import-preview { display: flex; flex-direction: column; gap: 12px; }
+.import-warning-list { margin: 6px 0 0; padding-left: 20px; font-size: 13px; color: var(--muted-foreground); display: flex; flex-direction: column; gap: 4px; }
 .modal-heading { display: flex; justify-content: space-between; gap: 15px; }
 .modal-heading h2 { margin: 0; color: #303540; font-size: 17px; }
 .modal-heading p { margin: 6px 0 16px; color: #777e8c; font-size: 11px; line-height: 1.5; }

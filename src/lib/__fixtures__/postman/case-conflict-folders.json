@@ -1,0 +1,26 @@
+{
+  "info": {
+    "name": "Case Conflict Demo",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List",
+          "request": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] } }
+        }
+      ]
+    },
+    {
+      "name": "users",
+      "item": [
+        {
+          "name": "Create",
+          "request": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }, "body": { "mode": "raw", "raw": "{\"name\":\"{{name}}\"}", "options": { "raw": { "language": "json" } } } }
+        }
+      ]
+    }
+  ]
+}

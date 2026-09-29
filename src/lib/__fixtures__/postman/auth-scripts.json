@@ -1,0 +1,370 @@
+{
+  "info": {
+    "_postman_id": "69ce7d10-05c5-4c12-afd6-a73d7f124afc",
+    "name": "MiniProject",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "55453258",
+    "_collection_link": "https://go.postman.co/collection/55453258-69ce7d10-05c5-4c12-afd6-a73d7f124afc?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Register",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const jsonData = pm.response.json();\r",
+              "\r",
+              "pm.test(\"Status code is 201 - User created\", () => {\r",
+              "    pm.response.to.have.status(201);\r",
+              "});\r",
+              "\r",
+              "pm.test(\"Response has id\", () => {\r",
+              "    pm.expect(jsonData).to.have.property(\"id\");\r",
+              "});\r",
+              "\r",
+              "pm.test(\"Response has email\", () => {\r",
+              "    pm.expect(jsonData).to.have.property(\"email\");\r",
+              "});\r",
+              "\r",
+              "pm.test(\"Response does NOT contain password\", () => {\r",
+              "    const body = pm.response.text();\r",
+              "    pm.expect(body).to.not.include(\"password\");\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const email =\r",
+              "    \"qa_\" +\r",
+              "    Date.now() +\r",
+              "    \"@example.com\";\r",
+              "\r",
+              "pm.collectionVariables.set(\"email\", email);"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"Test@1234\",\r\n  \"fullName\": \"QA Test User\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/register",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "register"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Login & Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const jsonData = pm.response.json();\r",
+              "\r",
+              "const payload = JSON.parse(\r",
+              "    atob(jsonData.token.split(\".\")[1])\r",
+              ");\r",
+              "// 1. Kiểm tra status\r",
+              "pm.test(\"Status code is 200 - Login successful\", () => {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "\r",
+              "// 2. Kiểm tra có token\r",
+              "pm.test(\"Response has token\", () => {\r",
+              "    pm.expect(jsonData).to.have.property(\"token\");\r",
+              "    pm.expect(jsonData.token).to.be.a(\"string\");\r",
+              "    pm.expect(jsonData.token).to.not.be.empty;\r",
+              "});\r",
+              "\r",
+              "// 3. Lưu token vào environment (QUAN TRỌNG!)\r",
+              "pm.test(\"Save token to environment\", () => {\r",
+              "    pm.environment.set(\"token\", jsonData.token);\r",
+              "    console.log(\"✅ Token saved:\", jsonData.token.substring(0, 20) + \"...\");\r",
+              "});\r",
+              "\r",
+              "// 4. Kiểm tra có user object\r",
+              "pm.test(\"Response has user object\", () => {\r",
+              "    pm.expect(jsonData).to.have.property(\"user\");\r",
+              "});\r",
+              "\r",
+              "\r",
+              "\r",
+              "// 6. Lưu userId\r",
+              "pm.test(\"Save user id\", () => {\r",
+              "    pm.environment.set(\"userId\", jsonData.user.id);\r",
+              "    console.log(\"✅ User ID saved:\", jsonData.user.id);\r",
+              "});\r",
+              "\r",
+              "\r",
+              "pm.test(\"JWT contains exp claim\", () => {\r",
+              "    pm.expect(payload.exp).to.exist;\r",
+              "});\r",
+              "\r",
+              "pm.test(\"JWT expiration is in future\", () => {\r",
+              "    const now = Math.floor(Date.now() / 1000);\r",
+              "    pm.expect(payload.exp).to.be.above(now);\r",
+              "});\r",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n  \"email\": \"{{email}}\",\r\n  \"password\": \"Test@1234\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/login",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Me",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// ============================================\r",
+              "// 1. KIỂM TRA RESPONSE CÓ BODY KHÔNG\r",
+              "// ============================================\r",
+              "const hasBody = pm.response.text() && pm.response.text().length > 0;\r",
+              "\r",
+              "// ============================================\r",
+              "// 2. LUÔN KIỂM TRA STATUS CODE\r",
+              "// ============================================\r",
+              "pm.test(\"Status code is 200 - Get user info\", () => {\r",
+              "    pm.response.to.have.status(200);\r",
+              "});\r",
+              "\r",
+              "// ============================================\r",
+              "// 3. KIỂM TRA RESPONSE CÓ BODY (KHÔNG RỖNG)\r",
+              "// ============================================\r",
+              "pm.test(\"Response has body (not empty)\", () => {\r",
+              "    pm.expect(pm.response.text()).to.not.be.empty;\r",
+              "});\r",
+              "\r",
+              "const body = pm.response.json();\r",
+              "\r",
+              "pm.test(\"Has id, email, fullName\", () => {\r",
+              "    pm.expect(body).to.have.property(\"id\");\r",
+              "    pm.expect(body).to.have.property(\"email\");\r",
+              "    pm.expect(body).to.have.property(\"fullName\");\r",
+              "});\r",
+              "\r",
+              "pm.test(\"Does not expose passwordHash\", () => {\r",
+              "    pm.expect(pm.response.text()).to.not.include(\"passwordHash\");\r",
+              "});\r",
+              "\r",
+              "// ============================================\r",
+              "// 4. NẾU CÓ BODY THÌ MỚI PARSE JSON\r",
+              "// ============================================\r",
+              "if (hasBody) {\r",
+              "    try {\r",
+              "        const jsonData = pm.response.json();\r",
+              "        \r",
+              "       \r",
+              "        \r",
+              "        \r",
+              "    } catch (e) {\r",
+              "        console.log(\"⚠️ Response body is not valid JSON\");\r",
+              "    }\r",
+              "} else {\r",
+              "    console.log(\"❌ Response body is empty. Status:\", pm.response.code);\r",
+              "    console.log(\"🔍 Token used:\", pm.environment.get(\"token\"));\r",
+              "}\r",
+              "\r",
+              "// ============================================\r",
+              "// 5. LOG ĐỂ DEBUG\r",
+              "// ============================================\r",
+              "console.log(\"Status code:\", pm.response.code);\r",
+              "console.log(\"Has body:\", hasBody);"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Lấy token từ environment\r",
+              "const token = pm.environment.get(\"token\");\r",
+              "\r",
+              "console.log(\"🔍 Token in pre-req:\", token ? \"✅ \" + token.substring(0, 20) : \"❌ MISSING\");\r",
+              "\r",
+              "if (token) {\r",
+              "    // Xóa header cũ nếu có\r",
+              "    pm.request.headers.remove(\"Authorization\");\r",
+              "    // Thêm header mới\r",
+              "    pm.request.headers.add({\r",
+              "        key: \"Authorization\",\r",
+              "        value: `Bearer ${token}`\r",
+              "    });\r",
+              "}"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disableBodyPruning": true
+      },
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/me",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "auth",
+            "me"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "email",
+      "value": ""
+    }
+  ]
+}

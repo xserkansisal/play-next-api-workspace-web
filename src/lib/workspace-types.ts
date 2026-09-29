@@ -42,6 +42,11 @@ export type CreateItemInput =
   | (Omit<FolderResource, 'id' | 'collectionId' | 'parentId' | 'items'> & { parentId?: string })
   | (Omit<RequestResource, 'id' | 'collectionId' | 'parentId'> & { parentId?: string })
 
+/** A node in the id-free tree accepted by `POST /api/v1/collections` (created atomically, one transaction). */
+export type TreeNodeInput =
+  | { type: 'request'; name: string; description: string; method: RequestMethod; url: string; queryParams: KeyValueEntry[]; headers: KeyValueEntry[]; body: RequestBody | null; auth: { type: 'none' } }
+  | { type: 'folder'; name: string; description: string; items: TreeNodeInput[] }
+
 export interface CollectionResource {
   id: string
   name: string

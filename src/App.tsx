@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type 
 
 import { Button } from '@/components/ui/button'
 import { HistoryView } from '@/components/HistoryView'
+import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { describeApiError, workspaceApi } from '@/lib/api'
 import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
+import { exportCollectionToPostman } from '@/lib/postman-export'
 import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
 import { activeRunner } from '@/lib/request-runner'
 import type { RecordedResponse } from '@/lib/request-runner'
@@ -22,6 +24,7 @@ import type {
   RestoreCheck,
   RestoreConflict,
   TrashEntry,
+  TreeNodeInput,
   WorkspaceItem,
 } from '@/lib/workspace-types'
 import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName } from '@/lib/workspace-ui'
@@ -115,6 +118,7 @@ function App() {
   const [responses, setResponses] = useState<Record<string, RecordedResponse>>({})
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({})
   const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory())
+  const [importOpen, setImportOpen] = useState(false)
   const selectedRef = useRef(selected)
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
@@ -216,6 +220,7 @@ function App() {
   const activeSending = currentKey ? sending[currentKey] ?? false : false
   const activeResponse = currentKey ? responses[currentKey] ?? null : null
   const activeSendError = currentKey ? sendErrors[currentKey] ?? null : null
+  const activeCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId : null
 
   function openResource(resource: OpenResource) {
     const key = resourceKey(resource)
@@ -378,6 +383,33 @@ function App() {
     } catch (error) {
       setLoadingError(describeApiError(error))
     }
+  }
+
+  // Imports build the whole tree as one atomic POST /collections request (added in Slice 1 for
+  // exactly this): either the entire import succeeds, or nothing is written server-side.
+  async function importCollection(payload: { name: string; description: string; items: TreeNodeInput[] }): Promise<string | void> {
+    try {
+      const resource = await workspaceApi.createCollection(payload)
+      setCollections((current) => sortByName([...current, resource]))
+      setImportOpen(false)
+      setSelected({ kind: 'collection', collectionId: resource.id })
+      setView('workspace')
+    } catch (error) {
+      return describeApiError(error)
+    }
+  }
+
+  function exportCollection(collectionId: string) {
+    const collection = collections.find(({ id }) => id === collectionId)
+    if (!collection) return
+    const postman = exportCollectionToPostman(collection)
+    const blob = new Blob([JSON.stringify(postman, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${collection.name.replace(/[/\\?%*:|"<>]/g, '_') || 'collection'}.postman_collection.json`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   async function createFolder() {
@@ -620,8 +652,8 @@ function App() {
               {sortByName(environments).map((environment) => <option value={environment.id} key={environment.id}>{environment.name}</option>)}
             </select>
           </label>
-          <Button variant="outline" size="sm" disabled title="Postman import is planned for Slice 5">Import</Button>
-          <Button variant="outline" size="sm" disabled title="Postman export is planned for Slice 5">Export</Button>
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
+          <Button variant="outline" size="sm" disabled={!activeCollectionId} title={activeCollectionId ? 'Export this collection as a Postman v2.1 file' : 'Select a collection to export'} onClick={() => activeCollectionId && exportCollection(activeCollectionId)}>Export</Button>
         </div>
       </header>
       {!connected && (
@@ -741,6 +773,9 @@ function App() {
         </div>
       </div>
 
+      {importOpen && (
+        <ImportDialog collections={collections} onCancel={() => setImportOpen(false)} onImport={importCollection} />
+      )}
 
       {restoreState && (
         <div className="modal-backdrop">

@@ -11,6 +11,13 @@ export function sortByName<T extends { name: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 }
 
+// Matches the API's case-insensitive comparison key exactly (name.normalize("NFC").toLowerCase()):
+// plain, locale-independent lowercasing, not localeCompare/toLocaleLowerCase. Turkish "İ"/"ı" are
+// intentionally NOT folded to "i" here, since the server does not fold them either.
+export function nameKey(name: string): string {
+  return name.normalize('NFC').toLowerCase()
+}
+
 export function findItem(collection: CollectionResource, itemId: string): WorkspaceItem | undefined {
   function visit(items: WorkspaceItem[]): WorkspaceItem | undefined {
     for (const item of items) {
