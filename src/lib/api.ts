@@ -51,7 +51,8 @@ export const workspaceApi = {
     return data
   },
   async createCollection(input: Pick<CollectionResource, 'name' | 'description'> & { items?: TreeNodeInput[] }) {
-    const { data } = await apiClient.post<CollectionResource>('/collections', input)
+    // A Postman import can be tens of MB saved in one transaction; the default 10s timeout is too short.
+    const { data } = await apiClient.post<CollectionResource>('/collections', input, input.items ? { timeout: 120_000 } : undefined)
     return data
   },
   async saveCollection(resource: CollectionResource) {

@@ -148,7 +148,7 @@ describe('parsePostmanCollection', () => {
 
   it('blocks the import when the resulting payload would exceed the practical size limit', () => {
     const bigRaw = 'x'.repeat(999_000) // just under MAX_BODY_LENGTH so it is not itself truncated
-    const items = Array.from({ length: 6 }, (_, index) => ({
+    const items = Array.from({ length: 52 }, (_, index) => ({
       name: `Big ${index}`,
       request: { method: 'POST', header: [], url: 'https://example.com', body: { mode: 'raw', raw: bigRaw } },
     }))
@@ -157,5 +157,19 @@ describe('parsePostmanCollection', () => {
       item: items,
     })
     expect(plan.errors.length).toBeGreaterThan(0)
+  })
+
+  it('accepts a ~22 MB import that the old 4.5 MB limit rejected', () => {
+    const bigRaw = 'x'.repeat(999_000)
+    const items = Array.from({ length: 22 }, (_, index) => ({
+      name: `Big ${index}`,
+      request: { method: 'POST', header: [], url: 'https://example.com', body: { mode: 'raw', raw: bigRaw } },
+    }))
+    const plan = parsePostmanCollection({
+      info: { name: 'Large', schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json' },
+      item: items,
+    })
+    expect(plan.approxPayloadBytes).toBeGreaterThan(20_000_000)
+    expect(plan.errors).toEqual([])
   })
 })

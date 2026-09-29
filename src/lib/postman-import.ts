@@ -11,9 +11,9 @@ const MAX_ROWS = 500
 const MAX_ROW_TEXT_LENGTH = 8_192
 const MAX_BODY_LENGTH = 1_000_000
 const MAX_TREE_DEPTH = 32
-// Express's json body-parser limit is 5 MB for the whole request; leave headroom for the rest
-// of the JSON envelope (name/description/nesting punctuation) rather than cutting it exactly at 5 MB.
-const MAX_TOTAL_PAYLOAD_BYTES = 4_500_000
+// The API's json body-parser limit is 50 MB (50 * 1024 * 1024 bytes) and nginx's
+// client_max_body_size for /api/ is 50m; stay just under it to leave room for the JSON envelope.
+export const MAX_TOTAL_PAYLOAD_BYTES = 50_000_000
 
 const SUPPORTED_METHODS: readonly RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
