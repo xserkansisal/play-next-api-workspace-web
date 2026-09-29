@@ -217,6 +217,19 @@ button:disabled { cursor: not-allowed; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border); }
 .toast { z-index: 12; position: fixed; right: 22px; bottom: 20px; max-width: 420px; padding: 11px 15px; border-radius: 8px; color: white; background: #292d37; box-shadow: 0 8px 24px #20242d25; font-size: 12px; }
 
+.account-menu { display: flex; align-items: center; gap: 9px; padding-left: 9px; border-left: 1px solid var(--border); }
+.account-email { max-width: 160px; overflow: hidden; color: #626977; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.attribution-line { margin: 6px 0 0; color: #9096a1; font-size: 10px; }
+
+.sign-in-screen { display: flex; height: 100dvh; align-items: center; justify-content: center; background: #f6f7f9; }
+.sign-in-card { display: flex; width: min(380px, 92vw); flex-direction: column; gap: 12px; padding: 32px 28px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 18px 60px #11182715; }
+.sign-in-card h1 { margin: 4px 0 0; color: #24272f; font-size: 18px; }
+.sign-in-card > p { margin: 0; color: #7d8492; font-size: 12px; line-height: 1.5; }
+.sign-in-card .text-field { padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; }
+.sign-in-actions { display: flex; gap: 8px; }
+.sign-in-actions > * { flex: 1; }
+.link-button { align-self: center; margin-top: 4px; border: 0; color: #6d5ce8; background: transparent; font-size: 11px; text-decoration: underline; }
+
 @media (max-width: 850px) {
   .sidebar { width: 225px; min-width: 205px; flex-basis: 225px; }
   .workspace-label { display: none; }

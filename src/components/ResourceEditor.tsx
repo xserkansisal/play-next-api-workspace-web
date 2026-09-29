@@ -73,6 +73,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 ? <input className="resource-title-input" aria-label="Request name" value={draft.resource.name} onChange={(event) => updateName(event.target.value)} placeholder="Request name" />
                 : <h1>{draft.kind === 'environment' ? 'Environment' : draft.kind === 'collection' ? 'Collection' : 'Folder'}</h1>}
               <p>{draft.kind === 'environment' ? 'Shared variables for request URLs and ports' : draft.kind === 'collection' ? 'Collection metadata' : draft.kind === 'request' ? 'Changes are saved only to this request.' : 'Folder settings'}</p>
+              <AttributionLine createdBy={draft.resource.createdBy} updatedBy={draft.resource.updatedBy} />
             </div>
             <div className="resource-actions">
               <SaveState dirty={dirty} />
@@ -145,6 +146,16 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
 
 function SaveState({ dirty }: { dirty: boolean }) {
   return <span className={`save-state ${dirty ? 'unsaved' : ''}`} role="status">{dirty ? '● Unsaved changes' : '● Saved'}</span>
+}
+
+function AttributionLine({ createdBy, updatedBy }: { createdBy?: string | null; updatedBy?: string | null }) {
+  if (createdBy === undefined && updatedBy === undefined) return null
+  // Rows created before sign-in existed have no attribution recorded - that
+  // is deliberate history, not a bug, so we say so plainly rather than
+  // leaving it blank or guessing a name.
+  const created = createdBy ?? 'unknown'
+  const updated = updatedBy ?? 'unknown'
+  return <p className="attribution-line">Created by {created} · Last updated by {updated}</p>
 }
 
 function KeyValueEditor({ label, entries, onChange }: { label: string; entries: KeyValueEntry[]; onChange: (entries: KeyValueEntry[]) => void }) {

@@ -6,6 +6,8 @@ import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { describeApiError, workspaceApi } from '@/lib/api'
+import { authApi } from '@/lib/auth'
+import type { AuthUser } from '@/lib/auth'
 import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
@@ -94,7 +96,12 @@ function restoredName(name: string): string {
   return `${name.slice(0, 200 - suffix.length)}${suffix}`
 }
 
-function App() {
+interface AppProps {
+  user?: AuthUser
+  onSignOut?: () => void
+}
+
+function App({ user, onSignOut }: AppProps = {}) {
   const [collections, setCollections] = useState<CollectionResource[]>([])
   const [environments, setEnvironments] = useState<EnvironmentResource[]>([])
   const [trash, setTrash] = useState<TrashEntry[]>([])
@@ -159,7 +166,11 @@ function App() {
 
   useEffect(() => {
     const resumeFrom = lastEventId.current
-    const source = new EventSource(`${apiBase}/api/v1/events${resumeFrom ? `?lastEventId=${encodeURIComponent(resumeFrom)}` : ''}`)
+    // EventSource can't set the Authorization header or any custom header,
+    // which is exactly why auth uses a cookie - but the cookie is only sent
+    // automatically for same-origin requests, so cross-origin dev use (Vite
+    // on :5173 hitting the API on :3000) needs withCredentials explicitly.
+    const source = new EventSource(`${apiBase}/api/v1/events${resumeFrom ? `?lastEventId=${encodeURIComponent(resumeFrom)}` : ''}`, { withCredentials: true })
     let closed = false
     source.onopen = () => {
       setConnected(true)
@@ -204,6 +215,16 @@ function App() {
       if (closed) return
       setConnected(false)
       source.close()
+      // EventSource never exposes the HTTP status of a failed connection,
+      // so a 401 (session expired/revoked) and a genuine network/server
+      // outage look identical from here. Per spec EventSource does not
+      // retry after a non-2xx response, so there's no tight-loop risk
+      // either way; this probe just tells the two cases apart. A 401 here
+      // routes through the shared authApi client, so the response
+      // interceptor in lib/auth.ts fires the "unauthenticated" event and
+      // AuthGate shows its session-expired overlay; any other outcome
+      // leaves the existing "disconnected, click Reconnect" banner as-is.
+      void authApi.me().catch(() => {})
     }
     return () => {
       closed = true
@@ -654,6 +675,10 @@ function App() {
           </label>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" disabled={!activeCollectionId} title={activeCollectionId ? 'Export this collection as a Postman v2.1 file' : 'Select a collection to export'} onClick={() => activeCollectionId && exportCollection(activeCollectionId)}>Export</Button>
+          <div className="account-menu">
+            {user && <span className="account-email" title={user.email}>{user.email}</span>}
+            <Button variant="outline" size="sm" onClick={() => onSignOut?.()}>Sign out</Button>
+          </div>
         </div>
       </header>
       {!connected && (

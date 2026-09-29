@@ -22,6 +22,24 @@ The workspace loads collections, environments, and Trash; supports searchable al
 
 Sending is intentionally a Slice 4 stub. Import/export controls are disabled until Slice 5. There is no permanent delete, authentication, deployment configuration, or request proxy in this slice.
 
+## Authentication (Slice 7)
+
+The app now requires sign-in before showing the workspace. Sign-in is a two-step, cookie-based flow against the API, which was already implemented server-side (see the API repo's `xserkansisal-api-foundation` branch):
+
+1. **Request a code** — enter a work email (`@fluttersea.com`, `@sisal.com`, or `@sisal.it`; other domains are rejected). The API always replies with the same uniform message, whether or not the address is eligible — the disallowed-domain case is the one distinguishable rejection.
+2. **Verify the code** — enter the 6-digit code emailed to that address (valid 15 minutes, single-use). On success the API sets an `HttpOnly` session cookie (`play_next_session`, 30-day lifetime) that this app cannot and does not need to read directly.
+
+**A known API limitation to be aware of:** the verify-code endpoint returns the *same* error (`401 INVALID_OR_EXPIRED_CODE`) whether the code was wrong, has expired, or has already hit its 5-attempt limit — the response does not say which. This app tracks failed attempts against the current code client-side (a heuristic, not authoritative) so it can tell the user plainly once they've had 5 wrong tries with this code that it is dead and they need to request a new one, rather than repeating a generic "incorrect" message forever.
+
+Once signed in:
+
+- **Sign-out** is a button in the top bar; it revokes the session server-side and returns to the sign-in screen.
+- A session can expire or be revoked at any time (it lasts up to 30 days but can be revoked server-side). If any API call comes back `401 AUTHENTICATION_REQUIRED` while already signed in, the app shows a blocking "session has expired" overlay with an embedded sign-in form **without unmounting the workspace**, so in-memory unsaved drafts are preserved across re-authentication.
+- The live-update `EventSource` connection is also authenticated (`withCredentials: true`); an unauthenticated or expired SSE connection gets 401 and the browser does not auto-retry (per the EventSource spec), so there is no tight reconnect loop. On any SSE error this app probes `GET /auth/me` once to tell an auth failure (→ show the expired-session overlay) apart from a generic network/server outage (→ keep the existing manual "Reconnect" banner).
+- Every collection, folder, request, and environment shows who created and who last modified it (an email address), or **"unknown"** for rows that existed before authentication was added — that is expected, not a bug.
+
+**Retrieving a sign-in code locally, without real email:** the API has a development-only `GET /api/v1/auth/dev-inbox?email=...` route, gated behind `NODE_ENV=development`, a 32+ character `AUTH_DEV_INBOX_TOKEN` environment variable, a loopback-only request, and an `X-Dev-Inbox-Token` header matching that token. It returns the most recently issued code for that address. This app's UI has no built-in way to call it (it's a diagnostic route, not part of the product); use `curl` directly against the API when developing locally.
+
 ## Scripts
 
 | Script | Purpose |
@@ -37,7 +55,7 @@ The frontend test suite mocks the API and EventSource. The separate API reposito
 
 ## Deploying to a VM
 
-Target environment: an on-premises VM on the organization's internal network. **nginx** serves the built static files and reverse-proxies `/api` to the API, so the browser sees a **single origin** — there is no cross-origin request in normal operation. The API itself still runs as its own process, managed with **PM2** (not Docker, not systemd); this app no longer runs under PM2, since nginx serves its static files directly (see "Why nginx, not a Node static server" below). There is **no TLS** — this deployment is plain HTTP, which is only acceptable because it stays inside the internal network with no credentials or sign-in feature in transit. **Revisit this before adding TLS-sensitive features (authentication, sign-in) or exposing either service beyond the internal network.**
+Target environment: an on-premises VM on the organization's internal network. **nginx** serves the built static files and reverse-proxies `/api` to the API, so the browser sees a **single origin** — there is no cross-origin request in normal operation. The API itself still runs as its own process, managed with **PM2** (not Docker, not systemd); this app no longer runs under PM2, since nginx serves its static files directly (see "Why nginx, not a Node static server" below). There is **no TLS** — this deployment is plain HTTP. **This was originally scoped as acceptable because the internal network carried no credentials or sign-in feature; that is no longer true as of Slice 7, which added cookie-based sign-in. The `play_next_session` cookie now travels in plain text on this network.** This must be revisited (TLS added) before this deployment is exposed beyond a fully trusted internal segment.
 
 None of the steps below assume a specific hostname or machine — substitute your VM's actual paths/addresses wherever a placeholder appears.
 

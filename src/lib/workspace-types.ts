@@ -25,6 +25,9 @@ export interface RequestResource {
   headers: KeyValueEntry[]
   body: RequestBody | null
   auth: { type: 'none' }
+  /** Email of the user who created/last modified this, or null for resources that predate sign-in. */
+  createdBy?: string | null
+  updatedBy?: string | null
 }
 
 export interface FolderResource {
@@ -35,6 +38,8 @@ export interface FolderResource {
   name: string
   description: string
   items: WorkspaceItem[]
+  createdBy?: string | null
+  updatedBy?: string | null
 }
 
 export type WorkspaceItem = RequestResource | FolderResource
@@ -54,6 +59,8 @@ export interface CollectionResource {
   items: WorkspaceItem[]
   createdAt?: string
   updatedAt?: string
+  createdBy?: string | null
+  updatedBy?: string | null
 }
 
 export interface EnvironmentVariable {
@@ -68,6 +75,8 @@ export interface EnvironmentResource {
   variables: EnvironmentVariable[]
   createdAt?: string
   updatedAt?: string
+  createdBy?: string | null
+  updatedBy?: string | null
 }
 
 export interface TrashEntry {
