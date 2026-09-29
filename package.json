@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve:dist": "serve -s dist -l ${PORT:-4173}"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
@@ -23,6 +24,7 @@
     "clsx": "^2.1.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "serve": "^14.2.6",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
