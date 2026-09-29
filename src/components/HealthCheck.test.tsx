@@ -22,7 +22,7 @@ describe('HealthCheck', () => {
     render(<HealthCheck />)
     await userEvent.click(screen.getByRole('button', { name: /check api health/i }))
 
-    expect(get).toHaveBeenCalledWith('/health')
+    expect(get).toHaveBeenCalledWith('/health', { baseURL: '' })
     expect(screen.getByRole('button', { name: /checking/i })).toBeDisabled()
     expect(screen.getByText(/contacting api/i)).toBeInTheDocument()
 
