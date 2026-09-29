@@ -32,21 +32,21 @@ Sending is intentionally a Slice 4 stub. Import/export controls are disabled unt
 | `npm test` | Run Vitest once with jsdom and Testing Library |
 | `npm run test:watch` | Run Vitest in watch mode |
 | `npm run preview` | Preview the production build (Vite's own preview server — for local sanity checks only, not for production; see "Deploying to a VM" below) |
-| `npm run serve:dist` | Serve the built `dist/` directory with SPA fallback, on `$PORT` (default `4173`) — this is what actually runs in production, under PM2 |
 
 The frontend test suite mocks the API and EventSource. The separate API repository was not started as part of these checks.
 
 ## Deploying to a VM
 
-Target environment: an on-premises VM on the organization's internal network, managed with **PM2** (not Docker, not systemd). The web app and the API run as two separate processes on two separate ports, with **no reverse proxy** in front of either. There is **no TLS** — this deployment is plain HTTP, which is only acceptable because it stays inside the internal network with no credentials or sign-in feature in transit. **Revisit this before adding TLS-sensitive features (authentication, sign-in) or exposing either service beyond the internal network.**
+Target environment: an on-premises VM on the organization's internal network. **nginx** serves the built static files and reverse-proxies `/api` to the API, so the browser sees a **single origin** — there is no cross-origin request in normal operation. The API itself still runs as its own process, managed with **PM2** (not Docker, not systemd); this app no longer runs under PM2, since nginx serves its static files directly (see "Why nginx, not a Node static server" below). There is **no TLS** — this deployment is plain HTTP, which is only acceptable because it stays inside the internal network with no credentials or sign-in feature in transit. **Revisit this before adding TLS-sensitive features (authentication, sign-in) or exposing either service beyond the internal network.**
 
-None of the steps below assume a specific hostname or machine — substitute your VM's actual address wherever `<web-host>` or `<api-host>` appears.
+None of the steps below assume a specific hostname or machine — substitute your VM's actual paths/addresses wherever a placeholder appears.
 
 ### 1. Prerequisites
 
-- Node.js >= 22.12 (this repo pins dependency versions tested against Node 23.5; anything >= 22.12 satisfies `engines`).
+- Node.js >= 22.12 (this repo pins dependency versions tested against Node 23.5; anything >= 22.12 satisfies `engines`) — needed to build the app, not to serve it.
 - npm.
-- PM2 installed and available on the VM (`npm install -g pm2`, or any other install method your organization prefers — this repo does not vendor PM2 itself).
+- nginx installed on the VM.
+- The API running separately (its own repository), managed with PM2 as before — unchanged by this slice.
 
 ### 2. Install and configure
 
@@ -55,15 +55,19 @@ npm install
 cp .env.example .env.local
 ```
 
-Set `VITE_API_BASE_URL` in `.env.local` to the API's real address on this deployment, for example `http://<api-host>:3000`.
+Set `VITE_API_BASE_URL` in `.env.local` to a **same-origin relative path**, not an absolute host — this is the point of putting nginx in front:
 
-**This variable is baked into the build at build time, not read at runtime.** Vite inlines `import.meta.env.VITE_API_BASE_URL` directly into the compiled JavaScript bundle when `npm run build` runs. This means:
+```
+VITE_API_BASE_URL=/api
+```
+
+**This variable is still baked into the build at build time, not read at runtime** — that has not changed. Vite inlines `import.meta.env.VITE_API_BASE_URL` directly into the compiled JavaScript bundle when `npm run build` runs. This means:
 
 - You must set `VITE_API_BASE_URL` correctly **before** running `npm run build`, not after.
-- Changing `.env.local` (or the shell environment) and restarting PM2 **does nothing** — the already-built `dist/` bundle still contains the old value baked in. There is no runtime re-read of this variable.
-- To point the deployed app at a different API address, you must edit the value and **run `npm run build` again**, then restart the PM2 process so it serves the freshly built files.
+- Changing `.env.local` (or the shell environment) afterwards and reloading nginx **does nothing** — the already-built `dist/` bundle still contains the old value baked in. There is no runtime re-read of this variable.
+- To change it, edit the value and **run `npm run build` again**, then redeploy the freshly built `dist/` files (nginx serves whatever is on disk, so this just means replacing the files — no PM2/process restart is needed on the web side, since nginx is not restarted per deploy, only reloaded if its own config changed).
 
-This is a common trap: someone deploys, later changes the environment variable on the VM, restarts the process, and is confused when the app still talks to the old API address. It is not a bug — it is how Vite's build-time env injection works. Always rebuild after changing this variable.
+This is a common trap: someone deploys, later changes the environment variable on the VM, and is confused when the app still talks to the old value. It is not a bug — it is how Vite's build-time env injection works. Always rebuild after changing this variable.
 
 ### 3. Build
 
@@ -71,46 +75,49 @@ This is a common trap: someone deploys, later changes the environment variable o
 npm run build
 ```
 
-Produces a static `dist/` directory. `npm run build` runs `tsc -b` first, so a build also fails on a type error.
+Produces a static `dist/` directory. `npm run build` runs `tsc -b` first, so a build also fails on a type error. Copy this `dist/` directory to wherever nginx will read it from on the VM (referred to as `__DIST_PATH__` below).
 
-### 4. Serve the build under PM2
+### 4. Install the nginx site config
 
-There is no reverse proxy, so something must serve `dist/` directly on its own port. This repo uses the [`serve`](https://www.npmjs.com/package/serve) package (installed as a normal dependency, not a dev-only tool, since it is needed at runtime on the VM) rather than:
+`deploy/nginx.conf` in this repo is a ready-to-use nginx `server` block. It:
 
-- **`vite preview`** — Vite's own docs describe this as intended for locally previewing a build, not as a production server; it is not designed to be the thing running unattended under a process manager.
-- **The Vite dev server (`npm run dev`)** — never run this in production. It is unoptimized, serves unbundled/unminified module graphs intended for fast local iteration, and is not hardened for anything but local development.
-- **A hand-rolled Express static server** — unnecessary extra code and a dependency on Express just to reimplement what `serve` already does correctly, including SPA fallback.
+- Serves `dist/` as static files with `try_files $uri $uri/ /index.html`, so client-side routes and a browser refresh on a deep link fall back to `index.html` instead of 404ing.
+- Reverse-proxies `/api/` to the API process, so `VITE_API_BASE_URL=/api` resolves same-origin.
+- Disables proxy buffering for `/api/` (see "SSE and nginx buffering" below) — without this, the app's live-update feature silently stops working.
 
-`serve` is small, has no reverse-proxy assumptions (it binds directly to a port, which matches this deployment), and its `-s` (single-page) flag is exactly the SPA-fallback behavior this app needs: any path it can't find on disk falls back to `index.html`, so client-side routes and browser refreshes on a deep link don't 404.
+Copy it into your nginx config (for example `/opt/homebrew/etc/nginx/servers/` on this dev machine, or `/etc/nginx/sites-available/` + a symlink into `sites-enabled/` on most Linux distributions), and replace its two placeholders:
 
-A PM2 ecosystem file, `ecosystem.config.cjs`, is included at the repo root:
+- `__DIST_PATH__` → the absolute path to this app's built `dist/` directory on the VM.
+- `__API_ORIGIN__` → where the PM2-managed API actually listens, for example `http://127.0.0.1:3000` (loopback-only is fine and preferable, since nginx is the only thing that needs to reach it directly once it is the single public entry point).
 
-```sh
-WEB_PORT=4173 pm2 start ecosystem.config.cjs
-```
-
-- App name: `play-next-api-workspace-web`.
-- Entrypoint: `node_modules/.bin/serve -s dist -l $WEB_PORT` (default port `4173` if `WEB_PORT` is unset).
-- Logs: `./logs/web-out.log` and `./logs/web-error.log`, next to the ecosystem file (not PM2's default `~/.pm2/logs`, so they travel with the deployment).
-- Restart behavior: restarts automatically on crash, but backs off after repeated crashes (`max_restarts: 10`, `min_uptime: 10s`, `restart_delay: 2000`ms) instead of hot-looping.
-
-Useful PM2 commands once running:
+Then reload nginx to pick up the new/changed site:
 
 ```sh
-pm2 status                              # check the process is up
-pm2 logs play-next-api-workspace-web    # tail logs
-pm2 restart play-next-api-workspace-web # restart after a rebuild
-pm2 stop play-next-api-workspace-web    # stop without removing from PM2's list
+nginx -t          # validate the config before reloading
+nginx -s reload    # or: sudo systemctl reload nginx / brew services restart nginx
 ```
 
-To survive a VM reboot, generate and enable a PM2 startup script once, then save the current process list:
+### 5. Why nginx, not a Node static server
 
-```sh
-pm2 startup            # prints and can run an OS-specific command to install a PM2 boot service
-pm2 save               # persists the current process list (including this app) to be restored on boot
-```
+An earlier revision of this document served `dist/` with the [`serve`](https://www.npmjs.com/package/serve) npm package under its own PM2 process, on its own port, with no reverse proxy. That has been **removed**, not just left in place unused: the `serve` dependency was uninstalled from `package.json`, and the PM2 ecosystem file that ran it (`ecosystem.config.cjs`) was deleted. The web app is no longer a PM2-managed process at all — nginx serves its static files directly, and there is nothing long-running on the web side for PM2 to restart or crash-loop. The API is unaffected: it keeps running under PM2 exactly as before.
 
-### 5. Configure the API's CORS for this origin
+nginx was chosen for this revised shape because a reverse proxy was needed anyway (to give a single origin and hide the API's real port), and nginx is a natural, well-understood choice for serving static files from that same layer — running a second Node static-file process behind nginx just to serve `dist/` would have been redundant.
 
-The API only allows browser requests from the exact origin in its own `CORS_ORIGIN` environment variable — it does not infer or default to this app's address. Set the API's `CORS_ORIGIN` to this app's real address on the deployment, for example `CORS_ORIGIN=http://<web-host>:4173`, before starting the API. If this is skipped, the app loads but every API call fails with an opaque CORS error in the browser console, with no server-side indication of what is misconfigured.
+### 6. SSE and nginx buffering — read this before assuming the proxy "just works"
+
+**nginx buffers proxied responses by default.** For a normal REST response this is invisible, but for a streaming Server-Sent Events response (the API's `/api/v1/events` endpoint, which this app's live-update notice depends on) it silently breaks it: events sit in nginx's buffer instead of being forwarded to the browser as they arrive, so the stream appears to hang — no error anywhere, the connection just doesn't do anything until the buffer is flushed or the connection closes.
+
+`deploy/nginx.conf` sets the following on its `/api/` location specifically to prevent this:
+
+- `proxy_buffering off;` — the key directive; forwards each chunk from the API to the client as soon as it arrives, instead of waiting to fill a buffer.
+- `proxy_http_version 1.1;` — required for a properly persistent proxied connection.
+- `proxy_read_timeout 1h;` — the default (60s) will kill an idle SSE connection that has nothing to send for a minute; a long timeout avoids that becoming a surprise. A real disconnect is still handled by the client's own reconnect logic (`Last-Event-ID`).
+- `proxy_set_header Connection "";` — explicitly avoids sending a `Connection: close` header to the upstream, which would defeat the point of the above.
+- `proxy_set_header X-Accel-Buffering no;` — a defensive extra signal in case another buffering layer is ever added in front of this one.
+
+Do not remove any of these when adapting the config. This was verified live, not assumed — see the PR/commit notes for exactly how.
+
+### 7. CORS is no longer needed for normal operation
+
+Because nginx proxies `/api` on the same origin the browser loaded the page from, there is no cross-origin request for the app's own traffic, so the API's `CORS_ORIGIN` does not need to match this app's address for the deployed app to work. `CORS_ORIGIN` remains relevant only if something accesses the API directly and cross-origin — for example, a developer running this app's Vite dev server (`npm run dev`, still absolute-URL-based, still bypasses nginx) against the same API, or any other direct browser client. For that case, the API's `CORS_ORIGIN` still needs to be set to whatever origin is making that direct request, exactly as before.
 
