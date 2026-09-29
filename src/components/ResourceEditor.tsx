@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ResponsePanel } from '@/components/ResponsePanel'
+import type { RecordedResponse } from '@/lib/request-runner'
 import type { EnvironmentResource, EnvironmentVariable, KeyValueEntry, RequestMethod, ResourceDraft } from '@/lib/workspace-types'
 
 const JsonEditor = lazy(() => import('@/components/JsonEditor').then(({ JsonEditor: Editor }) => ({ default: Editor })))
@@ -17,12 +19,15 @@ interface ResourceEditorProps {
   onSave: () => void
   onDelete: () => void
   onSend: () => void
+  sending: boolean
+  sendError: string | null
+  response: RecordedResponse | null
 }
 
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const name = draft.resource.name
@@ -87,8 +92,9 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                   {methods.map((method) => <option key={method}>{method}</option>)}
                 </select>
                 <input className="url-input" aria-label="Request URL" value={draft.resource.url} placeholder="{{baseUrl}}:{{port}}/path" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, url: event.target.value } })} />
-                <Button className="send-button" onClick={onSend}>Send</Button>
+                <Button className="send-button" onClick={onSend} disabled={sending}>{sending ? 'Sending…' : 'Send'}</Button>
               </div>
+              {sendError && <p className="inline-error send-error" role="alert">{sendError}</p>}
               <label className="request-description">
                 <span>Description</span>
                 <input aria-label="Request description" value={draft.resource.description} placeholder="Add a description" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, description: event.target.value } })} />
@@ -131,10 +137,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
           {error && <p className="inline-error" role="alert">{error}</p>}
         </section>
         <div className="resize-handle" role="separator" aria-label="Resize request and response panels" onPointerDown={resize} />
-        <section className="response-panel">
-          <div className="response-heading"><strong>Response</strong><span className="response-meta">Send requests in Slice 4</span></div>
-          <div className="response-empty"><span className="response-symbol">↗</span><strong>Your response will appear here</strong><span>Configure a request, then send it to inspect the result.</span></div>
-        </section>
+        <ResponsePanel sending={sending} response={response} />
       </div>
     </section>
   )

@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { HistoryView } from '@/components/HistoryView'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { describeApiError, workspaceApi } from '@/lib/api'
+import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
+import type { HistoryEntry } from '@/lib/history'
+import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
+import { activeRunner } from '@/lib/request-runner'
+import type { RecordedResponse } from '@/lib/request-runner'
 import { applyChangeEvent, isDraftDirty, parseChangeEvent, resourceKey } from '@/lib/workspace-types'
 import type {
   ChangeEvent,
@@ -20,7 +26,7 @@ import type {
 } from '@/lib/workspace-types'
 import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName } from '@/lib/workspace-ui'
 
-type View = 'workspace' | 'environments' | 'trash'
+type View = 'workspace' | 'environments' | 'trash' | 'history'
 
 interface RemoteUpdate {
   event: ChangeEvent | null
@@ -105,7 +111,10 @@ function App() {
   const [reconnectKey, setReconnectKey] = useState(0)
   const [remoteUpdate, setRemoteUpdate] = useState<RemoteUpdate | null>(null)
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
-  const [sendNotice, setSendNotice] = useState(false)
+  const [sending, setSending] = useState<Record<string, boolean>>({})
+  const [responses, setResponses] = useState<Record<string, RecordedResponse>>({})
+  const [sendErrors, setSendErrors] = useState<Record<string, string>>({})
+  const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory())
   const selectedRef = useRef(selected)
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
@@ -204,6 +213,9 @@ function App() {
   const dirty = !!activeDraft && (activeDraft.kind === 'request' && activeDraft.isNew
     ? true
     : !activeBaseline || isDraftDirty(activeDraft, activeBaseline))
+  const activeSending = currentKey ? sending[currentKey] ?? false : false
+  const activeResponse = currentKey ? responses[currentKey] ?? null : null
+  const activeSendError = currentKey ? sendErrors[currentKey] ?? null : null
 
   function openResource(resource: OpenResource) {
     const key = resourceKey(resource)
@@ -226,6 +238,45 @@ function App() {
     const key = draftKey(next)
     setDrafts((current) => ({ ...current, [key]: next }))
     setResourceError(null)
+  }
+
+  async function sendActiveRequest() {
+    if (!activeDraft || activeDraft.kind !== 'request') return
+    const key = draftKey(activeDraft)
+    const resource = activeDraft.resource
+    const environment = environments.find(({ id }) => id === selectedEnvironmentId)
+    const variables = buildVariableMap(environment?.variables ?? [])
+    const outcome = prepareRequest(resource, variables)
+
+    if (!outcome.ok) {
+      const message = outcome.reason === 'missing-variables'
+        ? `Undefined variable${outcome.missing.length > 1 ? 's' : ''}: ${outcome.missing.map((name) => `{{${name}}}`).join(', ')}. Request was not sent.`
+        : outcome.reason === 'invalid-json'
+          ? `Body is not valid JSON at line ${outcome.error.line}, column ${outcome.error.column}: ${outcome.error.message}. Request was not sent.`
+          : `${outcome.message} Request was not sent.`
+      setSendErrors((current) => ({ ...current, [key]: message }))
+      return
+    }
+
+    setSendErrors((current) => omitKeys(current, [key]))
+    setSending((current) => ({ ...current, [key]: true }))
+    const result = await activeRunner.run(outcome.request)
+    setSending((current) => ({ ...current, [key]: false }))
+    const sentAt = new Date().toISOString()
+    setResponses((current) => ({ ...current, [key]: { result, sentAt } }))
+    setHistory(appendHistoryEntry({
+      sentAt,
+      method: outcome.request.method,
+      url: outcome.request.url,
+      requestName: resource.name || undefined,
+      requestBody: outcome.request.body,
+      status: result.kind === 'success' ? result.status : undefined,
+      statusText: result.kind === 'success' ? result.statusText : undefined,
+      durationMs: result.durationMs,
+      sizeBytes: result.kind === 'success' ? result.sizeBytes : undefined,
+      failure: result.kind === 'failure' ? result.message : undefined,
+      responseBody: result.kind === 'success' ? result.bodyText : undefined,
+    }))
   }
 
   function setLocalCollection(collection: CollectionResource) {
@@ -592,11 +643,14 @@ function App() {
           onDelete={(resource) => void deleteResource(resource)}
           onShowEnvironments={() => setView('environments')}
           onShowTrash={() => { setView('trash'); void reloadTrash() }}
+          onShowHistory={() => setView('history')}
           collapsed={sidebarCollapsed}
         />
         <div className="main-content">
           {view === 'trash' ? (
             <TrashView entries={trash} onRestore={(entry) => void beginRestore(entry)} />
+          ) : view === 'history' ? (
+            <HistoryView entries={history} onClear={() => { clearHistory(); setHistory([]) }} />
           ) : view === 'environments' && selected?.kind !== 'environment' ? (
             <div className="empty-workspace environment-welcome">
               <span className="response-symbol">◉</span>
@@ -658,7 +712,10 @@ function App() {
                   onChange={updateDraft}
                   onSave={() => void saveDraft()}
                   onDelete={() => void deleteResource(selected!)}
-                  onSend={() => { setSendNotice(true); window.setTimeout(() => setSendNotice(false), 3000) }}
+                  onSend={() => void sendActiveRequest()}
+                  sending={activeSending}
+                  sendError={activeSendError}
+                  response={activeResponse}
                 />
               </div>
             </>
@@ -683,7 +740,8 @@ function App() {
           )}
         </div>
       </div>
-      {sendNotice && <div className="toast" role="status">Request sending is coming in Slice 4. No request was sent.</div>}
+
+
       {restoreState && (
         <div className="modal-backdrop">
           <section className="restore-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-title">

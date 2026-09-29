@@ -13,6 +13,7 @@ interface WorkspaceTreeProps {
   onDelete: (resource: OpenResource) => void
   onShowEnvironments: () => void
   onShowTrash: () => void
+  onShowHistory: () => void
   collapsed: boolean
 }
 
@@ -86,6 +87,7 @@ export function WorkspaceTree({
   onDelete,
   onShowEnvironments,
   onShowTrash,
+  onShowHistory,
   collapsed,
 }: WorkspaceTreeProps) {
   const [search, setSearch] = useState('')
@@ -125,6 +127,7 @@ export function WorkspaceTree({
       </nav>
       <div className="sidebar-bottom">
         <button className="sidebar-link" onClick={onShowEnvironments}>◉ &nbsp; Environments</button>
+        <button className="sidebar-link" onClick={onShowHistory}>▥ &nbsp; History</button>
         <button className="sidebar-link" onClick={onShowTrash}>▱ &nbsp; Trash</button>
       </div>
     </aside>
