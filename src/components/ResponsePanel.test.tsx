@@ -203,3 +203,56 @@ describe('ResponsePanel sync survives a send', () => {
     expect(screen.queryByRole('button', { name: /stop syncing/i })).toBeNull()
   })
 })
+
+describe('copying the raw response body', () => {
+  const bodyResponse = (body: string, contentType: string): RecordedResponse => ({
+    sentAt: '2026-01-01T00:00:00.000Z',
+    result: {
+      kind: 'success', status: 200, statusText: 'OK', ok: true, durationMs: 1,
+      sizeBytes: body.length, headers: { 'content-type': contentType }, bodyText: body,
+    },
+  })
+  const jsonResponse = (body: string) => bodyResponse(body, 'application/json')
+  const textResponse = (body: string) => bodyResponse(body, 'text/plain')
+
+  it('offers a copy button on the Raw view, which the tree does not cover', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    writeText.mockClear()
+    render(<ResponsePanel sending={false} response={jsonResponse('{"a":1}')} />)
+
+    // The tree has its own Copy, which follows its filter; the views never show both at once.
+    expect(document.querySelector('.response-copy-raw')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Raw' }))
+    expect(document.querySelector('.response-copy-raw')).not.toBeNull()
+    expect(screen.getAllByRole('button', { name: 'Copy' })).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify({ a: 1 }, null, 2))
+    expect(await screen.findByText('Copied the response body')).toBeInTheDocument()
+  })
+
+  it('offers it for a body that is not JSON at all, where there is no tree to copy from', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    writeText.mockClear()
+    render(<ResponsePanel sending={false} response={textResponse('plain words')} />)
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(writeText).toHaveBeenCalledWith('plain words')
+  })
+
+  it('says so when the clipboard refuses, rather than leaving a button that does nothing', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Document is not focused'))
+    render(<ResponsePanel sending={false} response={textResponse('plain words')} />)
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(await screen.findByText(/Could not reach the clipboard/)).toBeInTheDocument()
+  })
+
+  it('offers nothing to copy for an empty body', () => {
+    render(<ResponsePanel sending={false} response={textResponse('')} />)
+    expect(screen.queryByRole('button', { name: 'Copy' })).not.toBeInTheDocument()
+  })
+})

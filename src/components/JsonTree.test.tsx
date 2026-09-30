@@ -9,6 +9,16 @@ const body = {
   items: [1, 2],
 }
 
+/**
+ * `vi.spyOn` returns the *existing* mock when the method is already spied, and does not reset its
+ * call history — so without clearing, a later test reads the previous test's clipboard writes.
+ */
+function spyOnClipboard(result: Promise<void> = Promise.resolve()) {
+  const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockReturnValue(result)
+  writeText.mockClear()
+  return writeText
+}
+
 const rowText = () =>
   screen.getAllByRole('button', { name: /^(Expand|Collapse) / }).map((button) => button.getAttribute('aria-label'))
 
@@ -65,12 +75,13 @@ describe('JsonTree', () => {
   it('copies the path of a row, in the form the capture form expects', async () => {
     const user = userEvent.setup()
     // Spied after setup: userEvent installs its own clipboard stub, and it is getter-only.
-    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined)
+    const writeText = spyOnClipboard()
     render(<JsonTree value={body} />)
 
     await user.click(screen.getByRole('button', { name: 'Copy path gameData.totalWin' }))
     expect(writeText).toHaveBeenCalledWith('gameData.totalWin')
-    expect(await screen.findByText('Copied gameData.totalWin')).toBeInTheDocument()
+    // Named as a path, since a row now offers to copy its value too.
+    expect(await screen.findByText('Copied path gameData.totalWin')).toBeInTheDocument()
   })
 
   it('reports a refused clipboard instead of leaving a button that appears to do nothing', async () => {
@@ -122,5 +133,134 @@ describe('JsonTree', () => {
     const tree = screen.getByRole('tree')
     expect(within(tree).getByText('"12"')).toBeInTheDocument()
     expect(within(tree).getByText('12')).toBeInTheDocument()
+  })
+})
+
+describe('filtering a response', () => {
+  it('shows only the path to a match', async () => {
+    const user = userEvent.setup()
+    render(<JsonTree value={body} />)
+
+    await user.type(screen.getByLabelText('Filter response'), 'totalWin')
+    expect(screen.getByText('totalWin')).toBeInTheDocument()
+    expect(screen.getByText('gameData')).toBeInTheDocument()
+    // The branches that hold no match are gone, which is the entire point.
+    expect(screen.queryByText('version')).not.toBeInTheDocument()
+    expect(screen.queryByText('items')).not.toBeInTheDocument()
+  })
+
+  it('reports how many matched, so a filter that found one thing is distinguishable from a lucky guess', async () => {
+    const user = userEvent.setup()
+    render(<JsonTree value={body} />)
+
+    await user.type(screen.getByLabelText('Filter response'), 'totalWin')
+    expect(screen.getByText('1 match')).toBeInTheDocument()
+  })
+
+  it('says so when nothing matched, rather than showing a blank area', async () => {
+    const user = userEvent.setup()
+    render(<JsonTree value={body} />)
+
+    await user.type(screen.getByLabelText('Filter response'), 'nowhere')
+    expect(screen.getByText('No key or value matches that.')).toBeInTheDocument()
+    expect(screen.getByText('0 matches')).toBeInTheDocument()
+  })
+
+  it('opens a branch the user had collapsed, or the match would be filtered to somewhere invisible', async () => {
+    const user = userEvent.setup()
+    render(<JsonTree value={body} />)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse gameData' }))
+    expect(screen.queryByText('totalWin')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Filter response'), 'totalWin')
+    expect(screen.getByText('totalWin')).toBeInTheDocument()
+  })
+
+  it('restores what the user had open when the filter is cleared', async () => {
+    const user = userEvent.setup()
+    render(<JsonTree value={body} />)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse gameData' }))
+    const input = screen.getByLabelText('Filter response')
+    await user.type(input, 'totalWin')
+    await user.clear(input)
+
+    // Still collapsed: the filter's expansion was layered on top, not written into the user's.
+    expect(screen.queryByText('totalWin')).not.toBeInTheDocument()
+    expect(screen.getByText('3 keys')).toBeInTheDocument()
+  })
+
+  it('keeps the real array index on a surviving entry, so the path still addresses the response', async () => {
+    const user = userEvent.setup()
+    render(<JsonTree value={{ items: [{ win: 0 }, { win: 250 }] }} />)
+
+    await user.type(screen.getByLabelText('Filter response'), '250')
+    expect(screen.getByRole('button', { name: 'Copy path items[1].win' })).toBeInTheDocument()
+  })
+
+  it('clears the filter when a new response arrives, which the old query may not describe', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<JsonTree value={body} />)
+    await user.type(screen.getByLabelText('Filter response'), 'totalWin')
+
+    rerender(<JsonTree value={{ other: 1 }} />)
+    expect(screen.getByLabelText('Filter response')).toHaveValue('')
+    expect(screen.getByText('other')).toBeInTheDocument()
+  })
+})
+
+describe('copying a response body', () => {
+  it('copies the whole body when no filter is active', async () => {
+    const user = userEvent.setup()
+    const writeText = spyOnClipboard()
+    render(<JsonTree value={body} />)
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(JSON.parse(writeText.mock.calls[0][0] as string)).toEqual(body)
+    expect(await screen.findByText('Copied the response body')).toBeInTheDocument()
+  })
+
+  it('copies only the filtered part once a filter is active', async () => {
+    const user = userEvent.setup()
+    const writeText = spyOnClipboard()
+    render(<JsonTree value={body} />)
+
+    await user.type(screen.getByLabelText('Filter response'), 'totalWin')
+    await user.click(screen.getByRole('button', { name: 'Copy filtered' }))
+    expect(JSON.parse(writeText.mock.calls[0][0] as string)).toEqual({ gameData: { totalWin: 0 } })
+    expect(await screen.findByText('Copied the filtered part')).toBeInTheDocument()
+  })
+
+  it('copies the value at a row, pretty-printed', async () => {
+    const user = userEvent.setup()
+    const writeText = spyOnClipboard()
+    render(<JsonTree value={body} />)
+
+    await user.click(screen.getByRole('button', { name: 'Copy value gameData' }))
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify(body.gameData, null, 2))
+    expect(await screen.findByText('Copied the value at gameData')).toBeInTheDocument()
+  })
+
+  it('copies the value a row really holds, not the part left after filtering', async () => {
+    const user = userEvent.setup()
+    const writeText = spyOnClipboard()
+    render(<JsonTree value={body} />)
+
+    await user.type(screen.getByLabelText('Filter response'), 'totalWin')
+    // The row still shows the path `gameData`, and that path resolves to all three keys. Handing
+    // back one key under that path would be a fragment that does not match it.
+    await user.click(screen.getByRole('button', { name: 'Copy value gameData' }))
+    expect(JSON.parse(writeText.mock.calls[0][0] as string)).toEqual(body.gameData)
+  })
+
+  it('reports a refused clipboard for a body copy too', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Document is not focused'))
+    render(<JsonTree value={body} />)
+
+    await user.click(screen.getByRole('button', { name: 'Copy' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the clipboard')
+    expect(screen.queryByText(/^Copied/)).not.toBeInTheDocument()
   })
 })

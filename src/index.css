@@ -321,11 +321,31 @@ button:disabled { cursor: not-allowed; }
 .json-string { color: #18825a; }
 .json-number { color: #b45309; }
 .json-boolean, .json-null { color: #7c3aed; }
-.json-copy-path { margin-left: auto; border: 0; background: none; color: #a6abb5; font-size: 9px; cursor: pointer; padding: 0 2px; opacity: 0; flex: none; }
-.json-row:hover .json-copy-path { opacity: 1; }
-.json-copy-path:hover, .json-copy-path:focus-visible { color: #2b2f38; opacity: 1; }
+.json-copy-path { margin-left: auto; }
+.json-copy-path, .json-copy-value { border: 0; background: none; color: #a6abb5; font-size: 9px; cursor: pointer; padding: 0 2px; opacity: 0; flex: none; }
+/* The value button carries the left margin when there is no path button to carry it. */
+.json-copy-value:first-of-type { margin-left: auto; }
+.json-row:hover .json-copy-path, .json-row:hover .json-copy-value { opacity: 1; }
+.json-copy-path:hover, .json-copy-path:focus-visible,
+.json-copy-value:hover, .json-copy-value:focus-visible { color: #2b2f38; opacity: 1; }
+/* Kept reachable by keyboard: opacity:0 still takes focus, and an invisible focused button is a trap. */
+.json-copy-path:focus-visible, .json-copy-value:focus-visible { outline: 1px solid #2563eb; border-radius: 3px; }
 .json-more { border: 0; background: none; color: #6c7280; font-size: 10px; cursor: pointer; padding: 0; text-decoration: underline; }
 .json-copy-failed { color: #b42318; font-size: 10px; }
+.response-copy-raw { margin-left: auto; border: 1px solid #e3e5ea; background: #fff; color: #424854; font-size: 10px; padding: 3px 9px; border-radius: 4px; cursor: pointer; align-self: center; }
+.response-copy-raw:hover { color: #2b2f38; border-color: #cfd3da; }
+/* Two `margin-left: auto` siblings split the free space between them, which would strand the Copy
+   button in the middle of the tab row instead of beside the view toggle. Only the first keeps it. */
+.response-copy-raw ~ .response-view-toggle { margin-left: 0; }
+.response-copy-note { color: #6b7280; font-size: 10px; align-self: center; margin-left: 6px; }
+.json-filter { display: flex; align-items: center; gap: 6px; margin-left: 4px; }
+.json-filter-input { width: 180px; border: 1px solid #e3e5ea; border-radius: 4px; padding: 3px 7px; font-size: 10px; color: #2b2f38; background: #fff; }
+.json-filter-input:focus-visible { outline: 1px solid #2563eb; border-color: #2563eb; }
+.json-filter-count { color: #6b7280; font-size: 10px; white-space: nowrap; }
+/* Marks the row that matched, not its ancestors, which are shown only to hold it up. */
+.json-row-match { background: #fffbeb; }
+.json-row-match:hover { background: #fef6d8; }
+.json-no-matches { margin: 8px 0 0; color: #6b7280; font-size: 11px; }
 
 /* Resizable sidebar and foldable sidebar sections */
 .sidebar-resize-handle { flex: 0 0 5px; margin-left: -3px; cursor: col-resize; background: transparent; position: relative; z-index: 1; }

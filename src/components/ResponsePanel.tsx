@@ -185,12 +185,17 @@ export function ResponsePanel({ sending, response, onRetryFromServer, requestKey
   requestKey?: string | null
 }) {
   const [tab, setTab] = useState<ResponseTab>('Body')
-  // Raw stays available: the tree cannot be selected and copied as JSON, and that is the one thing
-  // the plain pretty-printed body was reliably good for.
+  // Raw stays available for reading the body as it was actually sent - the tree normalises key
+  // order and whitespace away, and a malformed-looking body is sometimes the thing being diagnosed.
   const [view, setView] = useState<BodyView>('Tree')
+  // The tree carries its own copy button, which follows the filter. This one covers the views the
+  // tree does not reach at all: the raw text, and a body that is not JSON to begin with.
+  const [copiedRaw, setCopiedRaw] = useState<string | null>(null)
 
   useEffect(() => {
     setTab('Body')
+    // Otherwise "Copied" lingers over a response that was never copied.
+    setCopiedRaw(null)
   }, [response])
 
   if (sending) {
@@ -253,6 +258,21 @@ export function ResponsePanel({ sending, response, onRetryFromServer, requestKey
         {tabs.map((entry) => (
           <button key={entry} role="tab" aria-selected={tab === entry} className={tab === entry ? 'editor-tab active' : 'editor-tab'} onClick={() => setTab(entry)}>{entry}</button>
         ))}
+        {tab === 'Body' && pretty && (!isJson || view === 'Raw') && (
+          <button
+            type="button"
+            className="response-copy-raw"
+            onClick={() => {
+              void (navigator.clipboard?.writeText(pretty) ?? Promise.reject(new Error('Clipboard unavailable'))).then(
+                () => setCopiedRaw('Copied the response body'),
+                () => setCopiedRaw('Could not reach the clipboard, so nothing was copied.'),
+              )
+            }}
+          >
+            Copy
+          </button>
+        )}
+        {tab === 'Body' && copiedRaw && <span className="response-copy-note" role="status">{copiedRaw}</span>}
         {tab === 'Body' && isJson && (
           <div className="response-view-toggle" role="group" aria-label="Body view">
             {(['Tree', 'Raw'] as BodyView[]).map((entry) => (

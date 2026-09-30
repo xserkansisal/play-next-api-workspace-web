@@ -183,8 +183,51 @@ containing `"` or `]`); those rows are still shown, but offer no path rather tha
 silently miss. If the clipboard refuses — an insecure origin, a denied permission — the path is
 displayed instead so it can be selected by hand.
 
-**Raw** switches back to the pretty-printed text. It stays available because a tree cannot be
-selected and copied as JSON, which is the one thing the plain body was reliably good for.
+**Raw** switches back to the pretty-printed text. It stays available for reading the body as it was
+actually sent: the tree normalises key order and whitespace away, and a body that looks malformed is
+sometimes the thing being diagnosed.
+
+### Filtering
+
+The filter box narrows the tree to the keys and values matching what you type. This covers what
+collapsing does not: the browser's own find cannot see into a collapsed branch, because those rows
+are not in the DOM to be found.
+
+Matching is case-insensitive substring, against the key and against the value as it *reads* rather
+than as JSON encodes it — typing `100` finds the number `100` and the string `"100"`, and `null`
+finds a null. Quoting and escaping are an artefact of the format, not something worth searching for.
+
+A matching key brings its whole subtree with it, since finding `mathState` and then being shown an
+empty `mathState` would tell you nothing. The ancestors of a match are shown and opened, so a match
+is never hidden behind a branch you had collapsed — and clearing the filter puts those branches back
+exactly as you left them, because the filter's expansion is layered over yours rather than written
+into it. Only the row that matched in its own right is highlighted; its ancestors are there to hold
+it up.
+
+Filtering never prunes the document, only the rows. A pruned document would renumber arrays — the
+fifth entry would become the first — and the path shown beside each row would then address a
+different value in the real response. Those paths are the point of the tree, so `items[5]` stays
+`items[5]` even when entries 0–4 are filtered away. For the same reason a collapsed container is
+still summarised with its real size: `40 keys` while the filter hides 37 of them is the truth about
+the response.
+
+A query that matches nothing says so, which is different from a blank query showing everything.
+
+### Copying
+
+**Copy** takes the whole body. Once a filter is active it becomes **Copy filtered** and takes only
+the part you narrowed down to, pretty-printed and valid on its own — this is the one place arrays
+*are* renumbered, because holes would not be valid JSON and nulls would be a value the response
+never contained.
+
+Each row also offers a **value** button beside its **path** button, which copies the value at that
+row. That one ignores the filter deliberately: the row shows the real path, and handing back a
+subtree with entries missing under that path would be a fragment that does not match what the path
+resolves to.
+
+The **Raw** view and any body that is not JSON get their own **Copy** button in the tab row, since
+there is no tree there to copy from. As everywhere else, a refused clipboard says so rather than
+leaving a button that appears to do nothing.
 
 ## Chaining a value from one response into the next request
 

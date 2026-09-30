@@ -20,7 +20,7 @@ export interface JsonRow {
   label: string | null
   kind: JsonKind
   value: unknown
-  /** Entries in this container; 0 for a primitive. */
+  /** Entries in this container in the response itself, which a filter does not reduce; 0 for a primitive. */
   childCount: number
   expanded: boolean
   /**
@@ -99,28 +99,43 @@ export interface BuildOptions {
   /** Container ids whose child cap the user has lifted. */
   revealed?: Set<string>
   childrenPerContainer?: number
+  /**
+   * When present, only these ids are rendered. Children are dropped on the way out rather than the
+   * document being pruned, so an array entry keeps the index it really has and the path shown next
+   * to it still addresses the response.
+   */
+  visible?: Set<string>
 }
 
 export function buildRows(root: unknown, options: BuildOptions): JsonRow[] {
-  const { expanded, revealed, childrenPerContainer = CHILDREN_PER_CONTAINER } = options
+  const { expanded, revealed, childrenPerContainer = CHILDREN_PER_CONTAINER, visible } = options
   const rows: JsonRow[] = []
 
   const visit = (value: unknown, label: string | null, path: string | null, id: string, depth: number) => {
     const kind = kindOf(value)
-    const children = kind === 'primitive' ? [] : entriesOf(value)
+    const all = kind === 'primitive' ? [] : entriesOf(value)
     const isExpanded = kind !== 'primitive' && expanded.has(id)
 
-    rows.push({ path, id, depth, label, kind, value, childCount: children.length, expanded: isExpanded })
+    // The true count, not the filtered one: a collapsed container summarised as "3 keys" while a
+    // filter hides 37 of its 40 would be a claim about the response that is not true.
+    rows.push({ path, id, depth, label, kind, value, childCount: all.length, expanded: isExpanded })
     if (!isExpanded) return
+
+    // Filtered only once the container is known to be open: a collapsed container renders no
+    // children, and walking all of them to discard them defeats the point of collapsing. The index
+    // is captured before filtering, so `items[5]` stays `items[5]` when entries 0-4 are dropped.
+    const children = all
+      .map((child, index) => ({ ...child, index }))
+      .filter((child) => visible === undefined || visible.has(`${id}\u0000${child.id}`))
 
     const cap = revealed?.has(id) ? children.length : childrenPerContainer
     const shown = children.slice(0, cap)
 
-    shown.forEach((child, index) => {
+    shown.forEach((child) => {
       const childId = `${id}\u0000${child.id}`
       // A child of an unaddressable parent is itself unaddressable: there is no prefix to build on.
       const nextPath =
-        path === null ? null : kind === 'array' ? indexPath(path, index) : childPath(path, child.label)
+        path === null ? null : kind === 'array' ? indexPath(path, child.index) : childPath(path, child.label)
       visit(child.value, child.label, nextPath, childId, depth + 1)
     })
 
