@@ -11,6 +11,7 @@ import type { AuthUser } from '@/lib/auth'
 import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
+import { exportEnvironmentToPostman } from '@/lib/postman-environment'
 import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
 import { activeRunner } from '@/lib/request-runner'
 import type { RecordedResponse } from '@/lib/request-runner'
@@ -21,6 +22,7 @@ import type {
   CollectionResource,
   CreateItemInput,
   EnvironmentResource,
+  EnvironmentVariable,
   OpenResource,
   RequestResource,
   ResourceDraft,
@@ -244,6 +246,20 @@ function App({ user, onSignOut }: AppProps = {}) {
   const activeResponse = currentKey ? responses[currentKey] ?? null : null
   const activeSendError = currentKey ? sendErrors[currentKey] ?? null : null
   const activeCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId : null
+  // Export follows the current selection: an environment when one is open, otherwise the
+  // collection the selection belongs to.
+  const exportTarget = useMemo(() => {
+    if (selected?.kind === 'environment') {
+      const environment = environments.find(({ id }) => id === selected.environmentId)
+      if (!environment) return null
+      return { title: `Export "${environment.name}" as a Postman environment file`, run: () => exportEnvironment(environment.id) }
+    }
+    if (!activeCollectionId) return null
+    const collection = collections.find(({ id }) => id === activeCollectionId)
+    if (!collection) return null
+    return { title: `Export "${collection.name}" as a Postman v2.1 collection file`, run: () => exportCollection(collection.id) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, environments, collections, activeCollectionId])
 
   function openResource(resource: OpenResource) {
     const key = resourceKey(resource)
@@ -413,29 +429,78 @@ function App({ user, onSignOut }: AppProps = {}) {
 
   // Imports build the whole tree as one atomic POST /collections request (added in Slice 1 for
   // exactly this): either the entire import succeeds, or nothing is written server-side.
-  async function importCollection(payload: { name: string; description: string; items: TreeNodeInput[] }): Promise<string | void> {
+  async function importCollection(payload: {
+    name: string
+    description: string
+    items: TreeNodeInput[]
+    environment?: { name: string; variables: EnvironmentVariable[] }
+  }): Promise<string | void> {
+    const { environment, ...collectionPayload } = payload
+    let resource: CollectionResource
     try {
-      const resource = await workspaceApi.createCollection(payload)
-      setCollections((current) => sortByName([...current, resource]))
+      resource = await workspaceApi.createCollection(collectionPayload)
+    } catch (error) {
+      return describeApiError(error)
+    }
+    setCollections((current) => sortByName([...current, resource]))
+
+    // The environment is a second, separate request: there is no server-side endpoint that
+    // creates a collection and an environment in one transaction. The collection is already
+    // saved at this point, so a failure here is reported without discarding it.
+    if (environment) {
+      try {
+        const created = await workspaceApi.createEnvironment(environment)
+        setEnvironments((current) => sortByName([...current, created]))
+      } catch (error) {
+        setImportOpen(false)
+        setSelected({ kind: 'collection', collectionId: resource.id })
+        setView('workspace')
+        setLoadingError(`The collection "${resource.name}" was imported, but its environment could not be created: ${describeApiError(error)}`)
+        return
+      }
+    }
+
+    setImportOpen(false)
+    setSelected({ kind: 'collection', collectionId: resource.id })
+    setView('workspace')
+  }
+
+  async function importEnvironment(payload: { name: string; variables: EnvironmentVariable[] }): Promise<string | void> {
+    try {
+      const resource = await workspaceApi.createEnvironment(payload)
+      setEnvironments((current) => sortByName([...current, resource]))
       setImportOpen(false)
-      setSelected({ kind: 'collection', collectionId: resource.id })
-      setView('workspace')
+      setSelected({ kind: 'environment', environmentId: resource.id })
+      setView('environments')
     } catch (error) {
       return describeApiError(error)
     }
   }
 
-  function exportCollection(collectionId: string) {
-    const collection = collections.find(({ id }) => id === collectionId)
-    if (!collection) return
-    const postman = exportCollectionToPostman(collection)
-    const blob = new Blob([JSON.stringify(postman, null, 2)], { type: 'application/json' })
+  function downloadJson(content: unknown, fileName: string) {
+    const blob = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${collection.name.replace(/[/\\?%*:|"<>]/g, '_') || 'collection'}.postman_collection.json`
+    link.download = fileName
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  function safeFileName(name: string, fallback: string) {
+    return name.replace(/[/\\?%*:|"<>]/g, '_') || fallback
+  }
+
+  function exportCollection(collectionId: string) {
+    const collection = collections.find(({ id }) => id === collectionId)
+    if (!collection) return
+    downloadJson(exportCollectionToPostman(collection), `${safeFileName(collection.name, 'collection')}.postman_collection.json`)
+  }
+
+  function exportEnvironment(environmentId: string) {
+    const environment = environments.find(({ id }) => id === environmentId)
+    if (!environment) return
+    downloadJson(exportEnvironmentToPostman(environment), `${safeFileName(environment.name, 'environment')}.postman_environment.json`)
   }
 
   async function createFolder() {
@@ -680,7 +745,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           </label>
           <RuntimeVariablesMenu variables={runtimeVariables} />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
-          <Button variant="outline" size="sm" disabled={!activeCollectionId} title={activeCollectionId ? 'Export this collection as a Postman v2.1 file' : 'Select a collection to export'} onClick={() => activeCollectionId && exportCollection(activeCollectionId)}>Export</Button>
+          <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
             {user && <span className="account-email" title={user.email}>{user.email}</span>}
             <Button variant="outline" size="sm" onClick={() => onSignOut?.()}>Sign out</Button>
@@ -805,7 +870,7 @@ function App({ user, onSignOut }: AppProps = {}) {
       </div>
 
       {importOpen && (
-        <ImportDialog collections={collections} onCancel={() => setImportOpen(false)} onImport={importCollection} />
+        <ImportDialog collections={collections} environments={environments} onCancel={() => setImportOpen(false)} onImport={importCollection} onImportEnvironment={importEnvironment} />
       )}
 
       {restoreState && (

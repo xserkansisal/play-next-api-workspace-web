@@ -1,3 +1,4 @@
+import { detectPostmanFileKind, environmentFromCollectionVariables, type EnvironmentImportPlan } from '@/lib/postman-environment'
 import { nameKey } from '@/lib/workspace-ui'
 import type { KeyValueEntry, RequestMethod, TreeNodeInput } from '@/lib/workspace-types'
 import type { PostmanBody, PostmanCollection, PostmanDescription, PostmanHeader, PostmanItem, PostmanUrl, PostmanVariable } from '@/lib/postman-types'
@@ -38,6 +39,12 @@ export interface ImportPlan {
   stats: ImportStats
   /** Approximate size in bytes of the JSON payload this plan would produce. */
   approxPayloadBytes: number
+  /**
+   * Collection-level `variable[]` rebuilt as an importable environment, or null when the file
+   * declares none. This app has nowhere to store collection-scoped variables, so the user is
+   * offered the choice of keeping them as a separate Environment instead of losing them.
+   */
+  variablesEnvironment: EnvironmentImportPlan | null
 }
 
 function truncate(value: string, max: number): string {
@@ -233,12 +240,17 @@ export function parsePostmanCollection(raw: unknown): ImportPlan {
 
   if (!raw || typeof raw !== 'object') {
     errors.push('This file is not a recognizable Postman Collection v2.1 export (expected a JSON object).')
-    return { name: '', description: '', items: [], errors, warnings, stats, approxPayloadBytes: 0 }
+    return { name: '', description: '', items: [], errors, warnings, stats, approxPayloadBytes: 0, variablesEnvironment: null }
   }
   const collection = raw as PostmanCollection
   if (!collection.info || typeof collection.info !== 'object' || !Array.isArray(collection.item)) {
-    errors.push('This file is missing the "info" object or "item" array that every Postman collection export has, so it cannot be imported.')
-    return { name: '', description: '', items: [], errors, warnings, stats, approxPayloadBytes: 0 }
+    const kind = detectPostmanFileKind(raw)
+    errors.push(kind === 'environment'
+      ? 'This is a Postman *environment* export, not a collection. Choose "Environment" above to import it.'
+      : kind === 'globals'
+        ? 'This is a Postman *globals* export. Globals are a Postman-wide scope with no equivalent here; re-export the values as an environment in Postman instead.'
+        : 'This file is missing the "info" object or "item" array that every Postman collection export has, so it cannot be imported.')
+    return { name: '', description: '', items: [], errors, warnings, stats, approxPayloadBytes: 0, variablesEnvironment: null }
   }
   const schema = collection.info.schema ?? ''
   if (schema && !schema.includes('/v2.1.0/') && !schema.includes('/v2.0.0/')) {
@@ -255,8 +267,9 @@ export function parsePostmanCollection(raw: unknown): ImportPlan {
   if (Array.isArray(collection.event) && collection.event.length > 0) {
     warnings.push('This collection has collection-level pre-request/test scripts. Scripts are not supported by this app and were not imported.')
   }
-  if (Array.isArray(collection.variable) && collection.variable.length > 0) {
-    warnings.push(`This collection defines ${collection.variable.length} collection-level variable(s). Those are not imported as an Environment; create one manually in Environments if you need these values.`)
+  const variablesEnvironment = environmentFromCollectionVariables(name, collection.variable)
+  if (variablesEnvironment) {
+    warnings.push(`This collection defines ${collection.variable?.length ?? 0} collection-level variable(s). This app has no collection-scoped variables, so they are not part of the collection itself; you can keep them as a separate Environment below.`)
   }
   if (collection.auth && collection.auth.type && collection.auth.type !== 'noauth') {
     warnings.push(`This collection has a collection-level "${collection.auth.type}" auth default. Per-request auth other than No Auth is not supported and was not imported.`)
@@ -286,5 +299,5 @@ export function parsePostmanCollection(raw: unknown): ImportPlan {
     errors.push(`This import would be about ${(approxPayloadBytes / 1_000_000).toFixed(1)} MB, over the ${(MAX_TOTAL_PAYLOAD_BYTES / 1_000_000).toFixed(1)} MB practical limit for a single import request. Split the collection and import it in parts.`)
   }
 
-  return { name, description, items, errors, warnings, stats, approxPayloadBytes }
+  return { name, description, items, errors, warnings, stats, approxPayloadBytes, variablesEnvironment }
 }

@@ -22,6 +22,48 @@ The workspace loads collections, environments, and Trash; supports searchable al
 
 Sending is intentionally a Slice 4 stub. Import/export controls are disabled until Slice 5. There is no permanent delete, authentication, deployment configuration, or request proxy in this slice.
 
+## Importing and exporting Postman files
+
+**Import** accepts both Postman export shapes and detects which one a file is, so there is one
+button rather than two:
+
+- A **collection** export (`info` + `item`) imports as a collection.
+- An **environment** export (`values` + `_postman_variable_scope: "environment"`) imports as an
+  Environment.
+- A **globals** export is rejected with an explanation — Postman globals are a Postman-wide scope
+  with no equivalent here.
+
+Nothing is written until the summary is reviewed and confirmed, and every lossy mapping is listed
+before you commit to it.
+
+### What is lost importing an environment
+
+- **Duplicate keys.** Postman allows two values with the same key; this app (and the API) do not.
+  Only the first occurrence is kept, and the count is disclosed.
+- **Keys containing whitespace or braces** are skipped — they could not be referenced as
+  `{{name}}` anyway.
+- **Secret values.** Postman withholds `secret`-typed values from an export unless they are
+  explicitly included, so those variables import as blank. The import warns how many, because a
+  silently blank credential is otherwise very hard to diagnose.
+- **The secret/default distinction itself.** This app has no secret variable type, so everything
+  imports (and exports) as a plain value in clear text.
+- Values longer than 8,192 characters are truncated; more than 500 usable variables is rejected
+  outright rather than failing server-side.
+
+### Collection-level variables
+
+Postman collections can carry their own `variable[]` block. This app has no collection-scoped
+variables, so those would otherwise be dropped. The import dialog offers to keep them as a
+separate Environment instead. This is **two separate requests** — the collection is created first,
+and if the environment then fails, the collection is still imported and the error is reported.
+That is deliberate: there is no endpoint that creates both in one transaction.
+
+### Export
+
+The **Export** button follows the current selection: an open environment exports as
+`*.postman_environment.json`, otherwise the selected collection exports as
+`*.postman_collection.json`.
+
 ## Chaining a value from one response into the next request
 
 `{{variable}}` references are resolved in the URL, query params, headers and the JSON body. Besides environment

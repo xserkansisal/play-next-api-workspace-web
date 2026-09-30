@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { sortByName } from '@/lib/workspace-ui'
 import type { CollectionResource, OpenResource, WorkspaceItem } from '@/lib/workspace-types'
@@ -17,6 +17,34 @@ interface WorkspaceTreeProps {
   collapsed: boolean
 }
 
+/**
+ * Expansion is tracked as the set of *collapsed* node ids rather than expanded ones, so a node
+ * that appears later (a new folder, or one arriving over SSE) defaults to expanded without
+ * needing to be registered anywhere first.
+ */
+type ExpansionState = {
+  isCollapsed: (id: string) => boolean
+  toggle: (id: string) => void
+}
+
+/** Ids of every collection and folder currently in the tree - the nodes that can collapse. */
+function collectExpandableIds(collections: CollectionResource[]): string[] {
+  const ids: string[] = []
+  const walk = (items: WorkspaceItem[]) => {
+    for (const item of items) {
+      if (item.type === 'folder') {
+        ids.push(item.id)
+        walk(item.items)
+      }
+    }
+  }
+  for (const collection of collections) {
+    ids.push(collection.id)
+    walk(collection.items)
+  }
+  return ids
+}
+
 function TreeItem({
   collectionId,
   item,
@@ -25,6 +53,7 @@ function TreeItem({
   onSelect,
   onDelete,
   filter,
+  expansion,
 }: {
   collectionId: string
   item: WorkspaceItem
@@ -33,8 +62,9 @@ function TreeItem({
   onSelect: (resource: OpenResource) => void
   onDelete: (resource: OpenResource) => void
   filter: string
+  expansion: ExpansionState
 }) {
-  const [expanded, setExpanded] = useState(true)
+  const expanded = !expansion.isCollapsed(item.id)
   const childMatch = item.type === 'folder' && item.items.some((child) => containsMatch(child, filter))
   if (filter && !item.name.toLowerCase().includes(filter) && !childMatch) return null
   const active = selected?.kind === item.type &&
@@ -49,7 +79,7 @@ function TreeItem({
     <>
       <div className={`tree-row ${item.type} ${active ? 'selected' : ''}`} style={{ paddingLeft: `${10 + depth * 18}px` }}>
         {item.type === 'folder' ? (
-          <button className="tree-chevron" onClick={() => setExpanded((value) => !value)} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}>
+          <button className="tree-chevron" onClick={() => expansion.toggle(item.id)} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}>
             {expanded ? '▾' : '▸'}
           </button>
         ) : <span className="tree-request-mark">●</span>}
@@ -66,6 +96,7 @@ function TreeItem({
           onSelect={onSelect}
           onDelete={onDelete}
           filter={filter}
+          expansion={expansion}
         />
       ))}
     </>
@@ -91,8 +122,29 @@ export function WorkspaceTree({
   collapsed,
 }: WorkspaceTreeProps) {
   const [search, setSearch] = useState('')
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(() => new Set())
   const filter = search.trim().toLowerCase()
   const sorted = useMemo(() => sortByName(collections), [collections])
+
+  const expandableIds = useMemo(() => collectExpandableIds(sorted), [sorted])
+  const toggle = useCallback((id: string) => {
+    setCollapsedIds((current) => {
+      const next = new Set(current)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }, [])
+  const expansion = useMemo<ExpansionState>(() => ({
+    isCollapsed: (id: string) => collapsedIds.has(id),
+    toggle,
+  }), [collapsedIds, toggle])
+
+  // A search shows matching descendants regardless of collapsed state, so while filtering the
+  // buttons would not visibly do anything; disable them rather than appear broken.
+  const bulkDisabled = !!filter || expandableIds.length === 0
+  const allCollapsed = expandableIds.length > 0 && expandableIds.every((id) => collapsedIds.has(id))
+  const allExpanded = collapsedIds.size === 0
+
   const selectedCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId :
     sorted[0]?.id
 
@@ -101,6 +153,19 @@ export function WorkspaceTree({
       <div className="sidebar-heading">
         <span>Collections</span>
         <div className="sidebar-tools">
+          <button
+            title={bulkDisabled ? 'Clear the search to expand all' : 'Expand all folders'}
+            aria-label="Expand all"
+            disabled={bulkDisabled || allExpanded}
+            onClick={() => setCollapsedIds(new Set())}
+          >⤢</button>
+          <button
+            title={bulkDisabled ? 'Clear the search to collapse all' : 'Collapse all folders'}
+            aria-label="Collapse all"
+            disabled={bulkDisabled || allCollapsed}
+            onClick={() => setCollapsedIds(new Set(expandableIds))}
+          >⤡</button>
+          <span className="sidebar-tools-divider" aria-hidden="true" />
           <button title="New request" aria-label="New request" onClick={onCreateRequest}>＋</button>
           <button title="New folder" aria-label="New folder" onClick={onCreateFolder}>▱</button>
           <button title="New collection" aria-label="New collection" onClick={onCreateCollection}>▤</button>
@@ -121,6 +186,7 @@ export function WorkspaceTree({
             onDelete={onDelete}
             filter={filter}
             selectedCollectionId={selectedCollectionId}
+            expansion={expansion}
           />
         ))}
         {sorted.length === 0 && <p className="empty-tree">No collections yet.</p>}
@@ -141,6 +207,7 @@ function CollectionTree({
   onDelete,
   filter,
   selectedCollectionId,
+  expansion,
 }: {
   collection: CollectionResource
   selected: OpenResource | null
@@ -148,14 +215,15 @@ function CollectionTree({
   onDelete: (resource: OpenResource) => void
   filter: string
   selectedCollectionId?: string
+  expansion: ExpansionState
 }) {
-  const [expanded, setExpanded] = useState(true)
+  const expanded = !expansion.isCollapsed(collection.id)
   const isSelected = selected?.kind === 'collection' && selected.collectionId === collection.id
   const children = collection.items.filter((item) => !filter || containsMatch(item, filter))
   return (
     <>
       <div className={`tree-row collection ${isSelected ? 'selected' : ''}`}>
-        <button className="tree-chevron" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${collection.name}`} onClick={() => setExpanded((value) => !value)}>
+        <button className="tree-chevron" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${collection.name}`} onClick={() => expansion.toggle(collection.id)}>
           {expanded ? '▾' : '▸'}
         </button>
         <button className="tree-name" onClick={() => onSelect({ kind: 'collection', collectionId: collection.id })} title={collection.name}>
@@ -164,7 +232,7 @@ function CollectionTree({
         <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>
       </div>
       {(expanded || !!filter) && sortByName(children).map((item) => (
-        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} filter={filter} />
+        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} filter={filter} expansion={expansion} />
       ))}
       {collection.id === selectedCollectionId && expanded && !filter && collection.items.length === 0 && (
         <p className="empty-tree nested">No requests yet.</p>
