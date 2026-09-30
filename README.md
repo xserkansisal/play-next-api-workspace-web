@@ -79,6 +79,32 @@ sidebar is not, and storing it on the API would let one person's collapsing rear
 else's tree. Clearing site data resets it, and if `localStorage` is unavailable the tree still works
 and simply stops remembering.
 
+## Sending a request from the server instead of the browser
+
+A page can never reach a server that does not send CORS headers. That is a restriction the browser
+places on the page, not a property of the request, which is why the same call works from curl or
+Postman. For those targets, the **Send from** control next to the URL switches execution to the API,
+which has no such limit.
+
+This is not a better default, and the browser stays the default:
+
+- It needs operator setup. The API refuses to proxy anything until `PROXY_ALLOWED_HOSTS` names the
+  hosts it may reach, and adding a host requires an API restart. Until then the option is shown as
+  *Server (not enabled)*.
+- The request leaves from the API's network position, not yours, so it can reach what the API can
+  reach and nothing that only your machine can see.
+- It is server-side request forgery by design, which is why the allow-list exists. See the API
+  README for what that does and does not protect against.
+
+The app asks the API once, at startup, whether proxying is available and for which hosts, so the
+control can say what is reachable rather than offering an option that always fails. When a browser
+send fails with CORS confirmed, the error message points at this control.
+
+An upstream 404 or 500 comes back as a normal response, not as a failure - only the proxy itself
+being unavailable, the host not being allow-listed, or the target being unreachable is reported as a
+failed send. A response larger than the API's `PROXY_MAX_RESPONSE_BYTES` is marked as truncated in
+the body, so an incomplete response is never mistaken for the whole thing.
+
 ## When a request fails with "Failed to fetch"
 
 The Fetch API reports a CORS denial and an unreachable host with the identical opaque `TypeError`,

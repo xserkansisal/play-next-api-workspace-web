@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useState, type PointerEvent as ReactPointerE
 
 import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
-import type { RecordedResponse } from '@/lib/request-runner'
+import type { ProxySettings } from '@/lib/api'
+import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import type { EnvironmentResource, EnvironmentVariable, KeyValueEntry, RequestMethod, ResourceDraft } from '@/lib/workspace-types'
 
 const JsonEditor = lazy(() => import('@/components/JsonEditor').then(({ JsonEditor: Editor }) => ({ default: Editor })))
@@ -22,12 +23,30 @@ interface ResourceEditorProps {
   sending: boolean
   sendError: string | null
   response: RecordedResponse | null
+  runnerId: RunnerId
+  onRunnerChange: (runnerId: RunnerId) => void
+  /** Null until the API has been asked; the server option stays disabled until then. */
+  proxy: ProxySettings | null
+}
+
+/**
+ * Explains the choice in a tooltip rather than burying it in docs: sending from the server is the
+ * only way to reach a target that sends no CORS headers, but it is not a better default - it needs
+ * operator setup and the request leaves from the API's network position, not the user's.
+ */
+function describeRunnerChoice(proxy: ProxySettings | null): string {
+  const browser = 'Browser: sent from this page. Cannot reach a server that does not send CORS headers.'
+  if (proxy === null) return browser
+  if (!proxy.enabled) {
+    return `${browser}\nServer: unavailable - an operator must set PROXY_ALLOWED_HOSTS on the API.`
+  }
+  return `${browser}\nServer: the API sends it instead, so CORS does not apply. Allowed hosts: ${proxy.allowedHosts.join(', ')}.`
 }
 
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const name = draft.resource.name
@@ -93,6 +112,18 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                   {methods.map((method) => <option key={method}>{method}</option>)}
                 </select>
                 <input className="url-input" aria-label="Request URL" value={draft.resource.url} placeholder="{{baseUrl}}:{{port}}/path" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, url: event.target.value } })} />
+                <select
+                  className="runner-select"
+                  aria-label="Send from"
+                  value={runnerId}
+                  onChange={(event) => onRunnerChange(event.target.value as RunnerId)}
+                  title={describeRunnerChoice(proxy)}
+                >
+                  <option value="browser">Browser</option>
+                  <option value="server" disabled={proxy !== null && !proxy.enabled}>
+                    {proxy !== null && !proxy.enabled ? 'Server (not enabled)' : 'Server'}
+                  </option>
+                </select>
                 <Button className="send-button" onClick={onSend} disabled={sending}>{sending ? 'Sending…' : 'Send'}</Button>
               </div>
               {sendError && <p className="inline-error send-error" role="alert">{sendError}</p>}

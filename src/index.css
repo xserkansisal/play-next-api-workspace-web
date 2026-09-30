@@ -111,6 +111,8 @@ button:disabled { cursor: not-allowed; }
 .method-select, .url-input { height: 40px; border: 1px solid #dfe2e8; background: white; }
 .method-select { width: 92px; padding: 0 9px; border-radius: 7px 0 0 7px; color: #18825a; font: 700 12px ui-monospace, monospace; }
 .url-input { min-width: 0; flex: 1; padding: 0 12px; border-left: 0; color: #4f5663; font: 12px ui-monospace, monospace; }
+.runner-select { height: 40px; width: 76px; padding: 0 6px; border: 1px solid #dfe2e8; border-left: 0; border-radius: 0; background: #fafbfc; color: #6b7280; font-size: 10px; }
+.runner-select:disabled, .runner-select option:disabled { color: #b5bac4; }
 .send-button { height: 40px; border-radius: 0 7px 7px 0 !important; }
 .request-description { display: flex; align-items: center; gap: 12px; margin: -6px 18px 10px; color: #9a9fab; font-size: 10px; }
 .request-description input { min-width: 0; flex: 1; padding: 3px 0; border: 0; outline: 0; color: #707785; background: transparent; font-size: 10px; }

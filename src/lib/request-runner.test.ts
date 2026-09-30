@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { browserFetchRunner, describeFetchFailure } from '@/lib/request-runner'
+import { apiClient } from '@/lib/api'
+import { browserFetchRunner, describeFetchFailure, serverProxyRunner } from '@/lib/request-runner'
 
 describe('browserFetchRunner', () => {
   afterEach(() => {
@@ -98,5 +99,98 @@ describe('describeFetchFailure', () => {
 
   it('degrades gracefully when the URL cannot be parsed', () => {
     expect(describeFetchFailure(error, 'reachable', '{{unresolved}}/path')).toContain('that origin')
+  })
+})
+
+describe('serverProxyRunner', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  function axiosFailure(status: number, code: string, message: string) {
+    return Object.assign(new Error(message), {
+      isAxiosError: true,
+      response: { status, data: { error: { code, message } } },
+    })
+  }
+
+  it('sends the request to the API proxy rather than to the target', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({
+      data: { status: 200, statusText: 'OK', headers: { 'content-type': 'application/json' }, bodyText: '{"ok":true}', durationMs: 42, sizeBytes: 11, truncated: false },
+    })
+    const request = { method: 'POST', url: 'http://localhost:7799/x', headers: [['Content-Type', 'application/json']] as [string, string][], body: '{}' }
+
+    const result = await serverProxyRunner.run(request)
+
+    expect(post).toHaveBeenCalledWith('/proxy', request, expect.objectContaining({ timeout: expect.any(Number) }))
+    expect(result.kind).toBe('success')
+    if (result.kind === 'success') {
+      expect(result.status).toBe(200)
+      expect(result.bodyText).toBe('{"ok":true}')
+      // The API timed the upstream call itself; its measurement excludes the hop to the API.
+      expect(result.durationMs).toBe(42)
+    }
+  })
+
+  it('treats an upstream error status as a completed execution, not a failure', async () => {
+    vi.spyOn(apiClient, 'post').mockResolvedValue({
+      data: { status: 404, statusText: 'Not Found', headers: {}, bodyText: 'nope', durationMs: 5, sizeBytes: 4, truncated: false },
+    })
+
+    const result = await serverProxyRunner.run({ method: 'GET', url: 'http://localhost:7799/missing', headers: [], body: null })
+
+    expect(result.kind).toBe('success')
+    if (result.kind === 'success') {
+      expect(result.status).toBe(404)
+      expect(result.ok).toBe(false)
+    }
+  })
+
+  it('marks a truncated body, so an incomplete response is not mistaken for the whole thing', async () => {
+    vi.spyOn(apiClient, 'post').mockResolvedValue({
+      data: { status: 200, statusText: 'OK', headers: {}, bodyText: 'xxx', durationMs: 1, sizeBytes: 3, truncated: true },
+    })
+
+    const result = await serverProxyRunner.run({ method: 'GET', url: 'http://localhost:7799/big', headers: [], body: null })
+
+    expect(result.kind).toBe('success')
+    if (result.kind === 'success') expect(result.bodyText).toContain('Truncated')
+  })
+
+  it('explains that an operator has to enable it, rather than showing a raw error code', async () => {
+    vi.spyOn(apiClient, 'post').mockRejectedValue(axiosFailure(403, 'PROXY_DISABLED', 'Server-side request execution is disabled.'))
+
+    const result = await serverProxyRunner.run({ method: 'GET', url: 'http://localhost:7799/x', headers: [], body: null })
+
+    expect(result.kind).toBe('failure')
+    if (result.kind === 'failure') {
+      expect(result.message).toContain('PROXY_ALLOWED_HOSTS')
+      expect(result.message).not.toContain('PROXY_DISABLED')
+    }
+  })
+
+  it('passes through the allow-list message and warns the browser will not work either', async () => {
+    vi.spyOn(apiClient, 'post').mockRejectedValue(
+      axiosFailure(403, 'PROXY_HOST_NOT_ALLOWED', '"evil.test" is not in PROXY_ALLOWED_HOSTS.'),
+    )
+
+    const result = await serverProxyRunner.run({ method: 'GET', url: 'http://evil.test/x', headers: [], body: null })
+
+    expect(result.kind).toBe('failure')
+    if (result.kind === 'failure') {
+      expect(result.message).toContain('not in PROXY_ALLOWED_HOSTS')
+      expect(result.message).toContain('CORS headers')
+    }
+  })
+
+  it('reports a bad gateway from the proxy with the API-supplied reason', async () => {
+    vi.spyOn(apiClient, 'post').mockRejectedValue(
+      axiosFailure(502, 'PROXY_REQUEST_FAILED', 'This server could not reach localhost:7799: connect ECONNREFUSED'),
+    )
+
+    const result = await serverProxyRunner.run({ method: 'GET', url: 'http://localhost:7799/x', headers: [], body: null })
+
+    expect(result.kind).toBe('failure')
+    if (result.kind === 'failure') expect(result.message).toContain('ECONNREFUSED')
   })
 })

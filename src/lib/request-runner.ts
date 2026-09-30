@@ -1,11 +1,17 @@
 // Request-execution abstraction.
 //
-// Only a browser (fetch-based) runner is implemented today. A server-side
-// runner (executing the request from the API instead of the browser, useful
-// for requests the browser cannot reach directly, e.g. servers without CORS
-// headers) is a deliberately deferred future addition. Keep this interface
-// as the only thing callers depend on so a server runner can be added later
-// without reworking `App.tsx` or `ResourceEditor`.
+// Two runners exist. The browser runner sends the request with `fetch` from the page, which is
+// what you want by default. The server runner asks the API to send it instead, because a page can
+// never reach a server that does not send CORS headers - that is a restriction the browser places
+// on the page, not a property of the request, which is why the same call works from curl.
+//
+// The server runner is not a better default. It is off unless an operator allow-lists the target
+// host on the API, it cannot reach anything only the browser can see, and it makes the request
+// come from the API's network position rather than the user's.
+
+import { isAxiosError } from 'axios'
+
+import { apiClient } from '@/lib/api'
 
 export interface PreparedRequest {
   method: string
@@ -138,7 +144,8 @@ export function describeFetchFailure(error: unknown, reachability: Reachability,
     return `The server answered, but the browser blocked the response: ${origin} did not send an ` +
       '"Access-Control-Allow-Origin" header permitting this app\'s origin. This is a CORS restriction in the ' +
       'browser, not a failure of the request itself — the same request succeeds from curl or Postman, which ' +
-      'are not bound by CORS. Enable CORS on that server for this origin. ' +
+      'are not bound by CORS. Either enable CORS on that server for this origin, or switch "Send from" to ' +
+      'Server so the API sends the request instead, which needs that host to be allow-listed on the API. ' +
       `(Confirmed by a no-cors probe that reached the server; raw error: ${detail}.)`
   }
   if (reachability === 'unreachable') {
@@ -151,10 +158,84 @@ export function describeFetchFailure(error: unknown, reachability: Reachability,
     'the browser does not tell scripts which of these it is, so this is not a confirmed diagnosis.'
 }
 
-// Only the browser runner is currently registered. A future server runner
-// would be added here (e.g. `runners.server = serverRunner`) alongside a way
-// for the caller to pick one; until then this is the only implementation and
-// the only one enabled.
-export const runners = { browser: browserFetchRunner } as const
+/**
+ * Runs the request from the API instead of the page, for targets the browser cannot reach.
+ *
+ * The API returns the target's status inside its own 200 response, so an upstream 404 arrives here
+ * as a completed execution rather than an error. Only a failure of the proxy itself - it being
+ * disabled, the host not being allow-listed, the target being unreachable - surfaces as a failure.
+ */
+export const serverProxyRunner: RequestRunner = {
+  id: 'server',
+  async run(request) {
+    const started = performance.now()
+    try {
+      const { data } = await apiClient.post<ProxyResponse>('/proxy', {
+        method: request.method,
+        url: request.url,
+        headers: request.headers,
+        body: request.body,
+      }, { timeout: PROXY_CLIENT_TIMEOUT_MS })
+      return {
+        kind: 'success',
+        status: data.status,
+        statusText: data.statusText,
+        ok: data.status >= 200 && data.status < 300,
+        // Prefer the API's measurement: it timed the actual upstream call, without the round trip
+        // to the API itself.
+        durationMs: data.durationMs ?? performance.now() - started,
+        sizeBytes: data.sizeBytes ?? null,
+        headers: data.headers ?? {},
+        bodyText: data.truncated
+          ? `${data.bodyText}\n\n[Truncated: the response exceeded the API's PROXY_MAX_RESPONSE_BYTES limit, so this body is incomplete.]`
+          : data.bodyText,
+      }
+    } catch (error) {
+      return {
+        kind: 'failure',
+        durationMs: performance.now() - started,
+        message: describeProxyFailure(error),
+      }
+    }
+  },
+}
+
+interface ProxyResponse {
+  status: number
+  statusText: string
+  headers: Record<string, string>
+  bodyText: string
+  durationMs: number
+  sizeBytes: number
+  truncated: boolean
+}
+
+/** Longer than the default API timeout, because the proxy waits on a third-party server. */
+const PROXY_CLIENT_TIMEOUT_MS = 65_000
+
+export function describeProxyFailure(error: unknown): string {
+  if (isAxiosError<{ error?: { code?: string; message?: string } }>(error)) {
+    const apiError = error.response?.data?.error
+    if (apiError?.code === 'PROXY_DISABLED') {
+      return 'Sending from the server is switched off on the API. An operator has to list the hosts it may ' +
+        'reach in PROXY_ALLOWED_HOSTS and restart it. Until then, only targets that send CORS headers are reachable.'
+    }
+    if (apiError?.code === 'PROXY_HOST_NOT_ALLOWED') {
+      return `${apiError.message} Sending from the browser will not work either if that server does not send CORS headers.`
+    }
+    if (apiError?.message) return `${apiError.message}${apiError.code ? ` (${apiError.code})` : ''}`
+    if (error.response) return `The API responded with ${error.response.status} while running this request.`
+    return `The API could not be reached to run this request (${error.message}).`
+  }
+  return error instanceof Error ? error.message : 'Unknown error'
+}
+
+export const runners = { browser: browserFetchRunner, server: serverProxyRunner } as const
 export type RunnerId = keyof typeof runners
-export const activeRunner: RequestRunner = runners.browser
+
+/** Where a request is sent from by default. The browser is the honest default: it needs no operator setup. */
+export const defaultRunnerId: RunnerId = 'browser'
+
+export function runnerFor(id: RunnerId): RequestRunner {
+  return runners[id]
+}

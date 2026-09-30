@@ -5,7 +5,7 @@ import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
-import { describeApiError, workspaceApi } from '@/lib/api'
+import { describeApiError, workspaceApi, type ProxySettings } from '@/lib/api'
 import { authApi } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
 import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
@@ -13,7 +13,7 @@ import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
 import { exportEnvironmentToPostman } from '@/lib/postman-environment'
 import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
-import { activeRunner } from '@/lib/request-runner'
+import { defaultRunnerId, runnerFor, type RunnerId } from '@/lib/request-runner'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { clearRuntimeVariables, getRuntimeVariables, removeRuntimeVariable, subscribeRuntimeVariables } from '@/lib/runtime-variables'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
@@ -110,6 +110,8 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [environments, setEnvironments] = useState<EnvironmentResource[]>([])
   const [trash, setTrash] = useState<TrashEntry[]>([])
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState('')
+  const [runnerId, setRunnerId] = useState<RunnerId>(defaultRunnerId)
+  const [proxy, setProxy] = useState<ProxySettings | null>(null)
   const runtimeVariables = useSyncExternalStore(subscribeRuntimeVariables, getRuntimeVariables, getRuntimeVariables)
   const [view, setView] = useState<View>('workspace')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -168,6 +170,17 @@ function App({ user, onSignOut }: AppProps = {}) {
   useEffect(() => {
     void reloadAll()
   }, [reloadAll])
+
+  // Asked once, so the runner selector can say whether sending from the server is even available
+  // instead of offering an option that always fails. A failure here is not surfaced: it only means
+  // the option stays unavailable, and the workspace itself is unaffected.
+  useEffect(() => {
+    let cancelled = false
+    void workspaceApi.proxySettings()
+      .then((settings) => { if (!cancelled) setProxy(settings) })
+      .catch(() => { if (!cancelled) setProxy({ enabled: false, allowedHosts: [] }) })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     const resumeFrom = lastEventId.current
@@ -308,7 +321,7 @@ function App({ user, onSignOut }: AppProps = {}) {
 
     setSendErrors((current) => omitKeys(current, [key]))
     setSending((current) => ({ ...current, [key]: true }))
-    const result = await activeRunner.run(outcome.request)
+    const result = await runnerFor(runnerId).run(outcome.request)
     setSending((current) => ({ ...current, [key]: false }))
     const sentAt = new Date().toISOString()
     setResponses((current) => ({ ...current, [key]: { result, sentAt } }))
@@ -845,6 +858,9 @@ function App({ user, onSignOut }: AppProps = {}) {
                   sending={activeSending}
                   sendError={activeSendError}
                   response={activeResponse}
+                  runnerId={runnerId}
+                  onRunnerChange={setRunnerId}
+                  proxy={proxy}
                 />
               </div>
             </>

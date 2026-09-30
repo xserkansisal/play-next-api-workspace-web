@@ -41,7 +41,20 @@ export function describeApiError(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error'
 }
 
+export interface ProxySettings {
+  enabled: boolean
+  allowedHosts: string[]
+}
+
 export const workspaceApi = {
+  /**
+   * Whether the API will run requests on the client's behalf, and for which hosts. Asked once so
+   * the UI can explain what is reachable instead of only finding out by failing.
+   */
+  async proxySettings(): Promise<ProxySettings> {
+    const { data } = await apiClient.get<ProxySettings>('/proxy')
+    return { enabled: !!data.enabled, allowedHosts: data.allowedHosts ?? [] }
+  },
   async collections() {
     const { data } = await apiClient.get<{ collections: CollectionResource[] }>('/collections')
     return data.collections
