@@ -22,6 +22,30 @@ The workspace loads collections, environments, and Trash; supports searchable al
 
 Sending is intentionally a Slice 4 stub. Import/export controls are disabled until Slice 5. There is no permanent delete, authentication, deployment configuration, or request proxy in this slice.
 
+## Chaining a value from one response into the next request
+
+`{{variable}}` references are resolved in the URL, query params, headers and the JSON body. Besides environment
+variables, a value can be captured straight out of a response:
+
+1. Send a request, then choose **Save a value as a variable** under the response tabs.
+2. Give it a name and a path to the value. Paths can read the JSON body (`data.token`, `items[0].id`,
+   `payload["odd key"]`), a response header (`header:location`) or the status code (`status`). The panel suggests the
+   paths present in the current response and previews the value before you save it.
+3. Use it as `{{name}}` anywhere in a later request.
+
+These **runtime variables** are deliberately local:
+
+- They live in `sessionStorage`, in one browser tab, and are **never sent to the API**. Collections and environments
+  are shared by the whole team, so writing a captured value — typically a short-lived token tied to one person's
+  sign-in — into a shared environment would silently change what everyone else sends.
+- They **override** environment variables of the same name, so a freshly captured value wins over a stale placeholder.
+- They are cleared when the tab closes. Use the **Variables** menu in the top bar to inspect, remove or clear them.
+
+Extraction is intentionally declarative rather than a scripting sandbox. A path that does not resolve reports why
+(missing field, out-of-range index, non-JSON body, or a value that is an object/array/null) instead of silently
+storing an empty value. Postman pre-request/test scripts are still not imported or executed; if an imported
+collection relied on `pm.environment.set`, recreate that step with a capture rule here.
+
 ## Authentication (Slice 7)
 
 The app now requires sign-in before showing the workspace. Sign-in is a two-step, cookie-based flow against the API, which was already implemented server-side (see the API repo's `xserkansisal-api-foundation` branch):

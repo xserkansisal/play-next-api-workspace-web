@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { prepareRequest, substituteVariables, parseJsonWithLocation, buildVariableMap } from '@/lib/request-preparation'
+import { extractFromResponse } from '@/lib/response-extraction'
 import { newRequest } from '@/lib/workspace-ui'
 import type { RequestResource } from '@/lib/workspace-types'
 
@@ -105,5 +106,34 @@ describe('buildVariableMap', () => {
       { key: 'disabled', value: 'x', enabled: false },
       { key: '', value: 'y', enabled: true },
     ])).toEqual({ baseUrl: 'http://localhost:3000' })
+  })
+})
+
+describe('chaining a captured response value into a later request', () => {
+  it('substitutes a runtime variable into the body and lets it override the environment', () => {
+    const environment = buildVariableMap([
+      { key: 'baseUrl', value: 'http://localhost:3000', enabled: true },
+      { key: 'token', value: 'placeholder-from-environment', enabled: true },
+    ])
+    const captured = extractFromResponse('data.accessToken', {
+      kind: 'success', status: 200, statusText: 'OK', ok: true, durationMs: 1, sizeBytes: 0, headers: {},
+      bodyText: '{"data":{"accessToken":"abc123"}}',
+    })
+    expect(captured.ok).toBe(true)
+    if (!captured.ok) return
+
+    const variables = { ...environment, token: captured.value }
+    const resource = baseRequest({
+      method: 'POST',
+      url: '{{baseUrl}}/orders',
+      body: { type: 'json', content: '{"auth":"{{token}}"}' },
+    })
+
+    const outcome = prepareRequest(resource, variables)
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      expect(outcome.request.body).toBe('{"auth":"abc123"}')
+      expect(outcome.request.url).toBe('http://localhost:3000/orders')
+    }
   })
 })

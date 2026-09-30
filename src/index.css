@@ -230,6 +230,28 @@ button:disabled { cursor: not-allowed; }
 .sign-in-actions > * { flex: 1; }
 .link-button { align-self: center; margin-top: 4px; border: 0; color: #6d5ce8; background: transparent; font-size: 11px; text-decoration: underline; }
 
+.extract-bar { display: flex; flex-direction: column; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.extract-bar .link-button { align-self: flex-start; margin-top: 0; }
+.extract-open { padding-bottom: 10px; }
+.extract-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.extract-fields label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+.extract-fields input { min-width: 160px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+.extract-hint { margin: 0; color: #6b7280; font-size: 11px; }
+.extract-hint code, .extract-preview code { padding: 0 3px; border-radius: 3px; background: rgba(109, 92, 232, 0.1); }
+.extract-preview { margin: 0; font-size: 11px; overflow-wrap: anywhere; }
+.extract-error { margin: 0; color: #b42318; font-size: 11px; }
+.extract-saved { color: #067647; font-size: 11px; }
+
+.runtime-vars { position: relative; }
+.runtime-vars > summary { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; list-style: none; }
+.runtime-vars > summary::-webkit-details-marker { display: none; }
+.runtime-vars-count { margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(109, 92, 232, 0.14); font-size: 11px; }
+.runtime-vars-panel { position: absolute; z-index: 20; right: 0; width: 320px; margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background, #fff); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12); }
+.runtime-vars-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+.runtime-vars-table td { padding: 3px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.runtime-vars-value { max-width: 150px; overflow: hidden; color: #6b7280; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-vars-empty, .runtime-vars-note { margin: 6px 0 0; color: #6b7280; font-size: 11px; }
+
 @media (max-width: 850px) {
   .sidebar { width: 225px; min-width: 205px; flex-basis: 225px; }
   .workspace-label { display: none; }

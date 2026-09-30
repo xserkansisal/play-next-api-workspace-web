@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { HistoryView } from '@/components/HistoryView'
@@ -14,6 +14,7 @@ import { exportCollectionToPostman } from '@/lib/postman-export'
 import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
 import { activeRunner } from '@/lib/request-runner'
 import type { RecordedResponse } from '@/lib/request-runner'
+import { clearRuntimeVariables, getRuntimeVariables, removeRuntimeVariable, subscribeRuntimeVariables } from '@/lib/runtime-variables'
 import { applyChangeEvent, isDraftDirty, parseChangeEvent, resourceKey } from '@/lib/workspace-types'
 import type {
   ChangeEvent,
@@ -106,6 +107,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [environments, setEnvironments] = useState<EnvironmentResource[]>([])
   const [trash, setTrash] = useState<TrashEntry[]>([])
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState('')
+  const runtimeVariables = useSyncExternalStore(subscribeRuntimeVariables, getRuntimeVariables, getRuntimeVariables)
   const [view, setView] = useState<View>('workspace')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [selected, setSelected] = useState<OpenResource | null>(null)
@@ -271,12 +273,15 @@ function App({ user, onSignOut }: AppProps = {}) {
     const key = draftKey(activeDraft)
     const resource = activeDraft.resource
     const environment = environments.find(({ id }) => id === selectedEnvironmentId)
-    const variables = buildVariableMap(environment?.variables ?? [])
+    // Runtime variables win over environment variables of the same name: a
+    // value just captured from a response is more current than a placeholder
+    // saved in the shared environment.
+    const variables = { ...buildVariableMap(environment?.variables ?? []), ...runtimeVariables }
     const outcome = prepareRequest(resource, variables)
 
     if (!outcome.ok) {
       const message = outcome.reason === 'missing-variables'
-        ? `Undefined variable${outcome.missing.length > 1 ? 's' : ''}: ${outcome.missing.map((name) => `{{${name}}}`).join(', ')}. Request was not sent.`
+        ? `Undefined variable${outcome.missing.length > 1 ? 's' : ''}: ${outcome.missing.map((name) => `{{${name}}}`).join(', ')}. Define ${outcome.missing.length > 1 ? 'them' : 'it'} in the selected environment, or capture ${outcome.missing.length > 1 ? 'them' : 'it'} from a response with "Save a value as a variable". Request was not sent.`
         : outcome.reason === 'invalid-json'
           ? `Body is not valid JSON at line ${outcome.error.line}, column ${outcome.error.column}: ${outcome.error.message}. Request was not sent.`
           : `${outcome.message} Request was not sent.`
@@ -673,6 +678,7 @@ function App({ user, onSignOut }: AppProps = {}) {
               {sortByName(environments).map((environment) => <option value={environment.id} key={environment.id}>{environment.name}</option>)}
             </select>
           </label>
+          <RuntimeVariablesMenu variables={runtimeVariables} />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" disabled={!activeCollectionId} title={activeCollectionId ? 'Export this collection as a Postman v2.1 file' : 'Select a collection to export'} onClick={() => activeCollectionId && exportCollection(activeCollectionId)}>Export</Button>
           <div className="account-menu">
@@ -860,6 +866,36 @@ function closeTab(
     return next
   })
   setSelected((current) => current && resourceKey(current) === key ? remaining[remaining.length - 1] ?? null : current)
+}
+
+function RuntimeVariablesMenu({ variables }: { variables: Readonly<Record<string, string>> }) {
+  const names = Object.keys(variables).sort()
+  return (
+    <details className="runtime-vars">
+      <summary aria-label={`Runtime variables (${names.length})`}>Variables <span className="runtime-vars-count">{names.length}</span></summary>
+      <div className="runtime-vars-panel">
+        {names.length === 0 ? (
+          <p className="runtime-vars-empty">No runtime variables yet. Send a request, then use “Save a value as a variable” on the response to capture one.</p>
+        ) : (
+          <>
+            <table className="runtime-vars-table">
+              <tbody>
+                {names.map((name) => (
+                  <tr key={name}>
+                    <td><code>{`{{${name}}}`}</code></td>
+                    <td className="runtime-vars-value" title={variables[name]}>{variables[name]}</td>
+                    <td><button className="link-button" aria-label={`Remove ${name}`} onClick={() => removeRuntimeVariable(name)}>Remove</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button className="link-button" onClick={() => clearRuntimeVariables()}>Clear all</button>
+          </>
+        )}
+        <p className="runtime-vars-note">Captured from responses. They override environment variables of the same name, stay in this browser tab, and are never saved to the server.</p>
+      </div>
+    </details>
+  )
 }
 
 function TrashView({ entries, onRestore }: { entries: TrashEntry[]; onRestore: (entry: TrashEntry) => void }) {
