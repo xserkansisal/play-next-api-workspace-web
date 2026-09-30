@@ -80,6 +80,12 @@ export const workspaceApi = {
   async deleteCollection(id: string) {
     await apiClient.delete(`/collections/${id}`)
   },
+  async cloneCollection(id: string) {
+    // A collection can hold a whole imported Postman tree, and the server copies it in one
+    // transaction, so this gets the same room to finish as the import that created it.
+    const { data } = await apiClient.post<CollectionResource>(`/collections/${id}/clone`, undefined, { timeout: 120_000 })
+    return data
+  },
   async createItem(
     collectionId: string,
     input: CreateItemInput,
@@ -116,6 +122,14 @@ export const workspaceApi = {
   async deleteItem(collectionId: string, itemId: string) {
     await apiClient.delete(`/collections/${collectionId}/items/${itemId}`)
   },
+  async cloneItem(collectionId: string, itemId: string) {
+    const { data } = await apiClient.post<WorkspaceItem>(
+      `/collections/${collectionId}/items/${itemId}/clone`,
+      undefined,
+      { timeout: 120_000 },
+    )
+    return data
+  },
   async environments() {
     const { data } = await apiClient.get<{ environments: EnvironmentResource[] }>('/environments')
     return data.environments
@@ -137,6 +151,10 @@ export const workspaceApi = {
   },
   async deleteEnvironment(id: string) {
     await apiClient.delete(`/environments/${id}`)
+  },
+  async cloneEnvironment(id: string) {
+    const { data } = await apiClient.post<EnvironmentResource>(`/environments/${id}/clone`)
+    return data
   },
   async trash() {
     const { data } = await apiClient.get<{ entries: TrashEntry[] }>('/trash')

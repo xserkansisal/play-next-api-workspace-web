@@ -162,3 +162,56 @@ describe('workspace live update flow', () => {
     }))
   })
 })
+
+describe('duplicating from the workspace', () => {
+  beforeEach(() => {
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.spyOn(workspaceApi, 'collections').mockResolvedValue([collection])
+    vi.spyOn(workspaceApi, 'collection').mockResolvedValue(collection)
+    vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('shows the copied collection returned by the server and opens it', async () => {
+    const copy: CollectionResource = { ...collection, id: 'collection-2', name: 'Commerce API (copy)', items: [] }
+    const clone = vi.spyOn(workspaceApi, 'cloneCollection').mockResolvedValue(copy)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByLabelText('Duplicate Commerce API'))
+
+    expect(clone).toHaveBeenCalledWith('collection-1')
+    // The server names the copy, so the tree shows what was actually written rather than a
+    // name the client guessed at.
+    expect(await screen.findByTitle('Commerce API (copy)')).toBeTruthy()
+    expect(await screen.findByDisplayValue('Commerce API (copy)')).toBeTruthy()
+  })
+
+  it('puts a copied request beside the original and opens it as a tab', async () => {
+    const copy: RequestResource = { ...request, id: 'request-2', name: 'List orders (copy)' }
+    vi.spyOn(workspaceApi, 'cloneItem').mockResolvedValue(copy)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByLabelText('Duplicate List orders'))
+
+    expect(await screen.findByRole('button', { name: 'List orders (copy)' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'List orders' })).toBeTruthy()
+  })
+
+  it('reports a copy the server refused instead of showing one that does not exist', async () => {
+    vi.spyOn(workspaceApi, 'cloneCollection').mockRejectedValue(new Error('nope'))
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByLabelText('Duplicate Commerce API'))
+
+    await waitFor(() => expect(screen.getByText(/nope/)).toBeTruthy())
+    expect(screen.queryByTitle(/\(copy\)/)).toBeNull()
+  })
+})

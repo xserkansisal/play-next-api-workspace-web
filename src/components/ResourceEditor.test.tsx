@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ResourceEditor } from '@/components/ResourceEditor'
@@ -41,14 +42,24 @@ const collectionDraft = {
   resource: { id: 'c1', name: 'Payments', description: '', items: [] },
 } as unknown as ResourceDraft
 
-function renderEditor(draft: ResourceDraft, proxy: ProxySettings | null = null) {
+const environmentDraft = {
+  kind: 'environment',
+  resource: {
+    id: 'e1', name: 'Local', variables: [
+      { key: 'baseUrl', value: 'http://localhost', enabled: true },
+      { key: 'token', value: 'abc', enabled: false },
+    ],
+  },
+} as unknown as ResourceDraft
+
+function renderEditor(draft: ResourceDraft, proxy: ProxySettings | null = null, onChange = vi.fn()) {
   return render(
     <ResourceEditor
       draft={draft}
       dirty={false}
       saving={false}
       error={null}
-      onChange={vi.fn()}
+      onChange={onChange}
       onSave={vi.fn()}
       onDelete={vi.fn()}
       onSend={vi.fn()}
@@ -116,5 +127,34 @@ describe('what the runner tooltip says is reachable', () => {
     const { container } = renderEditor(requestDraft, { enabled: false, anyHost: false, allowedHosts: [] })
     const select = container.querySelector('.runner-select') as HTMLSelectElement
     expect(select.title).toContain('PROXY_ALLOWED_HOSTS')
+  })
+})
+
+describe('duplicating an environment variable', () => {
+  it('puts the copy directly below the original with a key that is free', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderEditor(environmentDraft, null, onChange)
+
+    await user.click(screen.getByLabelText('Duplicate variable 1'))
+
+    expect(onChange).toHaveBeenCalledTimes(1)
+    // A key that repeated the original would be rejected on save, and the save rewrites the
+    // whole list, so the rest of the user's edits would go with it.
+    expect(onChange.mock.calls[0][0].resource.variables).toEqual([
+      { key: 'baseUrl', value: 'http://localhost', enabled: true },
+      { key: 'baseUrl_copy', value: 'http://localhost', enabled: true },
+      { key: 'token', value: 'abc', enabled: false },
+    ])
+  })
+
+  it('carries the value and the enabled state of the row it copied', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderEditor(environmentDraft, null, onChange)
+
+    await user.click(screen.getByLabelText('Duplicate variable 2'))
+
+    expect(onChange.mock.calls[0][0].resource.variables[2]).toEqual({ key: 'token_copy', value: 'abc', enabled: false })
   })
 })

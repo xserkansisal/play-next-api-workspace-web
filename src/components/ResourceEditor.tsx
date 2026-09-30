@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState, type PointerEvent as ReactPointerE
 import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import type { ProxySettings } from '@/lib/api'
+import { copyVariableKey } from '@/lib/copy-key'
 import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import type { EnvironmentResource, EnvironmentVariable, KeyValueEntry, RequestMethod, ResourceDraft } from '@/lib/workspace-types'
 
@@ -230,16 +231,25 @@ function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; on
     ...draft,
     variables: draft.variables.map((variable, i) => i === index ? { ...variable, ...patch } : variable),
   })
+  // The copy is inserted directly below the original rather than at the end of the list, so a
+  // long environment does not send the user looking for what they just duplicated.
+  const duplicate = (index: number) => {
+    const source = draft.variables[index]
+    const taken = new Set(draft.variables.map((variable) => variable.key))
+    const copy = { ...source, key: copyVariableKey(source.key, (candidate) => taken.has(candidate)) }
+    onChange({ ...draft, variables: [...draft.variables.slice(0, index + 1), copy, ...draft.variables.slice(index + 1)] })
+  }
   return (
     <div className="resource-form environment-form">
       <label className="field-label">Environment name<input className="text-field" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></label>
       <div className="environment-list-heading"><div><h2>Variables</h2><p>Keys are case-sensitive and cannot contain spaces or braces.</p></div></div>
-      <div className="param-head environment-head"><span></span><span>KEY</span><span>VALUE</span><span></span></div>
+      <div className="param-head environment-head"><span></span><span>KEY</span><span>VALUE</span><span></span><span></span></div>
       {draft.variables.map((variable, index) => (
         <div className="param-row environment-row" key={`variable-${index}`}>
           <input className="check" type="checkbox" aria-label={`Enable variable ${variable.key || index + 1}`} checked={variable.enabled} onChange={(event) => change(index, { enabled: event.target.checked })} />
           <input className="cell-input" aria-label={`Variable key ${index + 1}`} value={variable.key} placeholder="baseUrl" onChange={(event) => change(index, { key: event.target.value })} />
           <input className="cell-input" aria-label={`Variable value ${index + 1}`} value={variable.value} placeholder="https://api.example.com" onChange={(event) => change(index, { value: event.target.value })} />
+          <button className="row-clone" aria-label={`Duplicate variable ${index + 1}`} title={`Duplicate ${variable.key || 'this variable'}`} onClick={() => duplicate(index)}>⧉</button>
           <button className="row-remove" aria-label={`Remove variable ${index + 1}`} onClick={() => onChange({ ...draft, variables: draft.variables.filter((_, i) => i !== index) })}>×</button>
         </div>
       ))}

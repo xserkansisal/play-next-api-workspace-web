@@ -40,6 +40,8 @@ function renderTree(props: Partial<React.ComponentProps<typeof WorkspaceTree>> =
       onCreateFolder={vi.fn()}
       onCreateRequest={vi.fn()}
       onDelete={vi.fn()}
+      onClone={vi.fn()}
+      cloningId={null}
       onShowTrash={vi.fn()}
       onShowHistory={vi.fn()}
       collapsed={false}
@@ -117,6 +119,8 @@ describe('WorkspaceTree expand/collapse all', () => {
         onCreateFolder={vi.fn()}
         onCreateRequest={vi.fn()}
         onDelete={vi.fn()}
+        onClone={vi.fn()}
+        cloningId={null}
         onShowTrash={vi.fn()}
         onShowHistory={vi.fn()}
         collapsed={false}
@@ -316,5 +320,43 @@ describe('sidebar width', () => {
     window.dispatchEvent(pointer('pointermove', 500))
     // Still 330: releasing must stop the drag, or the sidebar would follow the pointer forever.
     expect(onResize).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('duplicating from the tree', () => {
+  it('offers a duplicate button on collections, folders, requests and environments', async () => {
+    const user = userEvent.setup()
+    const onClone = vi.fn()
+    renderTree({
+      onClone,
+      environments: [{ id: 'e1', name: 'Local', variables: [] }],
+    })
+
+    await user.click(screen.getByLabelText('Duplicate Payments'))
+    await user.click(screen.getByLabelText('Duplicate Charges'))
+    await user.click(screen.getByLabelText('Duplicate Nested'))
+    await user.click(screen.getByLabelText('Duplicate Deep request'))
+    await user.click(screen.getByLabelText('Duplicate Local'))
+
+    expect(onClone.mock.calls.map(([resource]) => resource)).toEqual([
+      { kind: 'collection', collectionId: 'c1' },
+      { kind: 'folder', collectionId: 'c1', itemId: 'f1' },
+      { kind: 'folder', collectionId: 'c1', itemId: 'f2' },
+      { kind: 'request', collectionId: 'c1', itemId: 'r1' },
+      { kind: 'environment', environmentId: 'e1' },
+    ])
+  })
+
+  it('will not start a second copy of the row already being copied', async () => {
+    const user = userEvent.setup()
+    const onClone = vi.fn()
+    renderTree({ onClone, cloningId: 'f1' })
+
+    await user.click(screen.getByLabelText('Duplicate Charges'))
+    expect(onClone).not.toHaveBeenCalled()
+
+    // Only that row waits; the rest of the tree is still usable.
+    await user.click(screen.getByLabelText('Duplicate Nested'))
+    expect(onClone).toHaveBeenCalledTimes(1)
   })
 })

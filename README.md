@@ -64,6 +64,20 @@ The **Export** button follows the current selection: an open environment exports
 `*.postman_environment.json`, otherwise the selected collection exports as
 `*.postman_collection.json`.
 
+## Duplicating something
+
+Hovering a row in the sidebar shows a **⧉** button next to the **×**. It duplicates collections,
+folders (with everything inside them), requests, and environments. The copy is named
+`X (copy)`, then `X (copy 2)`, and it opens straight away so you can rename it or change what you
+copied it for. A folder's copy lands beside the original rather than at the top of the
+collection, and the whole thing is written by the API in a single transaction - a half-copied
+folder is not a state you can end up in.
+
+Environment variables are duplicated from a row's own **⧉** button inside the environment editor.
+The copy is inserted directly below the original and its key gets a `_copy` suffix, because two
+variables in one environment cannot share a key - and since saving rewrites the whole variable
+list, a rejected key would take the rest of your unsaved edits with it.
+
 ## The tree remembers what you collapsed
 
 Which collections and folders are collapsed is saved in `localStorage`, so the sidebar reopens the

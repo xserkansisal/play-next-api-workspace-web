@@ -113,6 +113,8 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [collections, setCollections] = useState<CollectionResource[]>([])
   const [environments, setEnvironments] = useState<EnvironmentResource[]>([])
   const [trash, setTrash] = useState<TrashEntry[]>([])
+  /** The resource whose copy is still being written, so a second click cannot start another. */
+  const [cloningId, setCloningId] = useState<string | null>(null)
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState('')
   const [runnerId, setRunnerId] = useState<RunnerId>(loadRunnerId)
   const [proxy, setProxy] = useState<ProxySettings | null>(null)
@@ -603,6 +605,72 @@ function App({ user, onSignOut }: AppProps = {}) {
     }
   }
 
+  /**
+   * Duplicates a collection, folder, request or environment.
+   *
+   * The copy is written by the server in one transaction, so there is nothing to assemble here -
+   * the response is the finished resource, and this only has to put it where the user will see
+   * it and open it. The draft is seeded directly rather than through `openResource`, because the
+   * collection state it reads from has not re-rendered yet at this point.
+   */
+  async function cloneResource(resource: OpenResource) {
+    const id = resource.kind === 'environment'
+      ? resource.environmentId
+      : resource.kind === 'collection'
+        ? resource.collectionId
+        : resource.itemId
+    // A folder of hundreds of requests takes a moment; without this the user can queue three
+    // copies before the first one answers.
+    if (cloningId) return
+    setCloningId(id)
+    try {
+      if (resource.kind === 'collection') {
+        const copy = await workspaceApi.cloneCollection(resource.collectionId)
+        setCollections((current) => sortByName([...current, copy]))
+        const draft: ResourceDraft = { kind: 'collection', resource: copy }
+        seedDraft(draft)
+        setSelected({ kind: 'collection', collectionId: copy.id })
+        setView('workspace')
+      } else if (resource.kind === 'environment') {
+        const copy = await workspaceApi.cloneEnvironment(resource.environmentId)
+        setEnvironments((current) => sortByName([...current, copy]))
+        const draft: ResourceDraft = { kind: 'environment', resource: copy }
+        seedDraft(draft)
+        setSelected({ kind: 'environment', environmentId: copy.id })
+        setSelectedEnvironmentId(copy.id)
+        setView('environments')
+      } else {
+        const { collectionId } = resource
+        const copy = await workspaceApi.cloneItem(collectionId, resource.itemId)
+        setCollections((current) => current.map((collection) => collection.id === collectionId
+          ? {
+              ...collection,
+              items: copy.parentId ? addToFolder(collection.items, copy.parentId, copy) : [...collection.items, copy],
+            }
+          : collection))
+        const draft: ResourceDraft = copy.type === 'folder'
+          ? { kind: 'folder', collectionId, resource: copy }
+          : { kind: 'request', collectionId, resource: copy }
+        seedDraft(draft)
+        const open: OpenResource = { kind: copy.type, collectionId, itemId: copy.id }
+        setSelected(open)
+        setView('workspace')
+        if (copy.type === 'request') setRequestTabs((tabs) => [...tabs, open])
+      }
+      setResourceError(null)
+    } catch (error) {
+      setLoadingError(describeApiError(error))
+    } finally {
+      setCloningId(null)
+    }
+  }
+
+  function seedDraft(draft: ResourceDraft) {
+    const key = draftKey(draft)
+    setDrafts((current) => ({ ...current, [key]: draft }))
+    setBaselines((current) => ({ ...current, [key]: jsonCopy(draft) }))
+  }
+
   async function deleteResource(resource: OpenResource) {
     const name = resource.kind === 'environment'
       ? environments.find(({ id }) => id === resource.environmentId)?.name
@@ -806,6 +874,8 @@ function App({ user, onSignOut }: AppProps = {}) {
           onCreateFolder={() => void createFolder()}
           onCreateRequest={createRequest}
           onDelete={(resource) => void deleteResource(resource)}
+          onClone={(resource) => void cloneResource(resource)}
+          cloningId={cloningId}
           onShowTrash={() => { setView('trash'); void reloadTrash() }}
           onShowHistory={() => setView('history')}
           collapsed={sidebarCollapsed}

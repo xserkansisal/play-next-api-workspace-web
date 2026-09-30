@@ -57,7 +57,7 @@ button:disabled { cursor: not-allowed; }
 .sidebar { width: 252px; flex: 0 0 252px; min-width: 215px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid var(--border); }
 .sidebar-heading { height: 54px; flex: 0 0 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px 0 18px; color: #858b98; font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .sidebar-tools { display: flex; gap: 3px; }
-.sidebar-tools button, .tree-chevron, .tree-delete, .row-remove { display: grid; place-items: center; border: 0; background: transparent; color: #808694; }
+.sidebar-tools button, .tree-chevron, .tree-delete, .tree-clone, .row-remove { display: grid; place-items: center; border: 0; background: transparent; color: #808694; }
 .sidebar-tools button { width: 27px; height: 27px; border-radius: 6px; font-size: 17px; }
 .sidebar-tools button:hover:not(:disabled), .tree-row:hover { background: #f5f4fb; }
 .sidebar-tools button:disabled { opacity: 0.35; cursor: default; }
@@ -75,9 +75,14 @@ button:disabled { cursor: not-allowed; }
 .tree-request-mark { width: 17px; flex: 0 0 17px; color: #419b7b; font-size: 8px; text-align: center; }
 .tree-collection-mark { color: #8a82d4; }
 .tree-name { overflow: hidden; flex: 1; padding: 6px 0; border: 0; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.tree-delete { width: 23px; height: 25px; flex: 0 0 23px; border-radius: 4px; opacity: 0; font-size: 16px; }
-.tree-row:hover .tree-delete, .tree-delete:focus-visible { opacity: 1; }
+.tree-delete, .tree-clone { width: 23px; height: 25px; flex: 0 0 23px; border-radius: 4px; opacity: 0; font-size: 16px; }
+.tree-clone { font-size: 13px; }
+/* Hidden until the row is hovered or the button itself is tabbed to, so a deep tree stays readable. */
+.tree-row:hover .tree-delete, .tree-delete:focus-visible, .tree-row:hover .tree-clone, .tree-clone:focus-visible { opacity: 1; }
 .tree-delete:hover { color: #b42318; background: #fff0ef; }
+.tree-clone:hover { color: #4c40b4; background: #f0edff; }
+.tree-clone:disabled { opacity: 0; cursor: default; }
+.tree-row:hover .tree-clone:disabled { opacity: .35; }
 .empty-tree { margin: 12px 10px; color: #8b909c; font-size: 11px; }
 .empty-tree.nested { padding-left: 23px; }
 .sidebar-bottom { display: flex; flex-direction: column; margin-top: auto; padding: 10px; border-top: 1px solid var(--border); }
@@ -131,6 +136,8 @@ button:disabled { cursor: not-allowed; }
 .cell-input:focus { border-color: #c4b5fd; background: #fff; }
 .cell-input::placeholder { color: #a5aab3; }
 .row-remove { color: #aab0ba; text-align: center; }
+.row-clone { display: grid; place-items: center; border: 0; background: transparent; color: #aab0ba; font-size: 13px; text-align: center; }
+.row-clone:hover { color: #4c40b4; }
 .row-remove:hover { color: #b42318; }
 .add-param { margin-top: 8px; padding: 5px 4px; border: 0; color: #777e8c; background: transparent; font-size: 11px; }
 .auth-placeholder { padding: 15px; color: #4d5461; font-size: 12px; }
@@ -148,7 +155,7 @@ button:disabled { cursor: not-allowed; }
 .environment-list-heading { display: flex; justify-content: space-between; margin-top: 8px; }
 .environment-list-heading h2 { margin: 0; font-size: 13px; }
 .environment-list-heading p, .field-label small { margin: 3px 0; color: #848b97; font-size: 10px; font-weight: 400; }
-.environment-head, .environment-row { grid-template-columns: 25px 1fr 1.5fr 25px; }
+.environment-head, .environment-row { grid-template-columns: 25px 1fr 1.5fr 25px 25px; }
 .resize-handle { height: 11px; flex: 0 0 11px; display: grid; place-items: center; cursor: row-resize; user-select: none; }
 .resize-handle::after { width: 35px; height: 3px; border-radius: 4px; background: #cfd2da; content: ""; }
 .response-panel { min-height: 130px; flex: 1; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #fff; }

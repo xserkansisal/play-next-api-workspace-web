@@ -20,6 +20,9 @@ interface WorkspaceTreeProps {
   onCreateFolder: () => void
   onCreateRequest: () => void
   onDelete: (resource: OpenResource) => void
+  onClone: (resource: OpenResource) => void
+  /** Id of the resource whose copy is still being written, so its button cannot be pressed twice. */
+  cloningId: string | null
   onShowTrash: () => void
   onShowHistory: () => void
   collapsed: boolean
@@ -65,6 +68,8 @@ function TreeItem({
   selected,
   onSelect,
   onDelete,
+  onClone,
+  cloningId,
   filter,
   expansion,
 }: {
@@ -74,6 +79,8 @@ function TreeItem({
   selected: OpenResource | null
   onSelect: (resource: OpenResource) => void
   onDelete: (resource: OpenResource) => void
+  onClone: (resource: OpenResource) => void
+  cloningId: string | null
   filter: string
   expansion: ExpansionState
 }) {
@@ -97,6 +104,7 @@ function TreeItem({
           </button>
         ) : <span className="tree-request-mark">●</span>}
         <button className="tree-name" onClick={() => onSelect(resource)} title={item.name}>{item.name}</button>
+        <button className="tree-clone" title={`Duplicate ${item.name}`} aria-label={`Duplicate ${item.name}`} disabled={cloningId === item.id} onClick={() => onClone(resource)}>⧉</button>
         <button className="tree-delete" title={`Move ${item.name} to Trash`} aria-label={`Move ${item.name} to Trash`} onClick={() => onDelete(resource)}>×</button>
       </div>
       {item.type === 'folder' && (expanded || !!filter) && sortByName(item.items).map((child) => (
@@ -108,6 +116,8 @@ function TreeItem({
           selected={selected}
           onSelect={onSelect}
           onDelete={onDelete}
+          onClone={onClone}
+          cloningId={cloningId}
           filter={filter}
           expansion={expansion}
         />
@@ -154,6 +164,8 @@ export function WorkspaceTree({
   onCreateFolder,
   onCreateRequest,
   onDelete,
+  onClone,
+  cloningId,
   onShowTrash,
   onShowHistory,
   collapsed,
@@ -282,6 +294,8 @@ export function WorkspaceTree({
                 selected={selected}
                 onSelect={onSelect}
                 onDelete={onDelete}
+                onClone={onClone}
+                cloningId={cloningId}
                 filter={filter}
                 selectedCollectionId={selectedCollectionId}
                 expansion={expansion}
@@ -305,6 +319,13 @@ export function WorkspaceTree({
                     <button className="tree-name" title={environment.name} onClick={() => onSelect({ kind: 'environment', environmentId: environment.id })}>
                       {environment.name}
                     </button>
+                    <button
+                      className="tree-clone"
+                      title={`Duplicate ${environment.name}`}
+                      aria-label={`Duplicate ${environment.name}`}
+                      disabled={cloningId === environment.id}
+                      onClick={() => onClone({ kind: 'environment', environmentId: environment.id })}
+                    >⧉</button>
                     <button
                       className="tree-delete"
                       title={`Move ${environment.name} to Trash`}
@@ -340,6 +361,8 @@ function CollectionTree({
   selected,
   onSelect,
   onDelete,
+  onClone,
+  cloningId,
   filter,
   selectedCollectionId,
   expansion,
@@ -348,6 +371,8 @@ function CollectionTree({
   selected: OpenResource | null
   onSelect: (resource: OpenResource) => void
   onDelete: (resource: OpenResource) => void
+  onClone: (resource: OpenResource) => void
+  cloningId: string | null
   filter: string
   selectedCollectionId?: string
   expansion: ExpansionState
@@ -364,10 +389,11 @@ function CollectionTree({
         <button className="tree-name" onClick={() => onSelect({ kind: 'collection', collectionId: collection.id })} title={collection.name}>
           <span className="tree-collection-mark">▤</span> {collection.name}
         </button>
+        <button className="tree-clone" title={`Duplicate ${collection.name}`} aria-label={`Duplicate ${collection.name}`} disabled={cloningId === collection.id} onClick={() => onClone({ kind: 'collection', collectionId: collection.id })}>⧉</button>
         <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>
       </div>
       {(expanded || !!filter) && sortByName(children).map((item) => (
-        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} filter={filter} expansion={expansion} />
+        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} />
       ))}
       {collection.id === selectedCollectionId && expanded && !filter && collection.items.length === 0 && (
         <p className="empty-tree nested">No requests yet.</p>
