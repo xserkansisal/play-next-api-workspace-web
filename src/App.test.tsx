@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '@/App'
 import { workspaceApi } from '@/lib/api'
+import { browserFetchRunner, serverProxyRunner } from '@/lib/request-runner'
 import type { CollectionResource, RequestResource } from '@/lib/workspace-types'
 
 const request: RequestResource = {
@@ -213,5 +214,99 @@ describe('duplicating from the workspace', () => {
 
     await waitFor(() => expect(screen.getByText(/nope/)).toBeTruthy())
     expect(screen.queryByTitle(/\(copy\)/)).toBeNull()
+  })
+})
+
+describe('a browser send that CORS blocks', () => {
+  const absolute: CollectionResource = {
+    ...collection,
+    items: [{ ...request, url: 'http://10.29.125.148:7799/orders' }],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('EventSource', MockEventSource)
+    window.localStorage.clear()
+    vi.spyOn(workspaceApi, 'collections').mockResolvedValue([absolute])
+    vi.spyOn(workspaceApi, 'collection').mockResolvedValue(absolute)
+    vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'proxySettings').mockResolvedValue({ enabled: true, anyHost: true, allowedHosts: [] })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  async function openAndSend() {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await waitFor(() => expect(workspaceApi.proxySettings).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    return user
+  }
+
+  it('re-sends from the API and shows its answer instead of an error the user cannot act on', async () => {
+    // A confirmed CORS block: the no-cors probe reaches the host, the real request does not.
+    vi.spyOn(browserFetchRunner, 'run').mockResolvedValue({
+      kind: 'failure', durationMs: 5, corsBlocked: true, message: 'blocked by CORS',
+    })
+    const viaServer = vi.spyOn(serverProxyRunner, 'run').mockResolvedValue({
+      kind: 'success', status: 200, statusText: 'OK', ok: true, durationMs: 8, sizeBytes: 13,
+      headers: { 'content-type': 'application/json' }, bodyText: '{"sent":"api"}',
+    })
+
+    await openAndSend()
+
+    await waitFor(() => expect(viaServer).toHaveBeenCalled())
+    expect(await screen.findByText(/200/)).toBeTruthy()
+    // Where it came from is stated, not hidden: the request left a different machine, with a
+    // different source address and none of the browser's cookies for that host.
+    expect(await screen.findByText(/sent from the API instead/)).toBeTruthy()
+    expect(screen.queryByText(/blocked by CORS/)).toBeNull()
+  })
+
+  it('keeps the original CORS error when the API cannot reach the host either', async () => {
+    vi.spyOn(browserFetchRunner, 'run').mockResolvedValue({
+      kind: 'failure', durationMs: 5, corsBlocked: true, message: 'blocked by CORS',
+    })
+    vi.spyOn(serverProxyRunner, 'run').mockResolvedValue({
+      kind: 'failure', durationMs: 3, message: 'This server could not reach that host',
+    })
+
+    await openAndSend()
+
+    // The first error names the real obstacle; the proxy's would describe a fallback the user
+    // never asked for.
+    expect(await screen.findByText(/blocked by CORS/)).toBeTruthy()
+    expect(screen.queryByText(/sent from the API instead/)).toBeNull()
+    // No offer to do again what was just tried and failed.
+    expect(screen.queryByRole('button', { name: /send from the server/i })).toBeNull()
+  })
+
+  it('does not retry a host the browser never reached, since the API would fail too', async () => {
+    vi.spyOn(browserFetchRunner, 'run').mockResolvedValue({
+      kind: 'failure', durationMs: 5, message: 'nothing answered at all',
+    })
+    const viaServer = vi.spyOn(serverProxyRunner, 'run')
+
+    await openAndSend()
+
+    expect(await screen.findByText(/nothing answered at all/)).toBeTruthy()
+    expect(viaServer).not.toHaveBeenCalled()
+  })
+
+  it('does not retry when the API proxy is switched off', async () => {
+    vi.spyOn(workspaceApi, 'proxySettings').mockResolvedValue({ enabled: false, anyHost: false, allowedHosts: [] })
+    vi.spyOn(browserFetchRunner, 'run').mockResolvedValue({
+      kind: 'failure', durationMs: 5, corsBlocked: true, message: 'blocked by CORS',
+    })
+    const viaServer = vi.spyOn(serverProxyRunner, 'run')
+
+    await openAndSend()
+
+    expect(await screen.findByText(/blocked by CORS/)).toBeTruthy()
+    expect(viaServer).not.toHaveBeenCalled()
   })
 })

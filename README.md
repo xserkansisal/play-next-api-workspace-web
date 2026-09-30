@@ -145,13 +145,23 @@ The app asks the API once, at startup, whether proxying is available and for whi
 control can say what is reachable rather than offering an option that always fails. When a browser
 send fails with CORS confirmed, the error message points at this control.
 
-**Send from the server instead.** When a browser send fails with CORS *confirmed* and the target
-host is already allow-listed on the API, the failure offers a one-click retry that switches to the
-server and resends. It is deliberately a button rather than an automatic fallback: silently
-re-sending from a different network position is a decision about where a request comes from, and
-that belongs to the user. It is also only shown when it would actually work — a confirmed CORS
-failure against a host the API would refuse offers nothing, because suggesting a fix that then
-fails is worse than suggesting none.
+**The server takes over automatically after a CORS block.** When a browser send fails with CORS
+*confirmed* and the API would accept that host, the request is re-sent from the API without asking,
+and its answer is what the user sees. The reasoning is that the blocking header belongs to the
+target server — no setting in this app or its API can produce it — so handing back an error the
+user cannot act on, when a working route exists, is not useful caution.
+
+This reverses an earlier decision, recorded here rather than quietly overwritten: the retry used to
+be a button, on the grounds that where a request comes from is the user's choice. That is still
+true, so the change is not silent. The response panel states that the request was sent from the API
+instead, because it left a different machine, with a different source address and none of the
+browser's cookies for that host.
+
+Two limits keep it honest. Only a *confirmed* block triggers it — an unreachable host would fail
+from the server too, and retrying would turn one honest error into two. And the server's answer is
+adopted **only if it succeeds**: when the API cannot reach the host either, the browser's original
+error stays, because it names the real obstacle. In that case the manual retry button is not
+offered either — the app already tried exactly that.
 
 **The choice is remembered.** The selected runner is stored in `localStorage`, so a user working
 against a CORS-less target sets it once rather than on every reload. It records only the choice, no

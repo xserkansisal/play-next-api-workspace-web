@@ -87,6 +87,15 @@ describe('describeFetchFailure', () => {
     expect(describeFetchFailure(error, 'reachable', 'http://localhost:7799/x')).toContain('curl or Postman')
   })
 
+  it('does not claim the host must be allow-listed, and says the server retry was already tried', () => {
+    const message = describeFetchFailure(error, 'reachable', 'http://10.29.125.148:7799/x')
+    // The header belongs to the target, so no setting in this app or its API can produce it -
+    // telling the user to change one would send them after a fix that does not exist.
+    expect(message).toContain('no setting here can supply it')
+    expect(message).toContain('automatically re-sends')
+    expect(message).not.toContain('allow-listed')
+  })
+
   it('keeps the honest, hedged wording when reachability could not be determined', () => {
     expect(describeFetchFailure(error, 'unknown', 'http://localhost:7799/x')).toContain('not a confirmed diagnosis')
   })

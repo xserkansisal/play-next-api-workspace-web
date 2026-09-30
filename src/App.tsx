@@ -276,8 +276,11 @@ function App({ user, onSignOut }: AppProps = {}) {
   const activeSendError = currentKey ? sendErrors[currentKey] ?? null : null
   // Only offered when the browser send failed with a *confirmed* CORS block and the API would
   // actually accept this host, so the button never appears for a failure the server cannot fix.
+  // A block the app already retried from the server, unsuccessfully, is excluded for the same
+  // reason: that retry is what this button does.
   const canRetryFromServer = activeResponse?.result.kind === 'failure'
     && activeResponse.result.corsBlocked === true
+    && activeResponse.serverRetryFailed !== true
     && canProxy(activeResponse.url ?? '', proxy)
   const activeCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId : null
   // Export follows the current selection: an environment when one is open, otherwise the
@@ -341,7 +344,32 @@ function App({ user, onSignOut }: AppProps = {}) {
 
     setSendErrors((current) => omitKeys(current, [key]))
     setSending((current) => ({ ...current, [key]: true }))
-    const result = await runnerFor(overrideRunnerId ?? runnerId).run(outcome.request)
+    const chosenRunner = overrideRunnerId ?? runnerId
+    let result = await runnerFor(chosenRunner).run(outcome.request)
+    // The browser is blocked by the *target's* CORS policy, which no setting on this app or its
+    // API can change - that header belongs to a server we do not own. The API is not a browser
+    // and is not bound by CORS, so when it can reach the host the request is simply re-sent from
+    // there rather than handed back as an error the user cannot act on. Only a *confirmed* block
+    // qualifies: an unreachable host would fail from the server too, and retrying it would turn
+    // one honest error into two.
+    let sentFromServerAfterCorsBlock = false
+    let serverRetryFailed = false
+    if (
+      chosenRunner === 'browser'
+      && result.kind === 'failure'
+      && result.corsBlocked === true
+      && canProxy(outcome.request.url, proxy)
+    ) {
+      const viaServer = await runnerFor('server').run(outcome.request)
+      // A proxy that also fails leaves the original error in place: it names the real obstacle,
+      // while the proxy's would describe a fallback the user never asked for.
+      if (viaServer.kind === 'success') {
+        result = viaServer
+        sentFromServerAfterCorsBlock = true
+      } else {
+        serverRetryFailed = true
+      }
+    }
     setSending((current) => ({ ...current, [key]: false }))
     const sentAt = new Date().toISOString()
     // Sync runs here, at the one place a response arrives, so a rule applies whichever runner sent
@@ -349,7 +377,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     const syncOutcomes = result.kind === 'success'
       ? applySyncRules(key, result, extractFromResponse, setRuntimeVariable)
       : []
-    setResponses((current) => ({ ...current, [key]: { result, sentAt, url: outcome.request.url, syncOutcomes } }))
+    setResponses((current) => ({ ...current, [key]: { result, sentAt, url: outcome.request.url, syncOutcomes, ...(sentFromServerAfterCorsBlock ? { sentFromServerAfterCorsBlock } : {}), ...(serverRetryFailed ? { serverRetryFailed } : {}) } }))
     setHistory(appendHistoryEntry({
       sentAt,
       method: outcome.request.method,

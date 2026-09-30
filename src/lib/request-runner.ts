@@ -53,6 +53,23 @@ export interface RecordedResponse {
   url?: string
   /** What each sync rule bound to this request did with this response. Carried here so a failed sync is visible next to the response that caused it. */
   syncOutcomes?: SyncOutcome[]
+  /**
+   * Set when the browser was blocked by CORS and the request was re-sent from the API instead.
+   *
+   * Recorded rather than silently swallowed: the request left a different machine than the user
+   * chose, so it carried a different source address and none of the browser's cookies for that
+   * host. A response that arrived that way has to say so, or the user will read it as proof the
+   * browser can reach a server it still cannot.
+   */
+  sentFromServerAfterCorsBlock?: boolean
+  /**
+   * Set when that automatic re-send was tried and failed too.
+   *
+   * It suppresses the manual "send from the server" offer on this failure: the app already did
+   * exactly what that button does, and offering a fix that has just been proven not to work is
+   * worse than offering none.
+   */
+  serverRetryFailed?: boolean
 }
 
 
@@ -157,8 +174,9 @@ export function describeFetchFailure(error: unknown, reachability: Reachability,
     return `The server answered, but the browser blocked the response: ${origin} did not send an ` +
       '"Access-Control-Allow-Origin" header permitting this app\'s origin. This is a CORS restriction in the ' +
       'browser, not a failure of the request itself — the same request succeeds from curl or Postman, which ' +
-      'are not bound by CORS. Either enable CORS on that server for this origin, or switch "Send from" to ' +
-      'Server so the API sends the request instead, which needs that host to be allow-listed on the API. ' +
+      'are not bound by CORS. That header belongs to that server, so no setting here can supply it. The app ' +
+      'automatically re-sends a blocked request from the API, which is not bound by CORS; seeing this message ' +
+      'means that could not be done — the API\'s proxy is off, or it could not reach the host itself. ' +
       `(Confirmed by a no-cors probe that reached the server; raw error: ${detail}.)`
   }
   if (reachability === 'unreachable') {

@@ -289,6 +289,13 @@ export function ResponsePanel({ sending, response, onRetryFromServer, requestKey
           </div>
         )}
       </div>
+      {response.sentFromServerAfterCorsBlock && (
+        <p className="sent-via-server" role="status">
+          The browser was blocked by this host's CORS policy, so the request was sent from the API instead
+          and this is its answer. It left the API's machine, not yours — a different source address, and
+          without any cookies your browser holds for that host.
+        </p>
+      )}
       {response.syncOutcomes?.filter((outcome) => !outcome.ok).map((outcome) => (
         <p key={outcome.name} className="extract-error" role="alert">
           {`Sync failed for {{${outcome.name}}}: ${outcome.error} The previous value was kept, so it may now be stale.`}
