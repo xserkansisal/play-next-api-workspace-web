@@ -11,6 +11,12 @@ export type ExtractionResult = { ok: true; value: string } | { ok: false; error:
 const HEADER_PREFIX = 'header:'
 const MAX_SUGGESTIONS = 200
 const MAX_SUGGESTION_DEPTH = 6
+/**
+ * Runtime variables share one `sessionStorage` entry with a browser quota of roughly 5 MB, so an
+ * unbounded capture could evict every other variable. Refusing with an explanatory error is better
+ * than a silent partial write.
+ */
+const MAX_VALUE_LENGTH = 512 * 1024
 
 type Segment = { kind: 'key'; name: string } | { kind: 'index'; index: number }
 
@@ -83,16 +89,38 @@ function describeType(value: unknown): string {
 
 /**
  * Converts a resolved JSON value to the string that will be substituted.
- * Objects and arrays are rejected rather than stringified, because pasting
- * a whole object into a `{{variable}}` slot is almost never intended and
- * would produce a confusing request body.
+ *
+ * Objects and arrays are serialised as JSON rather than rejected, because a whole object is
+ * sometimes exactly what a later request needs - a game's `mathState` is passed back verbatim on
+ * the next call. Substitution is plain text and body JSON is validated *after* substitution, so
+ * `{"state": {{mathState}}}` produces a valid body.
+ *
+ * The quoted form `"{{mathState}}"` produces invalid JSON, which the existing post-substitution
+ * validation reports with a line and column. That is left to fail rather than being silently
+ * repaired: guessing that the user meant the unquoted form would change the request they wrote.
  */
 function toVariableValue(value: unknown, path: string): ExtractionResult {
   if (typeof value === 'string') return { ok: true, value }
   if (typeof value === 'number' || typeof value === 'boolean') return { ok: true, value: String(value) }
   if (value === null) return { ok: false, error: `"${path}" is null in this response, so there is no value to store.` }
   if (value === undefined) return { ok: false, error: `"${path}" was not found in this response.` }
-  return { ok: false, error: `"${path}" is ${describeType(value)}. Point at a single value inside it, such as "${path}.id".` }
+
+  let serialised: string
+  try {
+    serialised = JSON.stringify(value)
+  } catch {
+    // A cycle cannot occur in JSON.parse output, but a BigInt or similar from another source can.
+    return { ok: false, error: `"${path}" is ${describeType(value)} that cannot be converted to JSON.` }
+  }
+  if (serialised === undefined) return { ok: false, error: `"${path}" has no JSON representation.` }
+  if (serialised.length > MAX_VALUE_LENGTH) {
+    return {
+      ok: false,
+      error: `"${path}" is ${describeType(value)} of ${serialised.length.toLocaleString()} characters, over the ` +
+        `${MAX_VALUE_LENGTH.toLocaleString()} limit for a stored variable. Point at a smaller part of it, such as "${path}.id".`,
+    }
+  }
+  return { ok: true, value: serialised }
 }
 
 export function extractFromResponse(path: string, response: ExecutionSuccess): ExtractionResult {
@@ -146,8 +174,9 @@ export function extractFromResponse(path: string, response: ExecutionSuccess): E
 }
 
 /**
- * Lists the paths that resolve to a single value in this response, so the UI
- * can offer them as suggestions instead of making the user guess the shape.
+ * Lists the paths this response offers, so the UI can suggest them instead of making the user
+ * guess the shape. Container paths are included as well as leaves, because a whole object is now a
+ * capturable value, and `mathState` is not discoverable if only `mathState.version` is offered.
  */
 export function suggestPaths(response: ExecutionSuccess): string[] {
   if (!response.bodyText.trim()) return []
@@ -162,10 +191,12 @@ export function suggestPaths(response: ExecutionSuccess): string[] {
   const walk = (value: unknown, prefix: string, depth: number) => {
     if (paths.length >= MAX_SUGGESTIONS || depth > MAX_SUGGESTION_DEPTH) return
     if (Array.isArray(value)) {
+      if (prefix) paths.push(prefix)
       value.slice(0, 3).forEach((entry, index) => walk(entry, `${prefix}[${index}]`, depth + 1))
       return
     }
     if (value !== null && typeof value === 'object') {
+      if (prefix) paths.push(prefix)
       for (const [key, entry] of Object.entries(value)) {
         const next = /^[A-Za-z_$][\w$]*$/.test(key) ? (prefix ? `${prefix}.${key}` : key) : `${prefix}["${key}"]`
         walk(entry, next, depth + 1)

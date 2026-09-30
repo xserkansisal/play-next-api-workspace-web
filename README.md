@@ -153,9 +153,42 @@ These **runtime variables** are deliberately local:
 - They are cleared when the tab closes. Use the **Variables** menu in the top bar to inspect, remove or clear them.
 
 Extraction is intentionally declarative rather than a scripting sandbox. A path that does not resolve reports why
-(missing field, out-of-range index, non-JSON body, or a value that is an object/array/null) instead of silently
-storing an empty value. Postman pre-request/test scripts are still not imported or executed; if an imported
-collection relied on `pm.environment.set`, recreate that step with a capture rule here.
+(missing field, out-of-range index, non-JSON body, or a null) instead of silently storing an empty value. Postman
+pre-request/test scripts are still not imported or executed; if an imported collection relied on
+`pm.environment.set`, recreate that step with a capture rule here.
+
+### Capturing a whole object
+
+A path may point at an object or array, not only a single value, because some APIs hand back a blob that the next
+call expects back verbatim — a game's `mathState`, a paging cursor object, a signed envelope. It is stored as JSON
+text, so reference it **unquoted**:
+
+```json
+{ "state": {{mathState}} }
+```
+
+Writing `"{{mathState}}"` produces invalid JSON. That is reported by the body validator with a line and column
+rather than being silently repaired, because quietly rewriting the request would mean sending something other than
+what was written. Captures are capped at 512 KB: runtime variables share one `sessionStorage` entry with a browser
+quota of about 5 MB, so an unbounded capture could evict every other variable.
+
+### Keeping a captured value in step with the server
+
+Capturing once is enough for a token. It is not enough for a value the server *advances* on every call: a captured
+`mathState` is stale the moment the next spin returns a new one. Tick **Sync … after every response from this
+request** and the same extraction re-runs automatically each time that request is sent.
+
+- A rule is bound to **the request it was created on**, not applied globally. A path like `gameData.mathState` does
+  not exist in an unrelated response, so a global rule would either error constantly or overwrite a good value with
+  nothing. Several requests can each sync the same variable name — which is what a start → play → play chain needs.
+- If an extraction fails, the **previous value is kept** and the failure is shown next to the response. Both options
+  are wrong in some way, but a stale value with a visible error is recoverable, whereas silently discarding a
+  working value is not.
+- Active rules are listed under the response with a **Stop** button, so sync can be switched off without re-entering
+  the name and path. The list is rendered from storage rather than component state, because sending swaps the whole
+  response panel out and would otherwise take the control with it.
+- Rules live in `sessionStorage` alongside the variables they write and are cleared when the tab closes. They are
+  never sent to the API.
 
 ## Authentication (Slice 7)
 

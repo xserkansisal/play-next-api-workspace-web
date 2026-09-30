@@ -16,7 +16,9 @@ import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
 import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
 import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
-import { clearRuntimeVariables, getRuntimeVariables, removeRuntimeVariable, subscribeRuntimeVariables } from '@/lib/runtime-variables'
+import { clearRuntimeVariables, getRuntimeVariables, removeRuntimeVariable, setRuntimeVariable, subscribeRuntimeVariables } from '@/lib/runtime-variables'
+import { extractFromResponse } from '@/lib/response-extraction'
+import { applySyncRules } from '@/lib/sync-rules'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
 import { applyChangeEvent, isDraftDirty, parseChangeEvent, resourceKey } from '@/lib/workspace-types'
 import type {
@@ -334,7 +336,12 @@ function App({ user, onSignOut }: AppProps = {}) {
     const result = await runnerFor(overrideRunnerId ?? runnerId).run(outcome.request)
     setSending((current) => ({ ...current, [key]: false }))
     const sentAt = new Date().toISOString()
-    setResponses((current) => ({ ...current, [key]: { result, sentAt, url: outcome.request.url } }))
+    // Sync runs here, at the one place a response arrives, so a rule applies whichever runner sent
+    // the request and whether or not the response panel happens to be open.
+    const syncOutcomes = result.kind === 'success'
+      ? applySyncRules(key, result, extractFromResponse, setRuntimeVariable)
+      : []
+    setResponses((current) => ({ ...current, [key]: { result, sentAt, url: outcome.request.url, syncOutcomes } }))
     setHistory(appendHistoryEntry({
       sentAt,
       method: outcome.request.method,
@@ -868,6 +875,7 @@ function App({ user, onSignOut }: AppProps = {}) {
                   sending={activeSending}
                   sendError={activeSendError}
                   response={activeResponse}
+                  requestKey={currentKey}
                   runnerId={runnerId}
                   onRunnerChange={setRunnerId}
                   proxy={proxy}

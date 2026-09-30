@@ -29,6 +29,8 @@ interface ResourceEditorProps {
   proxy: ProxySettings | null
   /** Present only when sending from the server is a genuine remedy for the failure now shown. */
   onRetryFromServer?: () => void
+  /** Identifies the open request, so a response-sync rule can be bound to it. */
+  requestKey?: string | null
 }
 
 /**
@@ -48,7 +50,7 @@ function describeRunnerChoice(proxy: ProxySettings | null): string {
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const name = draft.resource.name
@@ -171,7 +173,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
           {error && <p className="inline-error" role="alert">{error}</p>}
         </section>
         <div className="resize-handle" role="separator" aria-label="Resize request and response panels" onPointerDown={resize} />
-        <ResponsePanel sending={sending} response={response} onRetryFromServer={onRetryFromServer} />
+        <ResponsePanel sending={sending} response={response} onRetryFromServer={onRetryFromServer} requestKey={requestKey} />
       </div>
     </section>
   )

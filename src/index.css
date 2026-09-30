@@ -291,3 +291,11 @@ button:disabled { cursor: not-allowed; }
   .compare-panel { inset: 85px 8px 8px; }
   .compare-columns { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
 }
+.extract-saved-group { display: flex; flex-direction: column; gap: 6px; }
+.extract-sync { display: flex; align-items: center; gap: 7px; color: #4b5563; font-size: 11px; cursor: pointer; }
+.extract-sync input { margin: 0; cursor: pointer; }
+.extract-synced { color: #0f766e; font-size: 11px; }
+.extract-bar-row { display: flex; align-items: center; gap: 12px; }
+.extract-sync-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.extract-sync-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid #ccfbf1; border-radius: 999px; background: #f0fdfa; font-size: 10px; }
+.extract-sync-path { color: #6b7280; }

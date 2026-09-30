@@ -47,14 +47,35 @@ describe('extractFromResponse', () => {
     expect(result.ok === false && result.error).toContain('no "token" field')
   })
 
-  it('refuses to store an object or an explicit null', () => {
-    const objectResult = extractFromResponse('data', response('{"data":{"a":1}}'))
-    expect(objectResult.ok).toBe(false)
-    expect(objectResult.ok === false && objectResult.error).toContain('an object')
+  it('stores a whole object as JSON, so it can be passed back verbatim', () => {
+    const result = extractFromResponse('data', response('{"data":{"a":1,"b":[2,3]}}'))
+    expect(result.ok).toBe(true)
+    expect(result.ok === true && result.value).toBe('{"a":1,"b":[2,3]}')
+    // The stored text has to parse back to the same value, or a later request sends something else.
+    expect(result.ok === true && JSON.parse(result.value)).toEqual({ a: 1, b: [2, 3] })
+  })
 
+  it('stores a whole array as JSON', () => {
+    const result = extractFromResponse('items', response('{"items":[1,"two",null]}'))
+    expect(result.ok === true && result.value).toBe('[1,"two",null]')
+  })
+
+  it('stores the entire body when the path is the root', () => {
+    const result = extractFromResponse('$', response('{"mathState":{"reel":[1,2]}}'))
+    expect(result.ok === true && result.value).toBe('{"mathState":{"reel":[1,2]}}')
+  })
+
+  it('still refuses an explicit null, which has no value to carry forward', () => {
     const nullResult = extractFromResponse('data', response('{"data":null}'))
     expect(nullResult.ok).toBe(false)
     expect(nullResult.ok === false && nullResult.error).toContain('null')
+  })
+
+  it('refuses a value too large to store, naming the limit', () => {
+    const big = { blob: 'x'.repeat(600 * 1024) }
+    const result = extractFromResponse('data', response(JSON.stringify({ data: big })))
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.error).toContain('over the')
   })
 
   it('explains a non-JSON body rather than failing opaquely', () => {
@@ -77,11 +98,13 @@ describe('extractFromResponse', () => {
 })
 
 describe('suggestPaths', () => {
-  it('lists paths that resolve to a single value', () => {
+  it('lists both leaf and container paths', () => {
     const paths = suggestPaths(response('{"data":{"token":"t"},"items":[{"id":1}]}'))
     expect(paths).toContain('data.token')
     expect(paths).toContain('items[0].id')
-    expect(paths).not.toContain('data')
+    // Containers are offered too: a whole object is capturable, so it must be discoverable.
+    expect(paths).toContain('data')
+    expect(paths).toContain('items')
   })
 
   it('returns nothing for a non-JSON body', () => {

@@ -12,6 +12,7 @@
 import { isAxiosError } from 'axios'
 
 import { apiClient, type ProxySettings } from '@/lib/api'
+import type { SyncOutcome } from '@/lib/sync-rules'
 
 export interface PreparedRequest {
   method: string
@@ -50,6 +51,8 @@ export interface RecordedResponse {
   sentAt: string
   /** The fully-resolved URL that was actually sent, so a failure can be reasoned about without re-deriving it from a draft the user may since have edited. */
   url?: string
+  /** What each sync rule bound to this request did with this response. Carried here so a failed sync is visible next to the response that caused it. */
+  syncOutcomes?: SyncOutcome[]
 }
 
 
