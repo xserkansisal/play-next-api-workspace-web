@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import type { CollectionResource } from '@/lib/workspace-types'
@@ -23,6 +23,12 @@ const collections: CollectionResource[] = [{
   description: '',
   items: [folder('f1', 'Charges', [folder('f2', 'Nested', [request('r1', 'Deep request')])])],
 }]
+
+// Collapsed state now persists in localStorage, so without this each test would inherit whatever
+// the previous one collapsed.
+beforeEach(() => {
+  window.localStorage.clear()
+})
 
 function renderTree(props: Partial<React.ComponentProps<typeof WorkspaceTree>> = {}) {
   return render(
@@ -118,4 +124,31 @@ describe('WorkspaceTree expand/collapse all', () => {
     expect(screen.getByTitle('Move List refunds to Trash')).toBeTruthy()
     expect(screen.queryByTitle('Move Charges to Trash')).toBeNull()
   })
+
+  it('reopens with the same nodes collapsed after a reload', async () => {
+    const user = userEvent.setup()
+    const first = renderTree()
+    await user.click(screen.getByLabelText('Collapse Charges'))
+    expect(screen.queryByText('Nested')).toBeNull()
+
+    // Unmounting and mounting again is what a page reload does to this component.
+    first.unmount()
+    renderTree()
+    expect(screen.queryByText('Nested')).toBeNull()
+    expect(screen.getByText('Payments')).toBeTruthy()
+  })
+
+  it('does not forget collapsed state on a render where the tree is still empty', () => {
+    // Collections arrive asynchronously; an empty first render must not wipe saved state.
+    const first = renderTree()
+    first.unmount()
+    window.localStorage.setItem('play-next-api-workspace.collapsed-tree-nodes.v1', JSON.stringify(['f1']))
+
+    const loading = renderTree({ collections: [] })
+    loading.unmount()
+
+    renderTree()
+    expect(screen.queryByText('Nested')).toBeNull()
+  })
+
 })

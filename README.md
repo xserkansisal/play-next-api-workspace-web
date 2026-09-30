@@ -64,6 +64,21 @@ The **Export** button follows the current selection: an open environment exports
 `*.postman_environment.json`, otherwise the selected collection exports as
 `*.postman_collection.json`.
 
+## The tree remembers what you collapsed
+
+Which collections and folders are collapsed is saved in `localStorage`, so the sidebar reopens the
+way you left it instead of fully expanded on every load.
+
+What is stored is the set of *collapsed* node ids, not the expanded ones. A folder created later,
+or one arriving over SSE from someone else, is therefore expanded by default rather than inheriting
+a stale collapsed state from an id it never had. Ids of deleted nodes are dropped once the tree has
+loaded, so the stored set cannot grow without bound.
+
+This is per browser, not per user: collections are shared by the team, but how you like your own
+sidebar is not, and storing it on the API would let one person's collapsing rearrange everyone
+else's tree. Clearing site data resets it, and if `localStorage` is unavailable the tree still works
+and simply stops remembering.
+
 ## When a request fails with "Failed to fetch"
 
 The Fetch API reports a CORS denial and an unreachable host with the identical opaque `TypeError`,

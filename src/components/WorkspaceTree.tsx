@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { loadCollapsedIds, pruneCollapsedIds, saveCollapsedIds } from '@/lib/tree-expansion-storage'
 import { sortByName } from '@/lib/workspace-ui'
 import type { CollectionResource, OpenResource, WorkspaceItem } from '@/lib/workspace-types'
 
@@ -122,7 +123,9 @@ export function WorkspaceTree({
   collapsed,
 }: WorkspaceTreeProps) {
   const [search, setSearch] = useState('')
-  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(() => new Set())
+  // Restored from storage on first render so the tree opens the way the user left it, rather
+  // than fully expanded every time.
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(loadCollapsedIds)
   const filter = search.trim().toLowerCase()
   const sorted = useMemo(() => sortByName(collections), [collections])
 
@@ -138,6 +141,16 @@ export function WorkspaceTree({
     isCollapsed: (id: string) => collapsedIds.has(id),
     toggle,
   }), [collapsedIds, toggle])
+
+  // Forget nodes that no longer exist, so deleting and recreating folders cannot grow the stored
+  // set forever. Skipped while the tree is empty, which is also how a not-yet-loaded tree looks.
+  useEffect(() => {
+    setCollapsedIds((current) => pruneCollapsedIds(current, expandableIds))
+  }, [expandableIds])
+
+  useEffect(() => {
+    saveCollapsedIds(collapsedIds)
+  }, [collapsedIds])
 
   // A search shows matching descendants regardless of collapsed state, so while filtering the
   // buttons would not visibly do anything; disable them rather than appear broken.
