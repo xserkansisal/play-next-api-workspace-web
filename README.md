@@ -263,15 +263,36 @@ variables, a value can be captured straight out of a response:
 2. Give it a name and a path to the value. Paths can read the JSON body (`data.token`, `items[0].id`,
    `payload["odd key"]`), a response header (`header:location`) or the status code (`status`). The panel suggests the
    paths present in the current response and previews the value before you save it.
-3. Use it as `{{name}}` anywhere in a later request.
+3. Choose **Save to**: *Only me* or *Everyone*. It defaults to *Only me*.
+4. Use it as `{{name}}` anywhere in a later request.
 
-These **runtime variables** are deliberately local:
+### Which scope a name resolves from
 
-- They live in `sessionStorage`, in one browser tab, and are **never sent to the API**. Collections and environments
-  are shared by the whole team, so writing a captured value — typically a short-lived token tied to one person's
-  sign-in — into a shared environment would silently change what everyone else sends.
-- They **override** environment variables of the same name, so a freshly captured value wins over a stale placeholder.
-- They are cleared when the tab closes. Use the **Variables** menu in the top bar to inspect, remove or clear them.
+A `{{name}}` is looked up in three layers, narrowest first:
+
+1. **Only me** — your own captured values, tied to your account rather than to one tab.
+2. The **selected environment**.
+3. **Everyone** — the shared, environment-independent layer.
+
+Your own value wins, which is the whole point of capturing one: a token you just signed in with should beat the
+placeholder sitting in the shared environment.
+
+The environment deliberately sits **above** *Everyone*, not below it. This is not the "mine, then shared" pair it
+might look like. Postman resolves Globals *underneath* the active environment, and these collections are usually
+Postman imports, so putting the shared layer on top would silently change what an imported request sends.
+
+`{{name}}` stays bare — there is no `{{user:name}}` spelling — precisely so imported collections keep working
+untouched.
+
+The cost of any precedence chain is that an override is invisible: a personal value a teammate has since corrected
+keeps winning and nothing says so. So precedence comes with visible resolution. The **Variables** menu shows each
+value's scope, marks the ones that override something with *overrides …*, and lists every name defined more than
+once. Use the same menu to remove a value or move on from it.
+
+*Only me* and *Everyone* values are both stored by the API, so they survive closing the tab and follow you to
+another browser. Your own values are never returned to anybody else. They are stored in **plain text**, exactly as
+environment variables already are; nothing here makes a secret safer than it is in an environment. Values captured
+before this existed are migrated out of `sessionStorage` into *Only me* the first time the new version loads.
 
 Extraction is intentionally declarative rather than a scripting sandbox. A path that does not resolve reports why
 (missing field, out-of-range index, non-JSON body, or a null) instead of silently storing an empty value. Postman
@@ -299,8 +320,9 @@ nothing to do with objects — any variable whose value contained a `"`, a `\` o
 it was pasted into, failing with a parser error that named a character position and never mentioned the variable
 that caused it.
 
-Captures are capped at 512 KB: runtime variables share one `sessionStorage` entry with a browser
-quota of about 5 MB, so an unbounded capture could evict every other variable.
+Captures are capped at 512 KB, comfortably under the API's own 1 MB limit on a stored value, so an
+oversized capture is refused here with a message naming a smaller path rather than rejected by the
+server after the fact.
 
 ### Keeping a captured value in step with the server
 
@@ -317,8 +339,11 @@ request** and the same extraction re-runs automatically each time that request i
 - Active rules are listed under the response with a **Stop** button, so sync can be switched off without re-entering
   the name and path. The list is rendered from storage rather than component state, because sending swaps the whole
   response panel out and would otherwise take the control with it.
-- Rules live in `sessionStorage` alongside the variables they write and are cleared when the tab closes. They are
-  never sent to the API.
+- A rule remembers **which scope** it writes to, so one created against a shared `token` keeps updating that one
+  instead of quietly starting a personal copy that then shadows it. The scope is shown on the rule. Rules saved
+  before scopes existed read as *Only me*, which is where they used to write.
+- Rules themselves live in `sessionStorage` and are cleared when the tab closes, even though the values they write
+  are now stored by the API: "keep refreshing this while I work" is a property of the session, not of the account.
 
 ## Authentication (Slice 7)
 

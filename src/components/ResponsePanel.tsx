@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react'
 
+import { describeApiError } from '@/lib/api'
 import { extractFromResponse, suggestPaths } from '@/lib/response-extraction'
-import { setRuntimeVariable, validateVariableName } from '@/lib/runtime-variables'
-import { findSyncRule, getSyncRules, removeSyncRule, setSyncRule, subscribeSyncRules } from '@/lib/sync-rules'
+import { saveScopedVariable } from '@/lib/scoped-variables'
+import { findSyncRule, getSyncRules, removeSyncRule, ruleScope, setSyncRule, subscribeSyncRules } from '@/lib/sync-rules'
+import { validateVariableName, VARIABLE_SCOPES, type VariableScope } from '@/lib/variable-scopes'
 import type { ExecutionSuccess, RecordedResponse } from '@/lib/request-runner'
 import { JsonTree } from '@/components/JsonTree'
 
@@ -35,8 +37,13 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
   const [path, setPath] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState<string | null>(null)
+  // Personal by default: a value captured from a response is almost always tied to this person's
+  // session, and writing one to the shared scope would change what every teammate sends.
+  const [scope, setScope] = useState<VariableScope>('user')
+  const [saving, setSaving] = useState(false)
   const listId = useId()
   const syncId = useId()
+  const scopeId = useId()
 
   const rules = useSyncExternalStore(subscribeSyncRules, getSyncRules)
   // The rule shown is the one for the variable just saved: sync is offered as a follow-up to a
@@ -45,9 +52,9 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
 
   const toggleSync = useCallback((enabled: boolean) => {
     if (!saved || !requestKey) return
-    if (enabled) setSyncRule({ requestKey, name: saved, path: path.trim() })
+    if (enabled) setSyncRule({ requestKey, name: saved, path: path.trim(), scope })
     else removeSyncRule(requestKey, saved)
-  }, [saved, requestKey, path])
+  }, [saved, requestKey, path, scope])
 
   useEffect(() => {
     setError(null)
@@ -60,7 +67,7 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
   const suggestions = useMemo(() => (open ? suggestPaths(response) : []), [open, response])
   const preview = useMemo(() => (path.trim() ? extractFromResponse(path, response) : null), [path, response])
 
-  function save() {
+  async function save() {
     const validated = validateVariableName(name)
     if (!validated.ok) {
       setError(validated.error)
@@ -73,11 +80,22 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
       setSaved(null)
       return
     }
-    setRuntimeVariable(validated.name, extracted.value)
-    // An existing rule for this name must follow the path just saved, or sync would keep writing
-    // the old path while the confirmation shows the new one.
+    setSaving(true)
+    try {
+      await saveScopedVariable(scope, validated.name, extracted.value)
+    } catch (saveError) {
+      // Confirmed rather than assumed: the value lives on the server now, so reporting a save
+      // that never happened would leave the next request quietly sending the previous value.
+      setError(describeApiError(saveError))
+      setSaved(null)
+      return
+    } finally {
+      setSaving(false)
+    }
+    // An existing rule for this name must follow the path and scope just saved, or sync would keep
+    // writing the old ones while the confirmation shows the new.
     if (requestKey && findSyncRule(requestKey, validated.name)) {
-      setSyncRule({ requestKey, name: validated.name, path: path.trim() })
+      setSyncRule({ requestKey, name: validated.name, path: path.trim(), scope })
     }
     setError(null)
     setSaved(validated.name)
@@ -95,6 +113,7 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
         <span key={rule.name} className="extract-sync-chip">
           <code>{`{{${rule.name}}}`}</code>
           <span className="extract-sync-path">{rule.path}</span>
+          <span className="extract-sync-scope">{ruleScope(rule) === 'user' ? 'only me' : 'everyone'}</span>
           <button
             className="link-button"
             onClick={() => removeSyncRule(requestKey, rule.name)}
@@ -139,14 +158,31 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
             {suggestions.map((entry) => <option key={entry} value={entry} />)}
           </datalist>
         </label>
-        <button onClick={save}>Save variable</button>
+        <label>
+          <span>Save to</span>
+          <select
+            id={scopeId}
+            aria-label="Variable scope"
+            value={scope}
+            onChange={(event) => setScope(event.target.value as VariableScope)}
+          >
+            {VARIABLE_SCOPES.map((entry) => (
+              <option key={entry} value={entry}>{entry === 'user' ? 'Only me' : 'Everyone'}</option>
+            ))}
+          </select>
+        </label>
+        <button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save variable'}</button>
         <button className="link-button" onClick={() => { setOpen(false); setError(null) }}>Close</button>
       </div>
       <p className="extract-hint">
         Read a field from the JSON body (<code>data.token</code>, <code>items[0].id</code>), a header
         (<code>header:location</code>) or <code>status</code>. A whole object or array is stored as JSON, so use it
-        unquoted: <code>{'{"state": {{name}}}'}</code>. Saved variables stay in this browser tab only, and are never
-        saved to the server.
+        unquoted: <code>{'{"state": {{name}}}'}</code>.
+      </p>
+      <p className="extract-hint">
+        {scope === 'user'
+          ? 'Saved to your account: it follows you to other tabs and machines, and no teammate can see it. It wins over an environment variable of the same name.'
+          : 'Saved for everyone signed in. An environment variable of the same name still wins over it, matching how Postman resolves globals.'}
       </p>
       {preview && preview.ok && <p className="extract-preview">Current value: <code>{preview.value}</code></p>}
       {preview && !preview.ok && <p className="extract-error" role="alert">{preview.error}</p>}
@@ -167,7 +203,7 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
           )}
           {activeRule && (
             <p className="extract-hint">
-              {`Re-read from "${activeRule.path}" each time this request is sent, so a value the server advances stays current. Only this request's responses update it.`}
+              {`Re-read from "${activeRule.path}" into ${ruleScope(activeRule) === 'user' ? 'your' : 'the global'} variables each time this request is sent, so a value the server advances stays current. Only this request's responses update it.`}
             </p>
           )}
         </div>

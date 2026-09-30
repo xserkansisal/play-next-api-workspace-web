@@ -13,11 +13,12 @@ import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
 import { exportEnvironmentToPostman } from '@/lib/postman-environment'
-import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
+import { prepareRequest } from '@/lib/request-preparation'
 import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
 import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
-import { clearRuntimeVariables, getRuntimeVariables, removeRuntimeVariable, setRuntimeVariable, subscribeRuntimeVariables } from '@/lib/runtime-variables'
+import { getScopedVariables, loadScopedVariables, removeScopedVariable, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
+import { describeOrigin, resolveVariables, shadowedNames, toVariableMap, type VariableOrigin, type VariableResolution } from '@/lib/variable-scopes'
 import { extractFromResponse } from '@/lib/response-extraction'
 import { applySyncRules } from '@/lib/sync-rules'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
@@ -118,7 +119,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState('')
   const [runnerId, setRunnerId] = useState<RunnerId>(loadRunnerId)
   const [proxy, setProxy] = useState<ProxySettings | null>(null)
-  const runtimeVariables = useSyncExternalStore(subscribeRuntimeVariables, getRuntimeVariables, getRuntimeVariables)
+  const scopedVariables = useSyncExternalStore(subscribeScopedVariables, getScopedVariables, getScopedVariables)
   const [view, setView] = useState<View>('workspace')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
@@ -155,6 +156,10 @@ function App({ user, onSignOut }: AppProps = {}) {
         workspaceApi.collections(),
         workspaceApi.environments(),
         workspaceApi.trash(),
+        // Captured values live on the server now, so they are part of loading the workspace
+        // rather than something this tab happens to be holding. A failure here is reported with
+        // the rest: a request that silently loses its variables fails in a far more confusing way.
+        loadScopedVariables(),
       ])
       // The list endpoint returns bare collection metadata only; the nested
       // item tree is only included on the single-collection detail response.
@@ -223,6 +228,12 @@ function App({ user, onSignOut }: AppProps = {}) {
       }
       if (!event) return
       lastEventId.current = event.eventId
+      // A global variable changed under us. Only that list needs refetching, and reloading the
+      // whole workspace here would throw away the open resource's review state for nothing.
+      if (event.kind === 'variable') {
+        void loadScopedVariables()
+        return
+      }
       if (applyChangeEvent(event, selectedRef.current) === 'review') {
         const active = selectedRef.current
         const currentKey = active ? resourceKey(active) : ''
@@ -282,6 +293,13 @@ function App({ user, onSignOut }: AppProps = {}) {
     && activeResponse.result.corsBlocked === true
     && activeResponse.serverRetryFailed !== true
     && canProxy(activeResponse.url ?? '', proxy)
+  const selectedEnvironment = environments.find(({ id }) => id === selectedEnvironmentId)
+  // The one place the three layers are collapsed into a lookup, so what a request substitutes and
+  // what the Variables menu reports can never disagree about which value wins.
+  const resolvedVariables = useMemo(
+    () => resolveVariables(scopedVariables, selectedEnvironment?.variables ?? []),
+    [scopedVariables, selectedEnvironment],
+  )
   const activeCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId : null
   // Export follows the current selection: an environment when one is open, otherwise the
   // collection the selection belongs to.
@@ -325,12 +343,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     if (!activeDraft || activeDraft.kind !== 'request') return
     const key = draftKey(activeDraft)
     const resource = activeDraft.resource
-    const environment = environments.find(({ id }) => id === selectedEnvironmentId)
-    // Runtime variables win over environment variables of the same name: a
-    // value just captured from a response is more current than a placeholder
-    // saved in the shared environment.
-    const variables = { ...buildVariableMap(environment?.variables ?? []), ...runtimeVariables }
-    const outcome = prepareRequest(resource, variables)
+    const outcome = prepareRequest(resource, toVariableMap(resolvedVariables))
 
     if (!outcome.ok) {
       const message = outcome.reason === 'missing-variables'
@@ -375,7 +388,11 @@ function App({ user, onSignOut }: AppProps = {}) {
     // Sync runs here, at the one place a response arrives, so a rule applies whichever runner sent
     // the request and whether or not the response panel happens to be open.
     const syncOutcomes = result.kind === 'success'
-      ? applySyncRules(key, result, extractFromResponse, setRuntimeVariable)
+      ? applySyncRules(key, result, extractFromResponse, (scope, name, value) => {
+        // Fire-and-forget on purpose: a sync failure must not hold up showing the response, and
+        // the outcome list below already carries whether each rule read a value.
+        void saveScopedVariable(scope, name, value).catch(() => {})
+      })
       : []
     setResponses((current) => ({ ...current, [key]: { result, sentAt, url: outcome.request.url, syncOutcomes, ...(sentFromServerAfterCorsBlock ? { sentFromServerAfterCorsBlock } : {}), ...(serverRetryFailed ? { serverRetryFailed } : {}) } }))
     setHistory(appendHistoryEntry({
@@ -876,7 +893,7 @@ function App({ user, onSignOut }: AppProps = {}) {
               {sortByName(environments).map((environment) => <option value={environment.id} key={environment.id}>{environment.name}</option>)}
             </select>
           </label>
-          <RuntimeVariablesMenu variables={runtimeVariables} />
+          <VariablesMenu resolved={resolvedVariables} hasEnvironment={!!selectedEnvironment} />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
@@ -1084,31 +1101,65 @@ function closeTab(
   setSelected((current) => current && resourceKey(current) === key ? remaining[remaining.length - 1] ?? null : current)
 }
 
-function RuntimeVariablesMenu({ variables }: { variables: Readonly<Record<string, string>> }) {
-  const names = Object.keys(variables).sort()
+function VariablesMenu({ resolved, hasEnvironment }: {
+  resolved: Record<string, VariableResolution>
+  hasEnvironment: boolean
+}) {
+  const [error, setError] = useState<string | null>(null)
+  const names = Object.keys(resolved).sort()
+  const shadowed = shadowedNames(resolved)
+
+  function forget(name: string, origin: VariableOrigin) {
+    if (origin === 'environment') return
+    setError(null)
+    void removeScopedVariable(origin, name).catch((removeError: unknown) => setError(describeApiError(removeError)))
+  }
+
   return (
     <details className="runtime-vars">
-      <summary aria-label={`Runtime variables (${names.length})`}>Variables <span className="runtime-vars-count">{names.length}</span></summary>
+      <summary aria-label={`Variables (${names.length})`}>Variables <span className="runtime-vars-count">{names.length}</span></summary>
       <div className="runtime-vars-panel">
+        {error && <p className="extract-error" role="alert">{error}</p>}
         {names.length === 0 ? (
-          <p className="runtime-vars-empty">No runtime variables yet. Send a request, then use “Save a value as a variable” on the response to capture one.</p>
+          <p className="runtime-vars-empty">No variables yet. Send a request, then use “Save a value as a variable” on the response to capture one.</p>
         ) : (
-          <>
-            <table className="runtime-vars-table">
-              <tbody>
-                {names.map((name) => (
+          <table className="runtime-vars-table">
+            <tbody>
+              {names.map((name) => {
+                const entry = resolved[name]!
+                return (
                   <tr key={name}>
                     <td><code>{`{{${name}}}`}</code></td>
-                    <td className="runtime-vars-value" title={variables[name]}>{variables[name]}</td>
-                    <td><button className="link-button" aria-label={`Remove ${name}`} onClick={() => removeRuntimeVariable(name)}>Remove</button></td>
+                    <td className="runtime-vars-scope">{entry.origin === 'user' ? 'only me' : entry.origin === 'global' ? 'everyone' : 'environment'}</td>
+                    <td className="runtime-vars-value" title={entry.value}>{entry.value}</td>
+                    <td>
+                      {/* Overriding a name is the point of the chain, but doing it without saying so
+                          is how a stale personal value keeps beating a shared one a teammate fixed. */}
+                      {entry.shadowed.length > 0 && (
+                        <span className="runtime-vars-shadow" title={`Also defined in ${entry.shadowed.map(describeOrigin).join(' and ')}, which this overrides.`}>
+                          overrides {entry.shadowed.map(describeOrigin).join(' and ')}
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      {entry.origin === 'environment'
+                        ? <span className="runtime-vars-note-inline">edit in the environment</span>
+                        : <button className="link-button" aria-label={`Remove ${name}`} onClick={() => forget(name, entry.origin)}>Remove</button>}
+                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <button className="link-button" onClick={() => clearRuntimeVariables()}>Clear all</button>
-          </>
+                )
+              })}
+            </tbody>
+          </table>
         )}
-        <p className="runtime-vars-note">Captured from responses. They override environment variables of the same name, stay in this browser tab, and are never saved to the server.</p>
+        {shadowed.length > 0 && (
+          <p className="runtime-vars-note" role="status">
+            {`${shadowed.length === 1 ? 'One name is' : `${shadowed.length} names are`} defined more than once: ${shadowed.join(', ')}. The narrower definition is used.`}
+          </p>
+        )}
+        <p className="runtime-vars-note">
+          {`Order of preference: your own variables, then ${hasEnvironment ? 'the selected environment' : 'the selected environment (none selected)'}, then global ones. Yours are private to your account; global ones are shared with everyone signed in.`}
+        </p>
       </div>
     </details>
   )

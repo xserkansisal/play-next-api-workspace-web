@@ -108,7 +108,8 @@ export interface RestoreCheck {
 
 export interface ChangeEvent {
   eventId: string
-  kind: 'collection' | 'folder' | 'request' | 'environment'
+  kind: 'collection' | 'folder' | 'request' | 'environment' | 'variable'
+  /** The resource id, or - for `variable`, which has no id of its own - the variable's key. */
   id: string
   collectionId: string | null
   operation: string
@@ -174,7 +175,7 @@ export function parseChangeEvent(
   if (!parsed || typeof parsed !== 'object') return null
   const value = parsed as Partial<ChangeEvent>
   if (
-    (value.kind !== 'collection' && value.kind !== 'folder' && value.kind !== 'request' && value.kind !== 'environment') ||
+    (value.kind !== 'collection' && value.kind !== 'folder' && value.kind !== 'request' && value.kind !== 'environment' && value.kind !== 'variable') ||
     typeof value.id !== 'string' ||
     (value.collectionId !== null && typeof value.collectionId !== 'string') ||
     typeof value.operation !== 'string' ||

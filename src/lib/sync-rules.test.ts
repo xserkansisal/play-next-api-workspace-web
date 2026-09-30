@@ -8,6 +8,7 @@ import {
   getSyncRules,
   removeSyncRule,
   resetSyncRulesCache,
+  ruleScope,
   rulesForRequest,
   setSyncRule,
   subscribeSyncRules,
@@ -108,8 +109,8 @@ describe('applySyncRules', () => {
     setSyncRule({ requestKey: 'req-a', name: 'mathState', path: 'gameData.mathState' })
     const store = vi.fn()
     const outcomes = applySyncRules('req-a', response('{"gameData":{"mathState":{"spin":2}}}'), extractFromResponse, store)
-    expect(store).toHaveBeenCalledWith('mathState', '{"spin":2}')
-    expect(outcomes).toEqual([{ name: 'mathState', path: 'gameData.mathState', ok: true }])
+    expect(store).toHaveBeenCalledWith('user', 'mathState', '{"spin":2}')
+    expect(outcomes).toEqual([{ name: 'mathState', path: 'gameData.mathState', scope: 'user', ok: true }])
   })
 
   it('updates on each response, so an advancing value stays current', () => {
@@ -117,8 +118,8 @@ describe('applySyncRules', () => {
     const store = vi.fn()
     applySyncRules('req-a', response('{"mathState":{"spin":1}}'), extractFromResponse, store)
     applySyncRules('req-a', response('{"mathState":{"spin":2}}'), extractFromResponse, store)
-    expect(store).toHaveBeenNthCalledWith(1, 'mathState', '{"spin":1}')
-    expect(store).toHaveBeenNthCalledWith(2, 'mathState', '{"spin":2}')
+    expect(store).toHaveBeenNthCalledWith(1, 'user', 'mathState', '{"spin":1}')
+    expect(store).toHaveBeenNthCalledWith(2, 'user', 'mathState', '{"spin":2}')
   })
 
   it('keeps the previous value and reports the error when the path is missing', () => {
@@ -136,7 +137,7 @@ describe('applySyncRules', () => {
     const store = vi.fn()
     applySyncRules('req-a', response('{"v":1}'), extractFromResponse, store)
     expect(store).toHaveBeenCalledOnce()
-    expect(store).toHaveBeenCalledWith('fromA', '1')
+    expect(store).toHaveBeenCalledWith('user', 'fromA', '1')
   })
 
   it('runs every rule even when an earlier one fails', () => {
@@ -145,6 +146,27 @@ describe('applySyncRules', () => {
     const store = vi.fn()
     const outcomes = applySyncRules('req-a', response('{"v":1}'), extractFromResponse, store)
     expect(outcomes.map((outcome) => outcome.ok)).toEqual([false, true])
-    expect(store).toHaveBeenCalledWith('present', '1')
+    expect(store).toHaveBeenCalledWith('user', 'present', '1')
+  })
+})
+
+describe('rule scope', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear()
+    resetSyncRulesCache()
+  })
+
+  it('writes to the scope recorded on the rule, not to a fixed one', () => {
+    setSyncRule({ requestKey: 'req-a', name: 'shared', path: 'v', scope: 'global' })
+    const store = vi.fn()
+    const outcomes = applySyncRules('req-a', response('{"v":1}'), extractFromResponse, store)
+    expect(store).toHaveBeenCalledWith('global', 'shared', '1')
+    expect(outcomes[0].scope).toBe('global')
+  })
+
+  it('reads a rule saved before scopes existed as a personal one, where it used to write', () => {
+    // Rewriting them on upgrade would guess at intent; the old behaviour was personal, so that is
+    // what the absent value means.
+    expect(ruleScope({ requestKey: 'req-a', name: 'legacy', path: 'v' })).toBe('user')
   })
 })

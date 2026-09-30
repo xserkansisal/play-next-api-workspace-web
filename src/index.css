@@ -266,6 +266,12 @@ button:disabled { cursor: not-allowed; }
 .runtime-vars-table td { padding: 3px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .runtime-vars-value { max-width: 150px; overflow: hidden; color: #6b7280; text-overflow: ellipsis; white-space: nowrap; }
 .runtime-vars-empty, .runtime-vars-note { margin: 6px 0 0; color: #6b7280; font-size: 11px; }
+.runtime-vars-panel { width: 420px; }
+.runtime-vars-scope { color: #6b7280; white-space: nowrap; }
+.runtime-vars-note-inline { color: #9ca3af; white-space: nowrap; }
+/* An override is deliberate, but an invisible one is how a stale personal value keeps beating a
+   shared one a teammate has since corrected. */
+.runtime-vars-shadow { display: inline-block; padding: 0 4px; border-radius: 4px; background: rgba(217, 119, 6, 0.12); color: #92400e; font-size: 10px; white-space: nowrap; }
 
 @media (max-width: 850px) {
   .sidebar { width: 225px; min-width: 205px; flex-basis: 225px; }
@@ -307,6 +313,7 @@ button:disabled { cursor: not-allowed; }
 .extract-sync-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
 .extract-sync-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid #ccfbf1; border-radius: 999px; background: #f0fdfa; font-size: 10px; }
 .extract-sync-path { color: #6b7280; }
+.extract-sync-scope { padding: 0 4px; border-radius: 4px; background: rgba(109, 92, 232, 0.12); font-size: 10px; }
 
 /* Collapsible JSON response body */
 .response-view-toggle { margin-left: auto; display: flex; gap: 2px; align-self: center; padding-right: 8px; }

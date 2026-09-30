@@ -1,11 +1,18 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ResponsePanel } from '@/components/ResponsePanel'
-import { getRuntimeVariables, resetRuntimeVariablesCache } from '@/lib/runtime-variables'
+import { workspaceApi } from '@/lib/api'
+import { getScopedVariables, resetScopedVariables } from '@/lib/scoped-variables'
 import { findSyncRule, resetSyncRulesCache, setSyncRule } from '@/lib/sync-rules'
 import type { RecordedResponse } from '@/lib/request-runner'
+import type { VariableScope } from '@/lib/variable-scopes'
+
+/** What the store holds, flattened to the shape these assertions care about. */
+function stored(): Record<string, { scope: VariableScope; value: string }> {
+  return Object.fromEntries(getScopedVariables().map((entry) => [entry.key, { scope: entry.scope, value: entry.value }]))
+}
 
 function recorded(bodyText: string, headers: Record<string, string> = {}): RecordedResponse {
   return {
@@ -16,7 +23,12 @@ function recorded(bodyText: string, headers: Record<string, string> = {}): Recor
 
 beforeEach(() => {
   window.sessionStorage.clear()
-  resetRuntimeVariablesCache()
+  resetScopedVariables()
+  vi.spyOn(workspaceApi, 'setVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('ResponsePanel value extraction', () => {
@@ -32,7 +44,10 @@ describe('ResponsePanel value extraction', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save variable' }))
 
-    expect(getRuntimeVariables()).toEqual({ token: 'abc123' })
+    // Personal unless the user says otherwise: a captured value is nearly always tied to this
+    // person's session, and defaulting to the shared scope would change what teammates send.
+    await waitFor(() => expect(stored()).toEqual({ token: { scope: 'user', value: 'abc123' } }))
+    expect(workspaceApi.setVariable).toHaveBeenCalledWith('user', 'token', 'abc123')
     expect(screen.getByRole('status')).toHaveTextContent('Saved as {{token}}')
   })
 
@@ -47,7 +62,36 @@ describe('ResponsePanel value extraction', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('no "accessToken" field')
 
     await user.click(screen.getByRole('button', { name: 'Save variable' }))
-    expect(getRuntimeVariables()).toEqual({})
+    expect(stored()).toEqual({})
+  })
+
+  it('saves to the shared scope when that is chosen', async () => {
+    const user = userEvent.setup()
+    render(<ResponsePanel sending={false} response={recorded('{"data":{"accessToken":"abc123"}}')} />)
+
+    await user.click(screen.getByRole('button', { name: 'Save a value as a variable' }))
+    await user.type(screen.getByLabelText('Variable name'), 'token')
+    await user.type(screen.getByLabelText('Value path'), 'data.accessToken')
+    await user.selectOptions(screen.getByLabelText('Variable scope'), 'global')
+    await user.click(screen.getByRole('button', { name: 'Save variable' }))
+
+    await waitFor(() => expect(stored()).toEqual({ token: { scope: 'global', value: 'abc123' } }))
+  })
+
+  it('reports a rejected save instead of confirming one that did not happen', async () => {
+    vi.spyOn(workspaceApi, 'setVariable').mockRejectedValue(new Error('API is down'))
+    const user = userEvent.setup()
+    render(<ResponsePanel sending={false} response={recorded('{"token":"abc"}')} />)
+
+    await user.click(screen.getByRole('button', { name: 'Save a value as a variable' }))
+    await user.type(screen.getByLabelText('Variable name'), 'token')
+    await user.type(screen.getByLabelText('Value path'), 'token')
+    await user.click(screen.getByRole('button', { name: 'Save variable' }))
+
+    // Silently failing would leave the next request sending the previous value with no sign why.
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('API is down'))
+    expect(stored()).toEqual({})
+    expect(screen.queryByText(/Saved as/)).toBeNull()
   })
 
   it('rejects a name that could not be referenced as a variable', async () => {
@@ -60,7 +104,7 @@ describe('ResponsePanel value extraction', () => {
     await user.click(screen.getByRole('button', { name: 'Save variable' }))
 
     expect(screen.getByRole('alert')).toHaveTextContent('cannot contain spaces')
-    expect(getRuntimeVariables()).toEqual({})
+    expect(stored()).toEqual({})
   })
 
   it('is not offered for a failed request', () => {
@@ -90,7 +134,7 @@ describe('ResponsePanel server retry', () => {
 describe('ResponsePanel sync control', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
-    resetRuntimeVariablesCache()
+    resetScopedVariables()
     resetSyncRulesCache()
   })
 
@@ -112,7 +156,7 @@ describe('ResponsePanel sync control', () => {
   it('saves a whole object as JSON', async () => {
     render(<ResponsePanel sending={false} response={jsonResponse('{"mathState":{"spin":1}}')} requestKey="req-a" />)
     await saveVariable('mathState', 'mathState')
-    expect(getRuntimeVariables().mathState).toBe('{"spin":1}')
+    await waitFor(() => expect(stored().mathState?.value).toBe('{"spin":1}'))
   })
 
   it('offers no sync control until a variable is saved', async () => {
@@ -125,8 +169,22 @@ describe('ResponsePanel sync control', () => {
     render(<ResponsePanel sending={false} response={jsonResponse('{"mathState":{"spin":1}}')} requestKey="req-a" />)
     await saveVariable('mathState', 'mathState')
     await userEvent.click(screen.getByRole('checkbox'))
-    expect(findSyncRule('req-a', 'mathState')).toEqual({ requestKey: 'req-a', name: 'mathState', path: 'mathState' })
+    // The scope is on the rule, so a rule created against the shared variable keeps refreshing
+    // that one instead of quietly starting a personal copy that then shadows it.
+    expect(findSyncRule('req-a', 'mathState')).toEqual({ requestKey: 'req-a', name: 'mathState', path: 'mathState', scope: 'user' })
     expect(findSyncRule('req-b', 'mathState')).toBeNull()
+  })
+
+  it('binds the rule to the scope the variable was saved at', async () => {
+    render(<ResponsePanel sending={false} response={jsonResponse('{"mathState":{"spin":1}}')} requestKey="req-a" />)
+    await userEvent.click(screen.getByRole('button', { name: /save a value as a variable/i }))
+    await userEvent.type(screen.getByLabelText('Variable name'), 'mathState')
+    await userEvent.type(screen.getByLabelText('Value path'), 'mathState')
+    await userEvent.selectOptions(screen.getByLabelText('Variable scope'), 'global')
+    await userEvent.click(screen.getByRole('button', { name: 'Save variable' }))
+    await userEvent.click(await screen.findByRole('checkbox'))
+
+    expect(findSyncRule('req-a', 'mathState')?.scope).toBe('global')
   })
 
   it('removes the rule when sync is switched off', async () => {
@@ -147,7 +205,7 @@ describe('ResponsePanel sync control', () => {
   it('reports a failed sync instead of leaving a stale value unexplained', () => {
     const response: RecordedResponse = {
       ...jsonResponse('{"error":"bad bet"}'),
-      syncOutcomes: [{ name: 'mathState', path: 'gameData.mathState', ok: false, error: 'no "gameData" field.' }],
+      syncOutcomes: [{ name: 'mathState', path: 'gameData.mathState', scope: 'user' as const, ok: false, error: 'no "gameData" field.' }],
     }
     render(<ResponsePanel sending={false} response={response} requestKey="req-a" />)
     expect(screen.getByRole('alert').textContent).toContain('Sync failed for {{mathState}}')
@@ -157,7 +215,7 @@ describe('ResponsePanel sync control', () => {
   it('confirms a successful sync', () => {
     const response: RecordedResponse = {
       ...jsonResponse('{"mathState":{"spin":2}}'),
-      syncOutcomes: [{ name: 'mathState', path: 'mathState', ok: true }],
+      syncOutcomes: [{ name: 'mathState', path: 'mathState', scope: 'user' as const, ok: true }],
     }
     render(<ResponsePanel sending={false} response={response} requestKey="req-a" />)
     expect(screen.getByText(/Synced \{\{mathState\}\} from this response/)).toBeTruthy()
@@ -167,7 +225,7 @@ describe('ResponsePanel sync control', () => {
 describe('ResponsePanel sync survives a send', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
-    resetRuntimeVariablesCache()
+    resetScopedVariables()
     resetSyncRulesCache()
   })
 

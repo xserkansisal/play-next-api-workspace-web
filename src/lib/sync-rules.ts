@@ -9,13 +9,15 @@
 // - A rule is bound to the request it was created on, not applied globally. A path like
 //   `gameData.mathState` does not exist in an unrelated response, so a global rule would either
 //   error constantly or wipe a good value with nothing.
-// - Rules live in `sessionStorage` next to the runtime variables they write. A rule is worthless
-//   without its variable, so outliving it would only resurrect a value the user expected gone.
+// - Rules live in `sessionStorage`, in this tab. The variables they write are now stored on the
+//   server per account, so a rule is deliberately the narrower of the two: "keep refreshing this
+//   while I work" is a property of the session, not something to inflict on every other tab.
 // - Rules are keyed by request *and* variable name, so re-saving the same variable on the same
 //   request updates the rule in place instead of accumulating duplicates.
 
 import type { ExtractionResult } from '@/lib/response-extraction'
 import type { ExecutionSuccess } from '@/lib/request-runner'
+import type { VariableScope } from '@/lib/variable-scopes'
 
 const STORAGE_KEY = 'play-next-api-workspace.sync-rules.v1'
 
@@ -24,6 +26,20 @@ export interface SyncRule {
   requestKey: string
   name: string
   path: string
+  /**
+   * Which scope the refreshed value is written to.
+   *
+   * Carried on the rule rather than decided at write time: a rule created against the shared
+   * global `token` must keep updating that one, not quietly start writing a personal copy that
+   * then shadows it. Rules saved before scopes existed have no value here and are read as `user`,
+   * which is where they used to go.
+   */
+  scope?: VariableScope
+}
+
+/** The scope a rule writes to, including the one written before rules recorded a scope. */
+export function ruleScope(rule: SyncRule): VariableScope {
+  return rule.scope ?? 'user'
 }
 
 const EMPTY: readonly SyncRule[] = Object.freeze([])
@@ -104,6 +120,7 @@ export function resetSyncRulesCache(): void {
 export interface SyncOutcome {
   name: string
   path: string
+  scope: VariableScope
   ok: boolean
   /** Present when the extraction failed, so the UI can say why rather than showing a stale value as current. */
   error?: string
@@ -121,12 +138,13 @@ export function applySyncRules(
   requestKey: string,
   response: ExecutionSuccess,
   extract: (path: string, response: ExecutionSuccess) => ExtractionResult,
-  store: (name: string, value: string) => void,
+  store: (scope: VariableScope, name: string, value: string) => void,
 ): SyncOutcome[] {
   return rulesForRequest(requestKey).map((rule) => {
+    const scope = ruleScope(rule)
     const extracted = extract(rule.path, response)
-    if (!extracted.ok) return { name: rule.name, path: rule.path, ok: false, error: extracted.error }
-    store(rule.name, extracted.value)
-    return { name: rule.name, path: rule.path, ok: true }
+    if (!extracted.ok) return { name: rule.name, path: rule.path, scope, ok: false, error: extracted.error }
+    store(scope, rule.name, extracted.value)
+    return { name: rule.name, path: rule.path, scope, ok: true }
   })
 }

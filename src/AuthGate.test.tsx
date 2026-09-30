@@ -43,6 +43,7 @@ describe('AuthGate', () => {
     vi.spyOn(workspaceApi, 'collections').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
 
     const user = userEvent.setup()
     render(<AuthGate />)
@@ -61,6 +62,7 @@ describe('AuthGate', () => {
     vi.spyOn(workspaceApi, 'collections').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
 
     render(<AuthGate />)
     expect(await screen.findByText('a@sisal.com')).toBeInTheDocument()
@@ -71,6 +73,7 @@ describe('AuthGate', () => {
     vi.spyOn(workspaceApi, 'collections').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
 
     render(<AuthGate />)
     await screen.findByText('a@sisal.com')

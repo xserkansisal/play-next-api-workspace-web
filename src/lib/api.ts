@@ -10,6 +10,7 @@ import type {
   TreeNodeInput,
   WorkspaceItem,
 } from '@/lib/workspace-types'
+import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
 
 const apiOrigin = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
@@ -56,6 +57,19 @@ export const workspaceApi = {
   async proxySettings(): Promise<ProxySettings> {
     const { data } = await apiClient.get<ProxySettings>('/proxy')
     return { enabled: !!data.enabled, anyHost: !!data.anyHost, allowedHosts: data.allowedHosts ?? [] }
+  },
+  async variables(): Promise<ScopedVariable[]> {
+    const { data } = await apiClient.get<{ variables: ScopedVariable[] }>('/variables')
+    return data.variables ?? []
+  },
+  async setVariable(scope: VariableScope, key: string, value: string): Promise<ScopedVariable> {
+    // The key travels in the path, so it is encoded here rather than trusted: a key is free text
+    // from a response and could hold a character that would otherwise change the route.
+    const { data } = await apiClient.put<ScopedVariable>(`/variables/${scope}/${encodeURIComponent(key)}`, { value })
+    return data
+  },
+  async deleteVariable(scope: VariableScope, key: string): Promise<void> {
+    await apiClient.delete(`/variables/${scope}/${encodeURIComponent(key)}`)
   },
   async collections() {
     const { data } = await apiClient.get<{ collections: CollectionResource[] }>('/collections')

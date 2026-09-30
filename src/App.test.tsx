@@ -59,6 +59,7 @@ describe('workspace live update flow', () => {
     vi.spyOn(workspaceApi, 'collection').mockResolvedValue(collection)
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'item').mockResolvedValue({ ...request, url: '/server-version' })
   })
 
@@ -171,6 +172,7 @@ describe('duplicating from the workspace', () => {
     vi.spyOn(workspaceApi, 'collection').mockResolvedValue(collection)
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -230,6 +232,7 @@ describe('a browser send that CORS blocks', () => {
     vi.spyOn(workspaceApi, 'collection').mockResolvedValue(absolute)
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'proxySettings').mockResolvedValue({ enabled: true, anyHost: true, allowedHosts: [] })
   })
 
@@ -308,5 +311,77 @@ describe('a browser send that CORS blocks', () => {
 
     expect(await screen.findByText(/blocked by CORS/)).toBeTruthy()
     expect(viaServer).not.toHaveBeenCalled()
+  })
+})
+
+describe('which scope a {{name}} resolves from', () => {
+  const environment = {
+    id: 'env-1',
+    name: 'develop',
+    variables: [{ key: 'target', value: 'from-environment', enabled: true }],
+  }
+  const templated = {
+    ...collection,
+    items: [{ ...request, url: 'http://host.test/{{target}}' }],
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('EventSource', MockEventSource)
+    window.localStorage.clear()
+    vi.spyOn(workspaceApi, 'collections').mockResolvedValue([templated])
+    vi.spyOn(workspaceApi, 'collection').mockResolvedValue(templated)
+    vi.spyOn(workspaceApi, 'environments').mockResolvedValue([environment as never])
+    vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'proxySettings').mockResolvedValue({ enabled: false, anyHost: false, allowedHosts: [] })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  async function sendAndReadUrl(variables: { scope: 'user' | 'global'; key: string; value: string }[]) {
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue(variables)
+    const run = vi.spyOn(browserFetchRunner, 'run').mockResolvedValue({
+      kind: 'success', status: 200, statusText: 'OK', ok: true, durationMs: 1, sizeBytes: 2,
+      headers: {}, bodyText: '{}',
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(run).toHaveBeenCalled())
+    return run.mock.calls[0]![0].url
+  }
+
+  it('uses my own value over the shared environment, which is why capturing one is worth doing', async () => {
+    const url = await sendAndReadUrl([
+      { scope: 'user', key: 'target', value: 'mine' },
+      { scope: 'global', key: 'target', value: 'shared' },
+    ])
+    expect(url).toBe('http://host.test/mine')
+  })
+
+  it('lets the environment beat a global, matching how Postman resolves an imported collection', async () => {
+    const url = await sendAndReadUrl([{ scope: 'global', key: 'target', value: 'shared' }])
+    expect(url).toBe('http://host.test/from-environment')
+  })
+
+  it('falls through to a global when nothing narrower defines the name', async () => {
+    vi.spyOn(workspaceApi, 'environments').mockResolvedValue([{ ...environment, variables: [] } as never])
+    const url = await sendAndReadUrl([{ scope: 'global', key: 'target', value: 'shared' }])
+    expect(url).toBe('http://host.test/shared')
+  })
+
+  it('says which names are defined more than once instead of leaving it to be guessed', async () => {
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([
+      { scope: 'user', key: 'target', value: 'mine' },
+      { scope: 'global', key: 'target', value: 'shared' },
+    ])
+    render(<App />)
+    await screen.findByRole('button', { name: 'List orders' })
+
+    expect(await screen.findByText(/overrides the selected environment and global variables/)).toBeTruthy()
+    expect(screen.getByText(/defined more than once: target/)).toBeTruthy()
   })
 })
