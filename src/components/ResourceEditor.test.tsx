@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ResourceEditor } from '@/components/ResourceEditor'
+import type { ProxySettings } from '@/lib/api'
 import type { RecordedResponse } from '@/lib/request-runner'
 import type { ResourceDraft } from '@/lib/workspace-types'
 
@@ -40,7 +41,7 @@ const collectionDraft = {
   resource: { id: 'c1', name: 'Payments', description: '', items: [] },
 } as unknown as ResourceDraft
 
-function renderEditor(draft: ResourceDraft) {
+function renderEditor(draft: ResourceDraft, proxy: ProxySettings | null = null) {
   return render(
     <ResourceEditor
       draft={draft}
@@ -56,7 +57,7 @@ function renderEditor(draft: ResourceDraft) {
       response={response}
       runnerId="browser"
       onRunnerChange={vi.fn()}
-      proxy={null}
+      proxy={proxy}
     />,
   )
 }
@@ -93,5 +94,27 @@ describe('the response area belongs to a request', () => {
     expect(container.querySelector('.resize-handle')).toBeTruthy()
     const panel = container.querySelector('.request-panel') as HTMLElement
     expect(panel.style.flex).not.toBe('')
+  })
+})
+
+describe('what the runner tooltip says is reachable', () => {
+  it('names the configured hosts', () => {
+    const { container } = renderEditor(requestDraft, { enabled: true, anyHost: false, allowedHosts: ['localhost:7799'] })
+    const select = container.querySelector('.runner-select') as HTMLSelectElement
+    expect(select.title).toContain('Allowed hosts: localhost:7799.')
+  })
+
+  it('says every host is allowed rather than printing a bare asterisk', () => {
+    // "Allowed hosts: *." reads like a host named "*"; the reader should not have to decode it.
+    const { container } = renderEditor(requestDraft, { enabled: true, anyHost: true, allowedHosts: ['*'] })
+    const select = container.querySelector('.runner-select') as HTMLSelectElement
+    expect(select.title).toContain('Any host is allowed.')
+    expect(select.title).not.toContain('Allowed hosts')
+  })
+
+  it('points at the setting when the proxy is off', () => {
+    const { container } = renderEditor(requestDraft, { enabled: false, anyHost: false, allowedHosts: [] })
+    const select = container.querySelector('.runner-select') as HTMLSelectElement
+    expect(select.title).toContain('PROXY_ALLOWED_HOSTS')
   })
 })

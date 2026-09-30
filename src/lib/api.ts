@@ -43,6 +43,8 @@ export function describeApiError(error: unknown): string {
 
 export interface ProxySettings {
   enabled: boolean
+  /** The API allows every host. Reported separately so the UI need not interpret a literal `*`. */
+  anyHost: boolean
   allowedHosts: string[]
 }
 
@@ -53,7 +55,7 @@ export const workspaceApi = {
    */
   async proxySettings(): Promise<ProxySettings> {
     const { data } = await apiClient.get<ProxySettings>('/proxy')
-    return { enabled: !!data.enabled, allowedHosts: data.allowedHosts ?? [] }
+    return { enabled: !!data.enabled, anyHost: !!data.anyHost, allowedHosts: data.allowedHosts ?? [] }
   },
   async collections() {
     const { data } = await apiClient.get<{ collections: CollectionResource[] }>('/collections')

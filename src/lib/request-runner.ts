@@ -260,8 +260,9 @@ export function isRunnerId(value: string): value is RunnerId {
 /**
  * Whether sending this request from the server would actually be allowed, so the UI can offer that
  * as a recovery only when it is certain to be available. Matching mirrors the API's allow-list
- * rules exactly - an entry is either `host` (any port) or `host:port`, compared literally - because
- * offering a retry the API will refuse is worse than offering nothing.
+ * rules exactly - `*` admits everything, and otherwise an entry is either `host` (any port) or
+ * `host:port`, compared literally - because offering a retry the API will refuse is worse than
+ * offering nothing.
  */
 export function canProxy(url: string, proxy: ProxySettings | null): boolean {
   if (!proxy?.enabled) return false
@@ -271,7 +272,10 @@ export function canProxy(url: string, proxy: ProxySettings | null): boolean {
   } catch {
     return false
   }
+  // Checked after the scheme, not before: the API rejects a non-http scheme even under the
+  // wildcard, so offering a retry for one would be offering a certain failure.
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+  if (proxy.anyHost) return true
   const hostname = parsed.hostname.toLowerCase()
   const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
   return proxy.allowedHosts.some((entry) => entry === hostname || entry === `${hostname}:${port}`)

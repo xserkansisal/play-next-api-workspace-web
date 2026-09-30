@@ -44,7 +44,8 @@ function describeRunnerChoice(proxy: ProxySettings | null): string {
   if (!proxy.enabled) {
     return `${browser}\nServer: unavailable - an operator must set PROXY_ALLOWED_HOSTS on the API.`
   }
-  return `${browser}\nServer: the API sends it instead, so CORS does not apply. Allowed hosts: ${proxy.allowedHosts.join(', ')}.`
+  const reach = proxy.anyHost ? 'Any host is allowed.' : `Allowed hosts: ${proxy.allowedHosts.join(', ')}.`
+  return `${browser}\nServer: the API sends it instead, so CORS does not apply. ${reach}`
 }
 
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']

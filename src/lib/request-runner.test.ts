@@ -196,11 +196,22 @@ describe('serverProxyRunner', () => {
 })
 
 describe('canProxy', () => {
-  const on = (hosts: string[]) => ({ enabled: true, allowedHosts: hosts })
+  const on = (hosts: string[]) => ({ enabled: true, anyHost: false, allowedHosts: hosts })
+  const anyHost = { enabled: true, anyHost: true, allowedHosts: ['*'] }
 
   it('is false when the proxy is disabled or unknown', () => {
     expect(canProxy('http://localhost:7799/a', null)).toBe(false)
-    expect(canProxy('http://localhost:7799/a', { enabled: false, allowedHosts: ['localhost:7799'] })).toBe(false)
+    expect(canProxy('http://localhost:7799/a', { enabled: false, anyHost: false, allowedHosts: ['localhost:7799'] })).toBe(false)
+  })
+
+  it('offers any host when the API reports the wildcard', () => {
+    expect(canProxy('http://10.29.125.148:7799/a', anyHost)).toBe(true)
+    expect(canProxy('https://never-named.example/a', anyHost)).toBe(true)
+  })
+
+  it('still refuses a non-http scheme under the wildcard, since the API would too', () => {
+    // Offering a retry the API is certain to refuse is worse than offering nothing.
+    expect(canProxy('file:///etc/passwd', anyHost)).toBe(false)
   })
 
   it('matches a host:port entry', () => {

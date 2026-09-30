@@ -120,7 +120,8 @@ This is not a better default, and the browser stays the default:
 
 - It needs operator setup. The API refuses to proxy anything until `PROXY_ALLOWED_HOSTS` names the
   hosts it may reach, and adding a host requires an API restart. Until then the option is shown as
-  *Server (not enabled)*.
+  *Server (not enabled)*. Setting it to `*` allows every host, which removes that boundary
+  entirely — see the API README before doing that.
 - The request leaves from the API's network position, not yours, so it can reach what the API can
   reach and nothing that only your machine can see.
 - It is server-side request forgery by design, which is why the allow-list exists. See the API

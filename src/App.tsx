@@ -183,7 +183,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     let cancelled = false
     void workspaceApi.proxySettings()
       .then((settings) => { if (!cancelled) setProxy(settings) })
-      .catch(() => { if (!cancelled) setProxy({ enabled: false, allowedHosts: [] }) })
+      .catch(() => { if (!cancelled) setProxy({ enabled: false, anyHost: false, allowedHosts: [] }) })
     return () => { cancelled = true }
   }, [])
 
