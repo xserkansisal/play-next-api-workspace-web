@@ -13,7 +13,8 @@ import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
 import { exportEnvironmentToPostman } from '@/lib/postman-environment'
 import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
-import { defaultRunnerId, runnerFor, type RunnerId } from '@/lib/request-runner'
+import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
+import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { clearRuntimeVariables, getRuntimeVariables, removeRuntimeVariable, subscribeRuntimeVariables } from '@/lib/runtime-variables'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
@@ -110,7 +111,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [environments, setEnvironments] = useState<EnvironmentResource[]>([])
   const [trash, setTrash] = useState<TrashEntry[]>([])
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState('')
-  const [runnerId, setRunnerId] = useState<RunnerId>(defaultRunnerId)
+  const [runnerId, setRunnerId] = useState<RunnerId>(loadRunnerId)
   const [proxy, setProxy] = useState<ProxySettings | null>(null)
   const runtimeVariables = useSyncExternalStore(subscribeRuntimeVariables, getRuntimeVariables, getRuntimeVariables)
   const [view, setView] = useState<View>('workspace')
@@ -181,6 +182,10 @@ function App({ user, onSignOut }: AppProps = {}) {
       .catch(() => { if (!cancelled) setProxy({ enabled: false, allowedHosts: [] }) })
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    saveRunnerId(runnerId)
+  }, [runnerId])
 
   useEffect(() => {
     const resumeFrom = lastEventId.current
@@ -259,6 +264,11 @@ function App({ user, onSignOut }: AppProps = {}) {
   const activeSending = currentKey ? sending[currentKey] ?? false : false
   const activeResponse = currentKey ? responses[currentKey] ?? null : null
   const activeSendError = currentKey ? sendErrors[currentKey] ?? null : null
+  // Only offered when the browser send failed with a *confirmed* CORS block and the API would
+  // actually accept this host, so the button never appears for a failure the server cannot fix.
+  const canRetryFromServer = activeResponse?.result.kind === 'failure'
+    && activeResponse.result.corsBlocked === true
+    && canProxy(activeResponse.url ?? '', proxy)
   const activeCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId : null
   // Export follows the current selection: an environment when one is open, otherwise the
   // collection the selection belongs to.
@@ -298,7 +308,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     setResourceError(null)
   }
 
-  async function sendActiveRequest() {
+  async function sendActiveRequest(overrideRunnerId?: RunnerId) {
     if (!activeDraft || activeDraft.kind !== 'request') return
     const key = draftKey(activeDraft)
     const resource = activeDraft.resource
@@ -321,10 +331,10 @@ function App({ user, onSignOut }: AppProps = {}) {
 
     setSendErrors((current) => omitKeys(current, [key]))
     setSending((current) => ({ ...current, [key]: true }))
-    const result = await runnerFor(runnerId).run(outcome.request)
+    const result = await runnerFor(overrideRunnerId ?? runnerId).run(outcome.request)
     setSending((current) => ({ ...current, [key]: false }))
     const sentAt = new Date().toISOString()
-    setResponses((current) => ({ ...current, [key]: { result, sentAt } }))
+    setResponses((current) => ({ ...current, [key]: { result, sentAt, url: outcome.request.url } }))
     setHistory(appendHistoryEntry({
       sentAt,
       method: outcome.request.method,
@@ -861,6 +871,15 @@ function App({ user, onSignOut }: AppProps = {}) {
                   runnerId={runnerId}
                   onRunnerChange={setRunnerId}
                   proxy={proxy}
+                  onRetryFromServer={canRetryFromServer
+                    ? () => {
+                      // Switching the selector as well as retrying: the user has just chosen to
+                      // send from the server, and leaving the control on "Browser" would make the
+                      // next send fail exactly the same way.
+                      setRunnerId('server')
+                      void sendActiveRequest('server')
+                    }
+                    : undefined}
                 />
               </div>
             </>

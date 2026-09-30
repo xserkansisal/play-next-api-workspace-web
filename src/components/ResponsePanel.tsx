@@ -104,7 +104,7 @@ function ExtractToVariable({ response }: { response: ExecutionSuccess }) {
   )
 }
 
-export function ResponsePanel({ sending, response }: { sending: boolean; response: RecordedResponse | null }) {
+export function ResponsePanel({ sending, response, onRetryFromServer }: { sending: boolean; response: RecordedResponse | null; onRetryFromServer?: () => void }) {
   const [tab, setTab] = useState<ResponseTab>('Body')
 
   useEffect(() => {
@@ -143,6 +143,11 @@ export function ResponsePanel({ sending, response }: { sending: boolean; respons
           <span className="response-symbol">⚠</span>
           <strong>Request failed</strong>
           <span role="alert">{result.message}</span>
+          {onRetryFromServer && (
+            <button type="button" className="response-retry" onClick={onRetryFromServer}>
+              Send from the server instead
+            </button>
+          )}
         </div>
       </section>
     )

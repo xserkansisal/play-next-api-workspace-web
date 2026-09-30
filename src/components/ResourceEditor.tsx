@@ -27,6 +27,8 @@ interface ResourceEditorProps {
   onRunnerChange: (runnerId: RunnerId) => void
   /** Null until the API has been asked; the server option stays disabled until then. */
   proxy: ProxySettings | null
+  /** Present only when sending from the server is a genuine remedy for the failure now shown. */
+  onRetryFromServer?: () => void
 }
 
 /**
@@ -46,7 +48,7 @@ function describeRunnerChoice(proxy: ProxySettings | null): string {
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const name = draft.resource.name
@@ -169,7 +171,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
           {error && <p className="inline-error" role="alert">{error}</p>}
         </section>
         <div className="resize-handle" role="separator" aria-label="Resize request and response panels" onPointerDown={resize} />
-        <ResponsePanel sending={sending} response={response} />
+        <ResponsePanel sending={sending} response={response} onRetryFromServer={onRetryFromServer} />
       </div>
     </section>
   )

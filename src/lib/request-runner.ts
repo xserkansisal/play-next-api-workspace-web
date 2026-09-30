@@ -11,7 +11,7 @@
 
 import { isAxiosError } from 'axios'
 
-import { apiClient } from '@/lib/api'
+import { apiClient, type ProxySettings } from '@/lib/api'
 
 export interface PreparedRequest {
   method: string
@@ -35,6 +35,12 @@ export interface ExecutionFailure {
   kind: 'failure'
   message: string
   durationMs: number
+  /**
+   * Set only when a no-cors probe *confirmed* the host answered, so the UI may offer sending from
+   * the server as a recovery. An unconfirmed failure deliberately leaves this unset: suggesting a
+   * fix for a diagnosis that was never established is how a user ends up chasing the wrong cause.
+   */
+  corsBlocked?: boolean
 }
 
 export type ExecutionResult = ExecutionSuccess | ExecutionFailure
@@ -42,6 +48,8 @@ export type ExecutionResult = ExecutionSuccess | ExecutionFailure
 export interface RecordedResponse {
   result: ExecutionResult
   sentAt: string
+  /** The fully-resolved URL that was actually sent, so a failure can be reasoned about without re-deriving it from a draft the user may since have edited. */
+  url?: string
 }
 
 
@@ -74,10 +82,12 @@ export const browserFetchRunner: RequestRunner = {
       })
     } catch (error) {
       const durationMs = performance.now() - started
+      const reachability = await probeReachability(request)
       return {
         kind: 'failure',
         durationMs,
-        message: describeFetchFailure(error, await probeReachability(request), request.url),
+        corsBlocked: reachability === 'reachable',
+        message: describeFetchFailure(error, reachability, request.url),
       }
     }
     const durationMs = performance.now() - started
@@ -238,4 +248,28 @@ export const defaultRunnerId: RunnerId = 'browser'
 
 export function runnerFor(id: RunnerId): RequestRunner {
   return runners[id]
+}
+
+export function isRunnerId(value: string): value is RunnerId {
+  return Object.hasOwn(runners, value)
+}
+
+/**
+ * Whether sending this request from the server would actually be allowed, so the UI can offer that
+ * as a recovery only when it is certain to be available. Matching mirrors the API's allow-list
+ * rules exactly - an entry is either `host` (any port) or `host:port`, compared literally - because
+ * offering a retry the API will refuse is worse than offering nothing.
+ */
+export function canProxy(url: string, proxy: ProxySettings | null): boolean {
+  if (!proxy?.enabled) return false
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+  const hostname = parsed.hostname.toLowerCase()
+  const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80')
+  return proxy.allowedHosts.some((entry) => entry === hostname || entry === `${hostname}:${port}`)
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiClient } from '@/lib/api'
-import { browserFetchRunner, describeFetchFailure, serverProxyRunner } from '@/lib/request-runner'
+import { browserFetchRunner, canProxy, describeFetchFailure, serverProxyRunner } from '@/lib/request-runner'
 
 describe('browserFetchRunner', () => {
   afterEach(() => {
@@ -192,5 +192,63 @@ describe('serverProxyRunner', () => {
 
     expect(result.kind).toBe('failure')
     if (result.kind === 'failure') expect(result.message).toContain('ECONNREFUSED')
+  })
+})
+
+describe('canProxy', () => {
+  const on = (hosts: string[]) => ({ enabled: true, allowedHosts: hosts })
+
+  it('is false when the proxy is disabled or unknown', () => {
+    expect(canProxy('http://localhost:7799/a', null)).toBe(false)
+    expect(canProxy('http://localhost:7799/a', { enabled: false, allowedHosts: ['localhost:7799'] })).toBe(false)
+  })
+
+  it('matches a host:port entry', () => {
+    expect(canProxy('http://localhost:7799/a', on(['localhost:7799']))).toBe(true)
+    expect(canProxy('http://localhost:6620/a', on(['localhost:7799']))).toBe(false)
+  })
+
+  it('matches a bare host entry on any port', () => {
+    expect(canProxy('http://example.com:8080/a', on(['example.com']))).toBe(true)
+    expect(canProxy('https://example.com/a', on(['example.com']))).toBe(true)
+  })
+
+  it('infers the default port so an implicit port still matches an explicit entry', () => {
+    expect(canProxy('http://example.com/a', on(['example.com:80']))).toBe(true)
+    expect(canProxy('https://example.com/a', on(['example.com:443']))).toBe(true)
+    expect(canProxy('https://example.com/a', on(['example.com:80']))).toBe(false)
+  })
+
+  it('does not treat a suffix or subdomain as a match', () => {
+    expect(canProxy('http://evil-example.com/a', on(['example.com']))).toBe(false)
+    expect(canProxy('http://example.com.attacker.net/a', on(['example.com']))).toBe(false)
+    expect(canProxy('http://sub.example.com/a', on(['example.com']))).toBe(false)
+  })
+
+  it('rejects non-http schemes and unparseable urls', () => {
+    expect(canProxy('file:///etc/passwd', on(['localhost']))).toBe(false)
+    expect(canProxy('not a url', on(['localhost']))).toBe(false)
+    expect(canProxy('', on(['localhost']))).toBe(false)
+  })
+})
+
+describe('browserFetchRunner failure classification', () => {
+  it('flags corsBlocked only when the probe confirms the host answered', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await browserFetchRunner.run({ method: 'GET', url: 'http://localhost:7799/a', headers: [], body: null })
+    expect(result.kind).toBe('failure')
+    expect(result.kind === 'failure' && result.corsBlocked).toBe(true)
+  })
+
+  it('leaves corsBlocked unset when the host could not be reached', async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await browserFetchRunner.run({ method: 'GET', url: 'http://localhost:59999/a', headers: [], body: null })
+    expect(result.kind === 'failure' && result.corsBlocked).toBe(false)
   })
 })

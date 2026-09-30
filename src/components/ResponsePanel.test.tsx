@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { getRuntimeVariables, resetRuntimeVariablesCache } from '@/lib/runtime-variables'
@@ -65,5 +65,23 @@ describe('ResponsePanel value extraction', () => {
   it('is not offered for a failed request', () => {
     render(<ResponsePanel sending={false} response={{ sentAt: '2026-01-01T00:00:00.000Z', result: { kind: 'failure', message: 'boom', durationMs: 1 } }} />)
     expect(screen.queryByRole('button', { name: 'Save a value as a variable' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ResponsePanel server retry', () => {
+  const failure = { sentAt: '2026-01-01T00:00:00.000Z', url: 'http://localhost:7799/a', result: { kind: 'failure' as const, message: 'blocked', durationMs: 1, corsBlocked: true } }
+
+  it('offers the retry only when the caller supplies it', () => {
+    const { rerender } = render(<ResponsePanel sending={false} response={failure} />)
+    expect(screen.queryByRole('button', { name: /send from the server instead/i })).toBeNull()
+    rerender(<ResponsePanel sending={false} response={failure} onRetryFromServer={() => {}} />)
+    expect(screen.getByRole('button', { name: /send from the server instead/i })).toBeTruthy()
+  })
+
+  it('invokes the retry when clicked', async () => {
+    const onRetryFromServer = vi.fn()
+    render(<ResponsePanel sending={false} response={failure} onRetryFromServer={onRetryFromServer} />)
+    await userEvent.click(screen.getByRole('button', { name: /send from the server instead/i }))
+    expect(onRetryFromServer).toHaveBeenCalledOnce()
   })
 })

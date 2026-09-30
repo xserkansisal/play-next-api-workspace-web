@@ -100,6 +100,18 @@ The app asks the API once, at startup, whether proxying is available and for whi
 control can say what is reachable rather than offering an option that always fails. When a browser
 send fails with CORS confirmed, the error message points at this control.
 
+**Send from the server instead.** When a browser send fails with CORS *confirmed* and the target
+host is already allow-listed on the API, the failure offers a one-click retry that switches to the
+server and resends. It is deliberately a button rather than an automatic fallback: silently
+re-sending from a different network position is a decision about where a request comes from, and
+that belongs to the user. It is also only shown when it would actually work — a confirmed CORS
+failure against a host the API would refuse offers nothing, because suggesting a fix that then
+fails is worse than suggesting none.
+
+**The choice is remembered.** The selected runner is stored in `localStorage`, so a user working
+against a CORS-less target sets it once rather than on every reload. It records only the choice, no
+target and no request content.
+
 An upstream 404 or 500 comes back as a normal response, not as a failure - only the proxy itself
 being unavailable, the host not being allow-listed, or the target being unreachable is reported as a
 failed send. A response larger than the API's `PROXY_MAX_RESPONSE_BYTES` is marked as truncated in
