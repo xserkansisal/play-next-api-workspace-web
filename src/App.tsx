@@ -5,6 +5,7 @@ import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
+import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { describeApiError, workspaceApi, type ProxySettings } from '@/lib/api'
 import { authApi } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
@@ -118,6 +119,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const runtimeVariables = useSyncExternalStore(subscribeRuntimeVariables, getRuntimeVariables, getRuntimeVariables)
   const [view, setView] = useState<View>('workspace')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [selected, setSelected] = useState<OpenResource | null>(null)
   const [drafts, setDrafts] = useState<Record<string, ResourceDraft>>({})
   const [baselines, setBaselines] = useState<Record<string, ResourceDraft>>({})
@@ -188,6 +190,10 @@ function App({ user, onSignOut }: AppProps = {}) {
   useEffect(() => {
     saveRunnerId(runnerId)
   }, [runnerId])
+
+  useEffect(() => {
+    saveSidebarWidth(sidebarWidth)
+  }, [sidebarWidth])
 
   useEffect(() => {
     const resumeFrom = lastEventId.current
@@ -800,10 +806,13 @@ function App({ user, onSignOut }: AppProps = {}) {
           onCreateFolder={() => void createFolder()}
           onCreateRequest={createRequest}
           onDelete={(resource) => void deleteResource(resource)}
-          onShowEnvironments={() => setView('environments')}
           onShowTrash={() => { setView('trash'); void reloadTrash() }}
           onShowHistory={() => setView('history')}
           collapsed={sidebarCollapsed}
+          environments={environments}
+          onCreateEnvironment={() => void createEnvironment()}
+          width={sidebarWidth}
+          onResize={(next) => setSidebarWidth(clampSidebarWidth(next))}
         />
         <div className="main-content">
           {view === 'trash' ? (

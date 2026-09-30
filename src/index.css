@@ -326,3 +326,17 @@ button:disabled { cursor: not-allowed; }
 .json-copy-path:hover, .json-copy-path:focus-visible { color: #2b2f38; opacity: 1; }
 .json-more { border: 0; background: none; color: #6c7280; font-size: 10px; cursor: pointer; padding: 0; text-decoration: underline; }
 .json-copy-failed { color: #b42318; font-size: 10px; }
+
+/* Resizable sidebar and foldable sidebar sections */
+.sidebar-resize-handle { flex: 0 0 5px; margin-left: -3px; cursor: col-resize; background: transparent; position: relative; z-index: 1; }
+.sidebar-resize-handle:hover, .sidebar-resize-handle:active { background: #dcd9f2; }
+.sidebar-section-toggle { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; text-align: left; }
+.sidebar-section-toggle:hover { color: #5b6170; }
+.tree-chevron-mark { width: 10px; font-size: 9px; flex: none; }
+.sidebar-section-count { color: #b0b5c0; font-weight: 600; }
+/* Bounded rather than flex:1, so the environments list cannot take half the sidebar from the
+   collections tree, which is the one that needs the room. */
+.sidebar-section.environments-section { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; border-top: 1px solid var(--border); }
+.environments-section .sidebar-heading { height: 40px; flex: 0 0 40px; }
+.environments-tree { flex: 0 1 auto; max-height: 32vh; }
+.tree-row.environment .tree-environment-mark { display: grid; place-items: center; width: 17px; color: #8b90f5; font-size: 9px; flex: none; }

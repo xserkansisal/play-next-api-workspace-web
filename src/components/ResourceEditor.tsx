@@ -53,6 +53,7 @@ const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
+  const isRequest = draft.kind === 'request'
   const name = draft.resource.name
   const collectionId = draft.kind === 'collection' ? draft.resource.id : draft.kind === 'environment' ? '' : draft.collectionId
   const collectionName = draft.kind === 'collection' ? draft.resource.name : parentCollectionName ?? collectionId
@@ -89,7 +90,12 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
         {draft.kind === 'collection' && <><span>›</span><strong>Collection settings</strong></>}
       </div>
       <div className="editor-layout">
-        <section className="request-panel" style={{ flex: `0 0 ${requestHeight}%` }}>
+        {/*
+          A response belongs to a request. A collection or folder has none to show and never will,
+          so the split is dropped entirely for them and the form gets the full height, rather than
+          leaving an empty panel that looks like a response failed to arrive.
+        */}
+        <section className="request-panel" style={isRequest ? { flex: `0 0 ${requestHeight}%` } : undefined}>
           <header className="resource-heading">
             <div className="resource-heading-copy">
               {draft.kind === 'request'
@@ -172,8 +178,12 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
           )}
           {error && <p className="inline-error" role="alert">{error}</p>}
         </section>
-        <div className="resize-handle" role="separator" aria-label="Resize request and response panels" onPointerDown={resize} />
-        <ResponsePanel sending={sending} response={response} onRetryFromServer={onRetryFromServer} requestKey={requestKey} />
+        {isRequest && (
+          <>
+            <div className="resize-handle" role="separator" aria-label="Resize request and response panels" onPointerDown={resize} />
+            <ResponsePanel sending={sending} response={response} onRetryFromServer={onRetryFromServer} requestKey={requestKey} />
+          </>
+        )}
       </div>
     </section>
   )

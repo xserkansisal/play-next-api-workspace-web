@@ -79,6 +79,36 @@ sidebar is not, and storing it on the API would let one person's collapsing rear
 else's tree. Clearing site data resets it, and if `localStorage` is unavailable the tree still works
 and simply stops remembering.
 
+## The sidebar
+
+The sidebar holds two foldable sections, **Collections** and **Environments**. Each header shows
+how many items it holds, so a folded section still tells you what is inside it. Folding a section
+is remembered in the same way collapsed folders are — it rides in the same stored set, and the
+section ids are registered as known so that pruning deleted folders cannot quietly reopen a
+section you had folded.
+
+Environments are rows in this tree rather than a separate view. They were previously reachable only
+through a link that replaced the whole tree, which meant you could not see a request and the
+environment feeding its variables in the same place. Selecting or deleting one works exactly as it
+does for a request.
+
+Drag the right edge of the sidebar to resize it. Collection and request names are long and deeply
+nested, and a fixed width truncated them with no recourse. The width is clamped between 180 px and
+640 px — narrower and the tree stops being usable, wider and the editor does — and is saved in
+`localStorage` like the other sidebar preferences. It is clamped again on read, because a width
+dragged on a wide monitor should not swallow a narrow window. Collapsing the sidebar to its ☰ rail
+takes over the width entirely and hides the drag handle, since there is nothing left to resize.
+
+The environments list is bounded to roughly a third of the sidebar height rather than splitting it
+evenly, because the collections tree is the one that needs the room.
+
+## The response area belongs to a request
+
+A collection or a folder cannot be sent, so no response panel is shown under one. Previously the
+panel stayed put and kept displaying the last request's response, which made a folder look as
+though it had just run something. The splitter is dropped along with it, so the settings form gets
+the full height instead of being pinned to half of it.
+
 ## Sending a request from the server instead of the browser
 
 A page can never reach a server that does not send CORS headers. That is a restriction the browser
