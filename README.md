@@ -462,3 +462,54 @@ Do not remove any of these when adapting the config. This was verified live, not
 
 Because nginx proxies `/api` on the same origin the browser loaded the page from, there is no cross-origin request for the app's own traffic, so the API's `CORS_ORIGIN` does not need to match this app's address for the deployed app to work. `CORS_ORIGIN` remains relevant only if something accesses the API directly and cross-origin — for example, a developer running this app's Vite dev server (`npm run dev`, still absolute-URL-based, still bypasses nginx) against the same API, or any other direct browser client. For that case, the API's `CORS_ORIGIN` still needs to be set to whatever origin is making that direct request, exactly as before.
 
+
+### 8. Checking that it actually works
+
+A config that loads is not a config that works: nginx starts happily with buffering left on, and
+the app then looks fine until the first live update never arrives. These five checks are the ones
+that distinguish those cases, and each was run against a real nginx before being written down.
+Substitute your own host and port.
+
+```sh
+# 1. Static files and the SPA fallback. The second URL is not a file on disk;
+#    it must still return the shell, not 404.
+curl -o /dev/null -w '%{http_code} %{content_type}\n' http://HOST/
+curl -o /dev/null -w '%{http_code}\n'                 http://HOST/some/deep/link
+
+# 2. The proxy reaches the API. Note the path: /api/ is stripped by nginx, so
+#    this hits the API's own /health.
+curl http://HOST/api/health
+
+# 3. Auth is wired through the proxy. The app's own calls carry /api/v1
+#    themselves, so they arrive as /api/api/v1/... - that doubling is expected.
+curl -o /dev/null -w '%{http_code}\n' http://HOST/api/api/v1/collections   # 401 when signed out
+
+# 4. SSE is not being buffered. This is the check people skip. Bytes must
+#    appear within a second or two, not when the connection eventually closes.
+curl -N -b cookies.txt http://HOST/api/api/v1/events
+
+# 5. A large import is not cut off at nginx's 1 MB default. A body over 1 MB
+#    must not come back 413; reaching the API and being answered on its own
+#    terms is the pass condition.
+curl -o /dev/null -w '%{http_code}\n' -X POST http://HOST/api/api/v1/collections \
+  -H 'Content-Type: application/json' --data-binary @some-large-file.json
+```
+
+Check 4 is worth doing deliberately. A buffered SSE stream produces no error on either side: the
+browser holds an open connection that never delivers an event, and the API's logs show a healthy
+client. Everything else about the app keeps working, so the symptom shows up later as "live
+updates don't seem to do anything" rather than as a deployment failure.
+
+### 9. Do not leave the API's development helpers enabled
+
+`AUTH_DEV_INBOX_TOKEN` on the API exposes the latest sign-in code over HTTP. The API restricts
+that route to a local caller, but **a reverse proxy defeats an address check**: behind nginx the
+address the API sees is nginx's, so every caller on the network looks local. The API therefore
+also refuses that route for any request carrying a forwarding header, which is what makes the
+restriction survive this deployment shape — but the setting still has no place on a deployed
+machine. It is development-only in the strict sense: a directly connected local caller.
+
+The same reasoning applies to the API's `PROXY_ALLOWED_HOSTS`. Set to `*`, anyone who can sign in
+can make the API issue requests to any host it can reach, which on an internal network is a more
+useful capability to an attacker than it would be on the public internet. Name the hosts you
+actually need unless the trade-off has been considered.
