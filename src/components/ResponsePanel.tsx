@@ -4,8 +4,10 @@ import { extractFromResponse, suggestPaths } from '@/lib/response-extraction'
 import { setRuntimeVariable, validateVariableName } from '@/lib/runtime-variables'
 import { findSyncRule, getSyncRules, removeSyncRule, setSyncRule, subscribeSyncRules } from '@/lib/sync-rules'
 import type { ExecutionSuccess, RecordedResponse } from '@/lib/request-runner'
+import { JsonTree } from '@/components/JsonTree'
 
 type ResponseTab = 'Body' | 'Headers' | 'Cookies'
+type BodyView = 'Tree' | 'Raw'
 
 function formatSize(bytes: number | null | undefined): string {
   if (bytes == null) return '—'
@@ -14,11 +16,12 @@ function formatSize(bytes: number | null | undefined): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function formatBody(text: string, contentType: string | undefined): { pretty: string; isJson: boolean } {
+function formatBody(text: string, contentType: string | undefined): { pretty: string; isJson: boolean; parsed?: unknown } {
   const looksJson = (contentType ?? '').includes('json') || /^[\s]*[[{]/.test(text)
   if (looksJson) {
     try {
-      return { pretty: JSON.stringify(JSON.parse(text), null, 2), isJson: true }
+      const parsed: unknown = JSON.parse(text)
+      return { pretty: JSON.stringify(parsed, null, 2), isJson: true, parsed }
     } catch {
       // Not actually valid JSON despite appearances — fall through to plain text.
     }
@@ -182,6 +185,9 @@ export function ResponsePanel({ sending, response, onRetryFromServer, requestKey
   requestKey?: string | null
 }) {
   const [tab, setTab] = useState<ResponseTab>('Body')
+  // Raw stays available: the tree cannot be selected and copied as JSON, and that is the one thing
+  // the plain pretty-printed body was reliably good for.
+  const [view, setView] = useState<BodyView>('Tree')
 
   useEffect(() => {
     setTab('Body')
@@ -230,7 +236,7 @@ export function ResponsePanel({ sending, response, onRetryFromServer, requestKey
   }
 
   const contentType = result.headers['content-type']
-  const { pretty, isJson } = formatBody(result.bodyText, contentType)
+  const { pretty, isJson, parsed } = formatBody(result.bodyText, contentType)
   const cookieHeader = result.headers['set-cookie']
   const tabs: ResponseTab[] = cookieHeader ? ['Body', 'Headers', 'Cookies'] : ['Body', 'Headers']
 
@@ -247,6 +253,21 @@ export function ResponsePanel({ sending, response, onRetryFromServer, requestKey
         {tabs.map((entry) => (
           <button key={entry} role="tab" aria-selected={tab === entry} className={tab === entry ? 'editor-tab active' : 'editor-tab'} onClick={() => setTab(entry)}>{entry}</button>
         ))}
+        {tab === 'Body' && isJson && (
+          <div className="response-view-toggle" role="group" aria-label="Body view">
+            {(['Tree', 'Raw'] as BodyView[]).map((entry) => (
+              <button
+                key={entry}
+                type="button"
+                aria-pressed={view === entry}
+                className={view === entry ? 'view-toggle active' : 'view-toggle'}
+                onClick={() => setView(entry)}
+              >
+                {entry}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {response.syncOutcomes?.filter((outcome) => !outcome.ok).map((outcome) => (
         <p key={outcome.name} className="extract-error" role="alert">
@@ -262,7 +283,9 @@ export function ResponsePanel({ sending, response, onRetryFromServer, requestKey
       <div className="response-body">
         {tab === 'Body' && (
           pretty
-            ? <pre className={isJson ? 'response-json' : 'response-text'}>{pretty}</pre>
+            ? isJson && view === 'Tree'
+              ? <JsonTree value={parsed} />
+              : <pre className={isJson ? 'response-json' : 'response-text'}>{pretty}</pre>
             : <div className="response-empty"><span>Empty response body.</span></div>
         )}
         {tab === 'Headers' && (

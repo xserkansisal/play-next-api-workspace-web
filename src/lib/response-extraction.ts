@@ -1,3 +1,4 @@
+import { childPath, indexPath } from '@/lib/json-path'
 import type { ExecutionSuccess } from '@/lib/request-runner'
 
 // Extracting a value out of a response and storing it as a variable is the
@@ -192,13 +193,16 @@ export function suggestPaths(response: ExecutionSuccess): string[] {
     if (paths.length >= MAX_SUGGESTIONS || depth > MAX_SUGGESTION_DEPTH) return
     if (Array.isArray(value)) {
       if (prefix) paths.push(prefix)
-      value.slice(0, 3).forEach((entry, index) => walk(entry, `${prefix}[${index}]`, depth + 1))
+      value.slice(0, 3).forEach((entry, index) => walk(entry, indexPath(prefix, index), depth + 1))
       return
     }
     if (value !== null && typeof value === 'object') {
       if (prefix) paths.push(prefix)
       for (const [key, entry] of Object.entries(value)) {
-        const next = /^[A-Za-z_$][\w$]*$/.test(key) ? (prefix ? `${prefix}.${key}` : key) : `${prefix}["${key}"]`
+        const next = childPath(prefix, key)
+        // A key the path syntax cannot express is skipped rather than suggested in a form that
+        // would fail to parse; the response tree reports the same value as unaddressable.
+        if (next === null) continue
         walk(entry, next, depth + 1)
         if (paths.length >= MAX_SUGGESTIONS) return
       }

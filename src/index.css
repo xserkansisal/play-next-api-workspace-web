@@ -299,3 +299,30 @@ button:disabled { cursor: not-allowed; }
 .extract-sync-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
 .extract-sync-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid #ccfbf1; border-radius: 999px; background: #f0fdfa; font-size: 10px; }
 .extract-sync-path { color: #6b7280; }
+
+/* Collapsible JSON response body */
+.response-view-toggle { margin-left: auto; display: flex; gap: 2px; align-self: center; padding-right: 8px; }
+.view-toggle { border: 1px solid #e3e5ea; background: #fff; color: #6c7280; font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.view-toggle.active { background: #f0f1f4; color: #2b2f38; border-color: #d4d7de; }
+.json-tree-wrap { display: flex; flex-direction: column; min-height: 0; }
+.json-tree-bar { display: flex; align-items: center; gap: 6px; padding: 7px 17px; border-bottom: 1px solid #f0f1f4; }
+.json-tree-bar button { border: 1px solid #e3e5ea; background: #fff; color: #424854; font-size: 10px; padding: 3px 9px; border-radius: 4px; cursor: pointer; }
+.json-tree-bar button:disabled { color: #a6abb5; cursor: not-allowed; }
+.json-copied { color: #18825a; font-size: 10px; }
+.json-tree { padding: 8px 17px 14px; font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.7; overflow: auto; }
+.json-row { display: flex; align-items: baseline; gap: 5px; white-space: pre-wrap; word-break: break-word; }
+.json-row:hover { background: #fafbfc; }
+.json-toggle { border: 0; background: none; color: #8b909b; cursor: pointer; padding: 0; width: 12px; font-size: 9px; line-height: 1.7; flex: none; }
+.json-toggle:hover { color: #2b2f38; }
+.json-toggle-spacer { width: 12px; flex: none; }
+.json-key { color: #6c7280; flex: none; }
+.json-summary { color: #a6abb5; }
+.json-count { padding: 0 5px; font-style: italic; }
+.json-string { color: #18825a; }
+.json-number { color: #b45309; }
+.json-boolean, .json-null { color: #7c3aed; }
+.json-copy-path { margin-left: auto; border: 0; background: none; color: #a6abb5; font-size: 9px; cursor: pointer; padding: 0 2px; opacity: 0; flex: none; }
+.json-row:hover .json-copy-path { opacity: 1; }
+.json-copy-path:hover, .json-copy-path:focus-visible { color: #2b2f38; opacity: 1; }
+.json-more { border: 0; background: none; color: #6c7280; font-size: 10px; cursor: pointer; padding: 0; text-decoration: underline; }
+.json-copy-failed { color: #b42318; font-size: 10px; }

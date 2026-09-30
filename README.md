@@ -133,6 +133,29 @@ the same call succeeds from curl or Postman, which are not bound by CORS. Fixing
 CORS on the target server for this app's origin, including an `OPTIONS` preflight reply carrying
 `Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` and `Access-Control-Allow-Headers`.
 
+## Reading a JSON response
+
+A JSON response body is shown as a collapsible tree. Every container can be folded away, and
+**Collapse all** / **Expand all** act on the whole body, so a few hundred lines of response no
+longer has to be scrolled past to reach one field. Collapsed branches are summarised (`6 keys`,
+`2 items`) rather than reduced to an opaque brace.
+
+Everything starts expanded, because that is what the plain pretty-printed body already gave and
+collapsing should not cost information. Past a size where opening everything would stall the tab,
+only the root is opened and **Expand all** is disabled with a note saying why — individual branches
+can still be opened. A container holding more than 200 entries shows the first 200 and a **Show N
+more** row, so nothing is dropped without saying so.
+
+Hovering a row reveals a **path** button that copies that value's path in exactly the form the
+capture form's *Value path* expects, so a value found by browsing can be captured without retyping
+the path and hoping it matches. A few keys cannot be expressed in that path syntax at all (those
+containing `"` or `]`); those rows are still shown, but offer no path rather than one that would
+silently miss. If the clipboard refuses — an insecure origin, a denied permission — the path is
+displayed instead so it can be selected by hand.
+
+**Raw** switches back to the pretty-printed text. It stays available because a tree cannot be
+selected and copied as JSON, which is the one thing the plain body was reliably good for.
+
 ## Chaining a value from one response into the next request
 
 `{{variable}}` references are resolved in the URL, query params, headers and the JSON body. Besides environment
