@@ -167,9 +167,18 @@ text, so reference it **unquoted**:
 { "state": {{mathState}} }
 ```
 
-Writing `"{{mathState}}"` produces invalid JSON. That is reported by the body validator with a line and column
-rather than being silently repaired, because quietly rewriting the request would mean sending something other than
-what was written. Captures are capped at 512 KB: runtime variables share one `sessionStorage` entry with a browser
+Writing `"{{mathState}}"` instead — quoting the placeholder, which is the natural reflex inside a JSON body where
+every other value is quoted — sends the object as a **JSON string** containing that text. Both spellings therefore
+mean exactly what they look like, and either can be the one you want: some APIs really do take a stringified JSON
+blob as a field.
+
+This works because substitution into a JSON body is quote-aware: a value landing inside a string literal is
+JSON-escaped, and one landing outside is inserted as raw JSON. Escaping also fixes a quieter problem that had
+nothing to do with objects — any variable whose value contained a `"`, a `\` or a newline used to break the body
+it was pasted into, failing with a parser error that named a character position and never mentioned the variable
+that caused it.
+
+Captures are capped at 512 KB: runtime variables share one `sessionStorage` entry with a browser
 quota of about 5 MB, so an unbounded capture could evict every other variable.
 
 ### Keeping a captured value in step with the server

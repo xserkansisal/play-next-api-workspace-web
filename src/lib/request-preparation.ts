@@ -32,6 +32,79 @@ export function buildVariableMap(variables: { key: string; value: string; enable
   return map
 }
 
+/**
+ * Substitutes into a JSON body, escaping any value that lands inside a string literal.
+ *
+ * Plain substitution is wrong for a JSON body. `"Bearer {{token}}"` breaks the moment the token
+ * contains a quote or a backslash, and `"{{mathState}}"` - the natural thing to type when editing
+ * a JSON body, since every other value there is quoted - breaks whenever the variable holds an
+ * object. Both produced a parser error naming a character position, with nothing to connect it to
+ * the variable that caused it.
+ *
+ * Escaping resolves this without guessing intent, because each spelling now means what it looks
+ * like: outside quotes the value is inserted as raw JSON, inside quotes it becomes a JSON string
+ * containing that text. The quoted form is a real use case in its own right - some APIs take a
+ * stringified JSON blob as a field.
+ *
+ * Context is read from the *template*, before substitution, so it reflects the quotes the author
+ * wrote rather than any that appear inside a value.
+ */
+export function substituteIntoJson(text: string, variables: Record<string, string>): SubstitutionResult {
+  const missing: string[] = []
+  let out = ''
+  let index = 0
+  let inString = false
+
+  while (index < text.length) {
+    const char = text[index]
+
+    if (inString) {
+      if (char === '\\') {
+        // An escape sequence is copied whole, so the escaped character is never mistaken for a
+        // closing quote.
+        out += text.slice(index, index + 2)
+        index += 2
+        continue
+      }
+      if (char === '"') {
+        inString = false
+        out += char
+        index += 1
+        continue
+      }
+    } else if (char === '"') {
+      inString = true
+      out += char
+      index += 1
+      continue
+    }
+
+    if (char === '{' && text[index + 1] === '{') {
+      const end = text.indexOf('}}', index + 2)
+      const rawName = end === -1 ? null : text.slice(index + 2, end)
+      if (rawName !== null && !/[{}]/.test(rawName)) {
+        const name = rawName.trim()
+        if (Object.prototype.hasOwnProperty.call(variables, name)) {
+          const value = variables[name]
+          // `JSON.stringify` of a string yields a quoted, fully escaped literal; the surrounding
+          // quotes are dropped because the author's own quotes are already in the output.
+          out += inString ? JSON.stringify(value).slice(1, -1) : value
+        } else {
+          missing.push(name)
+          out += text.slice(index, end + 2)
+        }
+        index = end + 2
+        continue
+      }
+    }
+
+    out += char
+    index += 1
+  }
+
+  return { value: out, missing }
+}
+
 export interface JsonParseError {
   message: string
   line: number
@@ -102,7 +175,13 @@ export function prepareRequest(resource: RequestResource, variables: Record<stri
   const resolvedParams = enabledParams.map((entry) => ({ key: substitute(entry.key), value: substitute(entry.value) }))
   const enabledHeaders = resource.headers.filter((entry) => entry.enabled && entry.key.trim())
   const resolvedHeaders = enabledHeaders.map((entry) => ({ key: substitute(entry.key), value: substitute(entry.value) }))
-  const resolvedBody = resource.body ? substitute(resource.body.content) : null
+  const resolvedBody = resource.body
+    ? (() => {
+        const result = substituteIntoJson(resource.body.content, variables)
+        missing.push(...result.missing)
+        return result.value
+      })()
+    : null
 
   if (missing.length > 0) {
     return { ok: false, reason: 'missing-variables', missing: [...new Set(missing)].sort() }

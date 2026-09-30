@@ -137,3 +137,58 @@ describe('chaining a captured response value into a later request', () => {
     }
   })
 })
+
+describe('substituting a variable into a JSON body', () => {
+  const jsonBody = (content: string) =>
+    baseRequest({ method: 'POST', url: 'http://localhost:3000/step', body: { type: 'json', content } })
+
+  const mathState = '{"totalWin":0,"bet":100}'
+
+  it('inserts an object as raw JSON when the reference is written outside quotes', () => {
+    const outcome = prepareRequest(jsonBody('{"mathState": {{mathState}}}'), { mathState })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(JSON.parse(outcome.request.body!)).toEqual({ mathState: { totalWin: 0, bet: 100 } })
+  })
+
+  it('escapes the value into a JSON string when the reference is written inside quotes', () => {
+    // Quoting a placeholder is the natural edit inside a JSON body, where every other value is
+    // quoted. It used to fail with a parser error naming a character position and never mentioning
+    // the variable. It now means exactly what it looks like: a string holding that text.
+    const outcome = prepareRequest(jsonBody('{"mathState": "{{mathState}}"}'), { mathState })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(JSON.parse(outcome.request.body!)).toEqual({ mathState })
+  })
+
+  it('escapes quotes and backslashes so a value containing them cannot break the body', () => {
+    const outcome = prepareRequest(jsonBody('{"note": "say {{phrase}} now"}'), { phrase: 'he said "hi"\\done' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(JSON.parse(outcome.request.body!)).toEqual({ note: 'say he said "hi"\\done now' })
+  })
+
+  it('escapes newlines and tabs, which are not legal raw inside a JSON string', () => {
+    const outcome = prepareRequest(jsonBody('{"note": "{{text}}"}'), { text: 'line1\nline2\tend' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(JSON.parse(outcome.request.body!)).toEqual({ note: 'line1\nline2\tend' })
+  })
+
+  it('does not treat a quote inside an escape sequence as the end of a string', () => {
+    const outcome = prepareRequest(jsonBody('{"a": "\\"{{v}}", "b": {{v}}}'), { v: '1' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(JSON.parse(outcome.request.body!)).toEqual({ a: '"1', b: 1 })
+  })
+
+  it('still reports a missing variable used inside a quoted body value', () => {
+    const outcome = prepareRequest(jsonBody('{"mathState": "{{mathState}}"}'), {})
+    expect(outcome).toEqual({ ok: false, reason: 'missing-variables', missing: ['mathState'] })
+  })
+
+  it('leaves URLs and headers unescaped, since only the body is JSON', () => {
+    const resource = baseRequest({
+      url: 'http://localhost:3000/{{path}}',
+      headers: [{ key: 'X-Raw', value: '{{raw}}', enabled: true, description: '' }],
+    })
+    const outcome = prepareRequest(resource, { path: 'a b', raw: 'he said "hi"' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.request.headers).toContainEqual(['X-Raw', 'he said "hi"'])
+  })
+})
