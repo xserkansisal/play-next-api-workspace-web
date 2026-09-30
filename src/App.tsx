@@ -16,6 +16,7 @@ import { buildVariableMap, prepareRequest } from '@/lib/request-preparation'
 import { activeRunner } from '@/lib/request-runner'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { clearRuntimeVariables, getRuntimeVariables, removeRuntimeVariable, subscribeRuntimeVariables } from '@/lib/runtime-variables'
+import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
 import { applyChangeEvent, isDraftDirty, parseChangeEvent, resourceKey } from '@/lib/workspace-types'
 import type {
   ChangeEvent,
@@ -297,7 +298,7 @@ function App({ user, onSignOut }: AppProps = {}) {
 
     if (!outcome.ok) {
       const message = outcome.reason === 'missing-variables'
-        ? `Undefined variable${outcome.missing.length > 1 ? 's' : ''}: ${outcome.missing.map((name) => `{{${name}}}`).join(', ')}. Define ${outcome.missing.length > 1 ? 'them' : 'it'} in the selected environment, or capture ${outcome.missing.length > 1 ? 'them' : 'it'} from a response with "Save a value as a variable". Request was not sent.`
+        ? describeMissingVariables(diagnoseMissingVariables(outcome.missing, environments, selectedEnvironmentId))
         : outcome.reason === 'invalid-json'
           ? `Body is not valid JSON at line ${outcome.error.line}, column ${outcome.error.column}: ${outcome.error.message}. Request was not sent.`
           : `${outcome.message} Request was not sent.`
