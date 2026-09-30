@@ -64,6 +64,22 @@ The **Export** button follows the current selection: an open environment exports
 `*.postman_environment.json`, otherwise the selected collection exports as
 `*.postman_collection.json`.
 
+## When a request fails with "Failed to fetch"
+
+The Fetch API reports a CORS denial and an unreachable host with the identical opaque `TypeError`,
+so the failure alone does not say which happened. On a failure the runner therefore retries once
+with `mode: 'no-cors'`, which skips the CORS check: if that probe resolves the host is up and CORS
+is the blocker, and if it rejects nothing answered. The message then states the confirmed cause
+instead of listing possibilities.
+
+The probe is a bodyless `GET` to the origin root, not a replay of the request, so a side-effecting
+`POST` is never sent twice. Any HTTP reply — including 404 or 405 — already proves the host is up.
+
+A CORS failure is a restriction imposed by the browser on the *page*, not a fault in the request:
+the same call succeeds from curl or Postman, which are not bound by CORS. Fixing it means enabling
+CORS on the target server for this app's origin, including an `OPTIONS` preflight reply carrying
+`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods` and `Access-Control-Allow-Headers`.
+
 ## Chaining a value from one response into the next request
 
 `{{variable}}` references are resolved in the URL, query params, headers and the JSON body. Besides environment
