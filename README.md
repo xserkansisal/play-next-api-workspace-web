@@ -410,6 +410,22 @@ VITE_API_BASE_URL=/api
 
 This is a common trap: someone deploys, later changes the environment variable on the VM, and is confused when the app still talks to the old value. It is not a bug — it is how Vite's build-time env injection works. Always rebuild after changing this variable.
 
+#### Which env file, and where it belongs
+
+The consequence of build-time injection is that **no environment file belongs on the web server at all**. Only `dist/` is deployed. An `.env` file copied next to it is never read, by anything — nginx serves static files and there is no Node process on the web side. The env file lives on the machine that runs `npm run build`.
+
+If several are present, the one that wins was measured rather than assumed, by building and reading the value back out of the bundle:
+
+| Source | Wins over |
+|---|---|
+| `VITE_API_BASE_URL=/api npm run build` (shell) | everything below |
+| `.env.production` | `.env.local` and `.env` |
+| `.env.local` | `.env` |
+
+`.env.local` is read during a production build too, so a leftover one from local development will be picked up if nothing above it is set — which is how a deployed bundle ends up pointing at `http://localhost:3000`. Either keep a single `.env.production` on the build machine, or pass the value on the build command and keep no file at all. The build command is the safer habit for CI, since it cannot be left behind by accident.
+
+Only `VITE_`-prefixed variables are injected, and whatever you put in one is **readable by anyone who loads the page** — it is compiled into the JavaScript. Never put a secret in a `VITE_` variable. `VITE_API_BASE_URL` is a path, so it is fine.
+
 ### 3. Build
 
 ```sh
