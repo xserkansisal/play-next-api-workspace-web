@@ -621,3 +621,35 @@ describe('duplicating from the tree', () => {
     expect(onClone).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('header tool icons', () => {
+  // These were Unicode glyphs whose size and weight varied by platform font. Asserting on SVG keeps
+  // anyone from reintroducing a glyph, which would also lose the create badge.
+  it('draws every tool button as an icon rather than a text glyph', () => {
+    renderTree()
+    for (const label of ['Expand all', 'Collapse all', 'New request', 'New folder', 'New collection']) {
+      const button = screen.getByLabelText(label)
+      expect(button.querySelector('svg.tool-icon')).toBeTruthy()
+      expect(button.textContent).toBe('')
+    }
+  })
+
+  it('badges the three create actions so they read as creating, not navigating', () => {
+    renderTree()
+    for (const label of ['New request', 'New folder', 'New collection']) {
+      const icon = screen.getByLabelText(label).querySelector('svg.tool-icon')!
+      // Base shape is scaled into a group; the badge is a sibling so it keeps full size.
+      expect(icon.querySelector('g[transform]')).toBeTruthy()
+      expect(icon.children.length).toBe(2)
+    }
+    expect(screen.getByLabelText('Expand all').querySelector('g[transform]')).toBeNull()
+  })
+
+  it('points the fold arrows outward to expand and inward to collapse', () => {
+    renderTree()
+    const shape = (label: string) =>
+      [...screen.getByLabelText(label).querySelectorAll('path')].map((p) => p.getAttribute('d')).join('|')
+
+    expect(shape('Expand all')).not.toBe(shape('Collapse all'))
+  })
+})

@@ -137,6 +137,94 @@ function CollectionIcon({ open }: { open: boolean }) {
   )
 }
 
+/**
+ * The three "new X" buttons sit side by side, so they are built from one template: the object's own
+ * shape scaled into the top-left, plus a badge in the bottom-right. Without the badge they read as
+ * three unrelated shapes rather than three create actions. The badge punches its cross out with
+ * evenodd instead of painting it white, so the button's hover background shows through correctly.
+ */
+function PlusBadge() {
+  return (
+    <path
+      fillRule="evenodd"
+      d="M12.6 9.2a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 1 0 0-6.8M12.05 10.5h1.1v1.55h1.55v1.1h-1.55v1.55h-1.1v-1.55H10.5v-1.1h1.55z"
+    />
+  )
+}
+
+/** Wraps a 16x16 shape so it clears the badge. 0.7 keeps the two from touching at any corner. */
+function CreateIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg className="tool-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <g transform="scale(0.7)">{children}</g>
+      <PlusBadge />
+    </svg>
+  )
+}
+
+const NewRequestIcon = () => (
+  <CreateIcon>
+    {/* A portrait page with its text lines punched out; requests have no icon in the tree itself. */}
+    <path
+      fillRule="evenodd"
+      d="M4 1.5h7a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1M5 4.8h5v1.5H5zM5 8h5v1.5H5zM5 11.2h3v1.5H5z"
+    />
+  </CreateIcon>
+)
+
+const NewFolderIcon = () => (
+  <CreateIcon>
+    <path d="M1.5 4.25A1.75 1.75 0 0 1 3.25 2.5h2.4c.46 0 .9.18 1.23.51l.8.8c.1.1.23.15.36.15h4.71c.97 0 1.75.78 1.75 1.75v6.04c0 .97-.78 1.75-1.75 1.75H3.25A1.75 1.75 0 0 1 1.5 11.75z" />
+  </CreateIcon>
+)
+
+const NewCollectionIcon = () => (
+  <CreateIcon>
+    <path d="M1.5 3.2a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1.3a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
+    <path d="M2.4 6.8h11.2v6.1a1 1 0 0 1-1 1H3.4a1 1 0 0 1-1-1zm3.7 1.9a.75.75 0 0 0 0 1.5h3.8a.75.75 0 0 0 0-1.5z" />
+  </CreateIcon>
+)
+
+/**
+ * Arrows moving apart from / together toward a centre line. The previous diagonal glyphs read as
+ * "enter fullscreen", which is a different action entirely.
+ */
+function FoldIcon({ expand }: { expand: boolean }) {
+  return (
+    <svg className="tool-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <rect x="2" y="7.1" width="12" height="1.8" rx=".9" />
+      {expand ? (
+        <>
+          <path d="M8 1.2l3 3.2H5z" />
+          <path d="M8 14.8l3-3.2H5z" />
+        </>
+      ) : (
+        <>
+          <path d="M5 2.4h6L8 5.6z" />
+          <path d="M5 13.6h6L8 10.4z" />
+        </>
+      )}
+    </svg>
+  )
+}
+
+/** Environments have one create action, so a plain plus is unambiguous; as SVG it matches the
+ *  weight and alignment of the icons beside it, which the fullwidth glyph did not. */
+const PlusIcon = () => (
+  <svg className="tool-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path d="M7.1 2.6h1.8v4.5h4.5v1.8H8.9v4.5H7.1V8.9H2.6V7.1h4.5z" />
+  </svg>
+)
+
+const SearchIcon = () => (
+  <svg className="search-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path
+      fillRule="evenodd"
+      d="M7.2 1.6a5.6 5.6 0 1 0 3.33 10.1l3.09 3.08a.9.9 0 0 0 1.27-1.27l-3.08-3.09A5.6 5.6 0 0 0 7.2 1.6m0 1.8a3.8 3.8 0 1 1 0 7.6 3.8 3.8 0 0 1 0-7.6"
+    />
+  </svg>
+)
+
 function TreeItem({
   collectionId,
   item,
@@ -414,20 +502,20 @@ export function WorkspaceTree({
             aria-label="Expand all"
             disabled={bulkDisabled || allExpanded}
             onClick={() => setCollapsedIds(new Set())}
-          >⤢</button>
+          ><FoldIcon expand /></button>
           <button
             title={bulkDisabled ? 'Clear the search to collapse all' : 'Collapse all folders'}
             aria-label="Collapse all"
             disabled={bulkDisabled || allCollapsed}
             onClick={() => setCollapsedIds(new Set(expandableIds))}
-          >⤡</button>
+          ><FoldIcon expand={false} /></button>
           <span className="sidebar-tools-divider" aria-hidden="true" />
-          <button title="New request" aria-label="New request" onClick={onCreateRequest}>＋</button>
-          <button title="New folder" aria-label="New folder" onClick={onCreateFolder}>▱</button>
-          <button title="New collection" aria-label="New collection" onClick={onCreateCollection}>▤</button>
+          <button title="New request" aria-label="New request" onClick={onCreateRequest}><NewRequestIcon /></button>
+          <button title="New folder" aria-label="New folder" onClick={onCreateFolder}><NewFolderIcon /></button>
+          <button title="New collection" aria-label="New collection" onClick={onCreateCollection}><NewCollectionIcon /></button>
         </SectionHeader>
         <label className="search">
-          <span aria-hidden="true">⌕</span>
+          <SearchIcon />
           <input aria-label="Search collections" placeholder="Search collections and environments" value={search} onChange={(event) => setSearch(event.target.value)} />
         </label>
         {collectionsOpen && (
@@ -461,7 +549,7 @@ export function WorkspaceTree({
         )}
         <div className="sidebar-section environments-section">
           <SectionHeader label="Environments" count={environments.length} expanded={environmentsOpen} onToggle={() => toggle(ENVIRONMENTS_SECTION)}>
-            <button title="New environment" aria-label="New environment" onClick={onCreateEnvironment}>＋</button>
+            <button title="New environment" aria-label="New environment" onClick={onCreateEnvironment}><PlusIcon /></button>
           </SectionHeader>
           {environmentsOpen && (
             <nav className="tree environments-tree" aria-label="Environments">

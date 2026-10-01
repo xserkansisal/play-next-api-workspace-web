@@ -57,14 +57,16 @@ button:disabled { cursor: not-allowed; }
 .sidebar { width: 252px; flex: 0 0 252px; min-width: 215px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid var(--border); }
 .sidebar-heading { height: 54px; flex: 0 0 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px 0 18px; color: #858b98; font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .sidebar-tools { display: flex; gap: 3px; }
-.sidebar-tools button, .tree-chevron, .tree-delete, .tree-clone, .row-remove { display: grid; place-items: center; border: 0; background: transparent; color: #808694; }
+.sidebar-tools button, .tree-chevron, .tree-delete, .tree-clone, .row-remove { display: grid; place-items: center; border: 0; background: transparent; color: #6b7180; }
 .sidebar-tools button { width: 27px; height: 27px; border-radius: 6px; font-size: 17px; }
-.sidebar-tools button:hover:not(:disabled) { background: #f5f4fb; }
+.sidebar-tools button:hover:not(:disabled) { background: #f0eff9; color: #44405e; }
+.tool-icon { width: 16px; height: 16px; fill: currentColor; }
 .sidebar-tools button:disabled { opacity: 0.35; cursor: default; }
 .sidebar-tools-divider { width: 1px; align-self: stretch; margin: 4px 2px; background: #e6e5ef; }
 .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
 .checkbox-row input { width: auto; }
-.search { height: 34px; display: flex; align-items: center; gap: 8px; margin: 0 13px 15px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; color: #a1a6b0; font-size: 12px; }
+.search { height: 34px; display: flex; align-items: center; gap: 8px; margin: 0 13px 15px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; color: #8a90a0; font-size: 12px; }
+.search-icon { width: 14px; height: 14px; flex: none; fill: currentColor; }
 .search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #454b57; background: transparent; font-size: 12px; }
 .tree { overflow: auto; flex: 1; padding: 0 8px 14px; }
 /* Indent guides are drawn as a repeating gradient rather than nested DOM, because the tree renders
