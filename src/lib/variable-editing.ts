@@ -28,6 +28,17 @@ export function editEnvironmentVariable(
   return { ok: true, variables: next }
 }
 
+/**
+ * Appends a new enabled row. A disabled row with the same key does not count as a clash: it is
+ * not a definition, and the environment editor already allows the two to coexist.
+ */
+export function addEnvironmentVariable(variables: readonly EnvironmentVariable[], key: string, value: string): VariableEditResult {
+  if (variables.some((row) => row.enabled && row.key === key)) {
+    return { ok: false, error: `"${key}" already exists in this environment.` }
+  }
+  return { ok: true, variables: [...variables, { key, value, enabled: true }] }
+}
+
 export function removeEnvironmentVariable(variables: readonly EnvironmentVariable[], key: string): VariableEditResult {
   if (!variables.some((row) => row.enabled && row.key === key)) {
     return { ok: false, error: `"${key}" is no longer defined in this environment.` }

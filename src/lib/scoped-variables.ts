@@ -87,6 +87,20 @@ export async function updateScopedVariable(scope: VariableScope, oldKey: string,
   }
 }
 
+/**
+ * Creates a variable, refusing a name that already exists in that scope.
+ *
+ * The API's `PUT` is an upsert, so without this check "Add" would silently overwrite an existing
+ * value, which for a global one is a teammate's value. This only checks the local mirror; see
+ * docs/variables-add-backend.md for closing the race on the server.
+ */
+export async function addScopedVariable(scope: VariableScope, key: string, value: string): Promise<void> {
+  if (cache.some((entry) => entry.scope === scope && entry.key === key)) {
+    throw new Error(`"${key}" already exists in this scope.`)
+  }
+  await saveScopedVariable(scope, key, value)
+}
+
 export async function removeScopedVariable(scope: VariableScope, key: string): Promise<void> {
   const before = cache
   publish(before.filter((entry) => !(entry.scope === scope && entry.key === key)))

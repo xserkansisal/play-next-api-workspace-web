@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { editEnvironmentVariable, removeEnvironmentVariable } from '@/lib/variable-editing'
+import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable } from '@/lib/variable-editing'
 
 const rows = [
   { key: 'host', value: 'old', enabled: true },
@@ -42,5 +42,16 @@ describe('removeEnvironmentVariable', () => {
 
   it('reports a key that disappeared', () => {
     expect(removeEnvironmentVariable(rows, 'gone').ok).toBe(false)
+  })
+})
+
+describe('addEnvironmentVariable', () => {
+  it('appends an enabled row', () => {
+    expect(addEnvironmentVariable(rows, 'port', '80')).toEqual({ ok: true, variables: [...rows, { key: 'port', value: '80', enabled: true }] })
+  })
+
+  it('refuses a key that is already enabled, but not one that is only disabled', () => {
+    expect(addEnvironmentVariable(rows, 'token', 'x').ok).toBe(false)
+    expect(addEnvironmentVariable([{ key: 'k', value: '', enabled: false }], 'k', 'v').ok).toBe(true)
   })
 })

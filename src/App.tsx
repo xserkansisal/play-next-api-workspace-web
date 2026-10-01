@@ -19,8 +19,9 @@ import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
 import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
+import { loadVariableOrder } from '@/lib/variable-order-storage'
 import { resolveVariables, toVariableMap } from '@/lib/variable-scopes'
-import { editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
+import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
 import { extractFromResponse } from '@/lib/response-extraction'
 import { applySyncRules } from '@/lib/sync-rules'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
@@ -122,6 +123,12 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [runnerId, setRunnerId] = useState<RunnerId>(loadRunnerId)
   const [proxy, setProxy] = useState<ProxySettings | null>(null)
   const scopedVariables = useSyncExternalStore(subscribeScopedVariables, getScopedVariables, getScopedVariables)
+  const userId = user?.id ?? ''
+  // The Variables-menu order is a per-user preference; it is not needed to work, so it loads on
+  // its own instead of holding up (or failing) the workspace load.
+  useEffect(() => {
+    void loadVariableOrder(userId)
+  }, [userId])
   const [view, setView] = useState<View>('workspace')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
@@ -926,7 +933,9 @@ function App({ user, onSignOut }: AppProps = {}) {
           <VariablesMenu
             resolved={resolvedVariables}
             hasEnvironment={!!selectedEnvironment}
+            environmentId={selectedEnvironment?.id ?? null}
             onEditEnvironmentVariable={(oldKey, newKey, value) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value))}
+            onAddEnvironmentVariable={(key, value) => mutateSelectedEnvironmentVariables((variables) => addEnvironmentVariable(variables, key, value))}
             onRemoveEnvironmentVariable={(name) => mutateSelectedEnvironmentVariables((variables) => removeEnvironmentVariable(variables, name))}
           />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>

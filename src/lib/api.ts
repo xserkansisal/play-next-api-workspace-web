@@ -11,6 +11,7 @@ import type {
   WorkspaceItem,
 } from '@/lib/workspace-types'
 import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
+import type { VariableOrderPreferences } from '@/lib/variable-order'
 
 const apiOrigin = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
@@ -78,6 +79,15 @@ export const workspaceApi = {
   },
   async deleteVariable(scope: VariableScope, key: string): Promise<void> {
     await apiClient.delete(`/variables/${scope}/${encodeURIComponent(key)}`)
+  },
+  /** The signed-in user's saved Variables-menu order, or `null` when they have never saved one. */
+  async variableOrderPreferences(): Promise<unknown> {
+    const { data } = await apiClient.get<{ preferences: unknown }>('/preferences/variable-order')
+    return data?.preferences ?? null
+  },
+  async saveVariableOrderPreferences(preferences: VariableOrderPreferences): Promise<unknown> {
+    const { data } = await apiClient.put<{ preferences: unknown }>('/preferences/variable-order', { preferences })
+    return data?.preferences ?? null
   },
   async collections() {
     const { data } = await apiClient.get<{ collections: CollectionResource[] }>('/collections')
