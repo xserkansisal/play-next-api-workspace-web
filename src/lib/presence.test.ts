@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiClient } from '@/lib/api'
-import { parsePresenceSnapshot, presenceApi, presenceLocation, presenceResourceKey } from '@/lib/presence'
+import type { CollectionResource } from '@/lib/workspace-types'
+import { nestedPresenceByResource, parsePresenceSnapshot, presenceApi, presenceLocation, presenceResourceKey } from '@/lib/presence'
 
 describe('workspace presence', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -43,5 +44,35 @@ describe('workspace presence', () => {
     await presenceApi.heartbeat('tab-id', null)
     expect(put).toHaveBeenNthCalledWith(1, '/presence', { clientId: 'tab-id', location })
     expect(put).toHaveBeenNthCalledWith(2, '/presence', { clientId: 'tab-id', location: null })
+  })
+
+  it('rolls viewers up to every ancestor, preferring a direct view and listing each user once', () => {
+    const base = { collectionId: 'c1', parentId: null, description: '' }
+    const collections = [{
+      id: 'c1', name: 'Payments', description: '',
+      items: [{
+        ...base, id: 'f1', type: 'folder', name: 'Orders',
+        items: [
+          { ...base, id: 'r1', type: 'request', name: 'Create' },
+          { ...base, id: 'r2', type: 'request', name: 'List' },
+        ],
+      }],
+    }] as unknown as CollectionResource[]
+    const ayse = { userId: 'u1', firstName: 'Ayse', location: { kind: 'request', collectionId: 'c1', itemId: 'r1' } } as const
+    const ayseOtherTab = { ...ayse, location: { kind: 'request', collectionId: 'c1', itemId: 'r2' } } as const
+    const mehmet = { userId: 'u2', firstName: 'Mehmet', location: { kind: 'folder', collectionId: 'c1', itemId: 'f1' } } as const
+
+    const nested = nestedPresenceByResource(collections, {
+      'request:c1:r1': [ayse],
+      'request:c1:r2': [ayseOtherTab],
+      'folder:c1:f1': [mehmet],
+    })
+
+    expect(nested['folder:c1:f1']).toEqual([{ user: ayse, path: ['Create'] }])
+    expect(nested['collection:c1']).toEqual([
+      { user: mehmet, path: ['Orders'] },
+      { user: ayse, path: ['Orders', 'Create'] },
+    ])
+    expect(nested['request:c1:r1']).toBeUndefined()
   })
 })

@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api'
-import { resourceKey, type OpenResource } from '@/lib/workspace-types'
+import { resourceKey, type CollectionResource, type OpenResource, type WorkspaceItem } from '@/lib/workspace-types'
 
 export type PresenceLocation =
   | { kind: 'collection'; collectionId: string }
@@ -26,6 +26,50 @@ export function presenceLocation(resource: OpenResource | null): PresenceLocatio
 
 export function presenceResourceKey(location: PresenceLocation): string {
   return resourceKey(location)
+}
+
+export interface NestedPresence {
+  user: PresenceUser
+  /** Names from just below the ancestor row down to the resource the user is viewing. */
+  path: string[]
+}
+
+/**
+ * For every collection and folder, the users viewing something beneath it. Users already viewing
+ * that row directly are left out so each person appears once per row.
+ */
+export function nestedPresenceByResource(
+  collections: CollectionResource[],
+  presenceByResource: Record<string, PresenceUser[]>,
+): Record<string, NestedPresence[]> {
+  const result: Record<string, NestedPresence[]> = {}
+
+  const record = (key: string, found: NestedPresence[]) => {
+    const direct = new Set((presenceByResource[key] ?? []).map(({ userId }) => userId))
+    const seen = new Set<string>()
+    const nested = found.filter(({ user }) => {
+      if (direct.has(user.userId) || seen.has(user.userId)) return false
+      seen.add(user.userId)
+      return true
+    })
+    if (nested.length) result[key] = nested
+  }
+
+  const visit = (collectionId: string, item: WorkspaceItem): NestedPresence[] => {
+    const key = resourceKey({ kind: item.type, collectionId, itemId: item.id })
+    const below = item.type === 'folder'
+      ? item.items.flatMap((child) => visit(collectionId, child))
+      : []
+    if (item.type === 'folder') record(key, below)
+    const here = (presenceByResource[key] ?? []).map((user) => ({ user, path: [] as string[] }))
+    return [...here, ...below].map(({ user, path }) => ({ user, path: [item.name, ...path] }))
+  }
+
+  for (const collection of collections) {
+    const below = collection.items.flatMap((item) => visit(collection.id, item))
+    record(resourceKey({ kind: 'collection', collectionId: collection.id }), below)
+  }
+  return result
 }
 
 export function parsePresenceSnapshot(data: string): PresenceSnapshot | null {

@@ -85,6 +85,31 @@ describe('WorkspaceTree expand/collapse all', () => {
     expect(screen.getByRole('img', { name: 'Viewing now: Ayse Yilmaz' })).toBeInTheDocument()
   })
 
+  it('marks only collapsed parents of a viewed child, so open folders stay uncluttered', async () => {
+    const user = userEvent.setup()
+    renderTree({
+      presenceByResource: {
+        'request:c1:r1': [{
+          userId: 'u1',
+          firstName: 'Ayse',
+          lastName: 'Yilmaz',
+          location: { kind: 'request', collectionId: 'c1', itemId: 'r1' },
+        }],
+      },
+    })
+
+    expect(screen.getByRole('img', { name: 'Viewing now: Ayse Yilmaz' })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /Viewing inside/ })).toBeNull()
+
+    await user.click(screen.getByLabelText('Collapse Nested'))
+    expect(screen.getByRole('img', { name: 'Viewing inside: Ayse Yilmaz → Deep request' })).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Collapse all'))
+
+    expect(screen.queryByRole('img', { name: 'Viewing now: Ayse Yilmaz' })).toBeNull()
+    expect(screen.getByRole('img', { name: 'Viewing inside: Ayse Yilmaz → Charges / Nested / Deep request' })).toBeInTheDocument()
+  })
+
   it('collapses every collection and folder in one action', async () => {
     const user = userEvent.setup()
     renderTree()
