@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { BulkImportDialog } from '@/components/BulkImportDialog'
 import { CompareDiff } from '@/components/CompareDiff'
 import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
@@ -10,7 +11,7 @@ import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { VariablesMenu } from '@/components/VariablesMenu'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
-import { describeApiError, workspaceApi, type ProxySettings } from '@/lib/api'
+import { describeApiError, workspaceApi, type BulkImportInput, type ProxySettings } from '@/lib/api'
 import { authApi } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
 import { parsePresenceSnapshot, presenceApi, presenceLocation, presenceResourceKey } from '@/lib/presence'
@@ -185,6 +186,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({})
   const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory())
   const [importOpen, setImportOpen] = useState(false)
+  const [bulkImportOpen, setBulkImportOpen] = useState(false)
   const selectedRef = useRef(selected)
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
@@ -718,6 +720,42 @@ function App({ user, onSignOut }: AppProps = {}) {
     }
   }
 
+  async function previewBulkImport(collectionId: string, input: BulkImportInput) {
+    return workspaceApi.bulkImport(collectionId, input)
+  }
+
+  async function importBulkItems(collectionId: string, input: BulkImportInput) {
+    const result = await workspaceApi.bulkImport(collectionId, input)
+    let refreshError: string | undefined
+    try {
+      const refreshed = await workspaceApi.collection(collectionId)
+      setCollections((current) => sortByName(current.map((entry) => entry.id === refreshed.id ? refreshed : entry)))
+      const key = `collection:${collectionId}`
+      setDrafts((current) => {
+        const draft = current[key]
+        return draft?.kind === 'collection'
+          ? { ...current, [key]: { ...draft, resource: { ...draft.resource, items: refreshed.items } } }
+          : current
+      })
+      setBaselines((current) => {
+        const baseline = current[key]
+        return baseline?.kind === 'collection'
+          ? { ...current, [key]: { ...baseline, resource: { ...baseline.resource, items: refreshed.items } } }
+          : current
+      })
+    } catch (error) {
+      refreshError = `The import succeeded, but the collection could not be refreshed: ${describeApiError(error)}`
+      setLoadingError(refreshError)
+    }
+    return { result, refreshError }
+  }
+
+  function finishBulkImport(collectionId: string, parentId: string | null) {
+    setBulkImportOpen(false)
+    setSelected(parentId ? { kind: 'folder', collectionId, itemId: parentId } : { kind: 'collection', collectionId })
+    setView('workspace')
+  }
+
   function downloadJson(content: unknown, fileName: string) {
     const blob = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -1071,6 +1109,7 @@ function App({ user, onSignOut }: AppProps = {}) {
             onRemoveEnvironmentVariable={(name) => mutateSelectedEnvironmentVariables((variables) => removeEnvironmentVariable(variables, name))}
           />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
+          <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
             {user && <UserProfileMenu user={user} />}
@@ -1218,6 +1257,18 @@ function App({ user, onSignOut }: AppProps = {}) {
 
       {importOpen && (
         <ImportDialog collections={collections} environments={environments} onCancel={() => setImportOpen(false)} onImport={importCollection} onImportEnvironment={importEnvironment} />
+      )}
+
+      {bulkImportOpen && (
+        <BulkImportDialog
+          collections={collections}
+          initialCollectionId={selected && selected.kind !== 'environment' ? selected.collectionId : undefined}
+          initialParentId={selected?.kind === 'folder' ? selected.itemId : undefined}
+          onCancel={() => setBulkImportOpen(false)}
+          onComplete={finishBulkImport}
+          onPreview={previewBulkImport}
+          onImport={importBulkItems}
+        />
       )}
 
       {restoreState && (

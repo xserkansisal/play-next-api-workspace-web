@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bulk import · Review</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">↗</span> play next <small>API Workspace</small></div>
+      <div class="top-actions"><span>Production ▾</span><span>Variables</span><span class="avatar">ST</span></div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <p class="side-title">Collections</p>
+        <div class="tree-row selected"><span class="tree-icon">▣</span> Shop API</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Authentication</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Products</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Orders</div>
+        <div class="tree-row"><span class="tree-icon">▣</span> Internal Tools</div>
+      </aside>
+      <main class="main">
+        <h1 class="page-title">Shop API</h1>
+        <p class="page-subtitle">Requests and folders in this collection</p>
+        <div class="empty-card">Select a request or folder to view it here</div>
+      </main>
+    </div>
+  </div>
+  <div class="backdrop">
+    <section class="dialog wide" role="dialog" aria-modal="true" aria-labelledby="title">
+      <header class="dialog-header">
+        <div>
+          <h1 id="title">Review bulk import</h1>
+          <p>Check the contents and conflict behavior before adding anything to Shop API / Products.</p>
+        </div>
+        <button class="close" aria-label="Close">×</button>
+      </header>
+      <div class="stepbar">
+        <span class="step done"><span class="step-number">✓</span> Choose destination</span>
+        <span class="step-line"></span>
+        <span class="step active"><span class="step-number">2</span> Review import</span>
+      </div>
+      <div class="dialog-content">
+        <div class="file-card">
+          <div class="file-icon">{ }</div>
+          <div class="file-meta">
+            <strong>shop-api-bulk-import.json</strong>
+            <span>42 KB · Destination: Shop API / Products</span>
+          </div>
+          <span class="file-ok">✓ Valid JSON</span>
+        </div>
+
+        <h2 class="section-heading">Import summary</h2>
+        <div class="stats">
+          <div class="stat"><strong>2</strong><span>folders to create</span></div>
+          <div class="stat"><strong>3</strong><span>requests to create</span></div>
+          <div class="stat"><strong>1</strong><span>folder to rename</span></div>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <h2 class="section-heading" style="margin-top:0">Conflict handling</h2>
+            <div class="option-card">
+              <label><input type="radio" checked name="conflict"> Rename on conflict <span style="color:#777e8c;font-weight:400">(default)</span></label>
+              <p>Keep existing folders. Conflicting imported folders get names like “Auth (copy)”.</p>
+            </div>
+            <div class="option-card" style="margin-top:8px">
+              <label><input type="radio" name="conflict"> Fail on conflict</label>
+              <p>Return an error and import nothing if a top-level folder name is already taken.</p>
+            </div>
+            <div class="notice"><span>!</span><span>Existing folder “Auth” conflicts. With Rename selected, the imported folder will become “Auth (copy)”.</span></div>
+          </div>
+          <div>
+            <h2 class="section-heading" style="margin-top:0">Preview</h2>
+            <div class="tree-preview">
+              <div class="preview-row"><span class="preview-icon">▾</span><strong>Auth (copy)</strong></div>
+              <div class="preview-row indent-1"><span class="method post">POST</span> Login</div>
+              <div class="preview-row indent-1"><span class="method">GET</span> Current user</div>
+              <div class="preview-row"><span class="preview-icon">▾</span> Reports</div>
+              <div class="preview-row indent-1"><span class="method">GET</span> Daily summary</div>
+            </div>
+            <div class="notice"><span>!</span><span><strong>Sensitive header:</strong> Authorization appears in Auth / Login. Review the imported request before sending it.</span></div>
+            <div class="notice info"><span>i</span><span>This is a dry-run preview. Nothing is saved until you choose Import.</span></div>
+          </div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button class="button">← Back</button>
+        <div class="footer-right">
+          <button class="button">Cancel</button>
+          <button class="button primary">Import 5 items</button>
+        </div>
+      </footer>
+    </section>
+  </div>
+</body>
+</html>

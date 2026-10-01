@@ -50,6 +50,31 @@ export interface ProxySettings {
   allowedHosts: string[]
 }
 
+export type ImportConflictPolicy = 'rename' | 'fail'
+
+export interface BulkImportInput {
+  parentId: string | null
+  onConflict: ImportConflictPolicy
+  dryRun: boolean
+  items: TreeNodeInput[]
+}
+
+export interface BulkImportResult {
+  collectionId: string
+  parentId: string | null
+  dryRun: boolean
+  created: { folders: number; requests: number }
+  renamed: Array<{ path: string[]; from: string; to: string }>
+  warnings: Array<{ path: string[]; code: string; header?: string }>
+  roots: Array<{ id: string; kind: 'folder' | 'request' }>
+  changedAt: string
+}
+
+export function apiErrorCode(error: unknown): string | undefined {
+  if (!isAxiosError<{ error?: { code?: string } }>(error)) return undefined
+  return error.response?.data?.error?.code
+}
+
 export const workspaceApi = {
   /**
    * Whether the API will run requests on the client's behalf, and for which hosts. Asked once so
@@ -95,6 +120,14 @@ export const workspaceApi = {
   },
   async collection(id: string) {
     const { data } = await apiClient.get<CollectionResource>(`/collections/${id}`)
+    return data
+  },
+  async bulkImport(collectionId: string, input: BulkImportInput) {
+    const { data } = await apiClient.post<BulkImportResult>(
+      `/collections/${collectionId}/import`,
+      input,
+      { timeout: 120_000 },
+    )
     return data
   },
   async createCollection(input: Pick<CollectionResource, 'name' | 'description'> & { items?: TreeNodeInput[] }) {

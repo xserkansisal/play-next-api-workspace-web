@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bulk import · Choose destination</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">↗</span> play next <small>API Workspace</small></div>
+      <div class="top-actions"><span>Production ▾</span><span>Variables</span><span class="avatar">ST</span></div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <p class="side-title">Collections</p>
+        <div class="tree-row selected"><span class="tree-icon">▣</span> Shop API</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Authentication</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Products</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Orders</div>
+        <div class="tree-row"><span class="tree-icon">▣</span> Internal Tools</div>
+        <div class="tree-row"><span class="tree-icon">▣</span> Demo APIs</div>
+      </aside>
+      <main class="main">
+        <h1 class="page-title">Shop API</h1>
+        <p class="page-subtitle">Requests and folders in this collection</p>
+        <div class="empty-card">Select a request or folder to view it here</div>
+      </main>
+    </div>
+  </div>
+  <div class="backdrop">
+    <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="title">
+      <header class="dialog-header">
+        <div>
+          <h1 id="title">Import into a collection</h1>
+          <p>Add folders and requests from a Play Next bulk import file to an existing collection.</p>
+        </div>
+        <button class="close" aria-label="Close">×</button>
+      </header>
+      <div class="stepbar">
+        <span class="step active"><span class="step-number">1</span> Choose destination</span>
+        <span class="step-line"></span>
+        <span class="step"><span class="step-number">2</span> Review import</span>
+      </div>
+      <div class="dialog-content">
+        <label class="field-label" for="collection">Destination collection</label>
+        <div class="select-wrap">
+          <select id="collection" class="select">
+            <option>Shop API</option>
+            <option>Internal Tools</option>
+            <option>Demo APIs</option>
+          </select>
+        </div>
+        <label class="field-label" for="folder">Import location</label>
+        <div class="select-wrap">
+          <select id="folder" class="select">
+            <option>Collection root</option>
+            <option>Authentication</option>
+            <option>Products</option>
+            <option>Orders</option>
+          </select>
+        </div>
+        <div class="dropzone">
+          <div class="upload-icon">↑</div>
+          <strong>Drop a bulk import JSON file here</strong>
+          <span>or <span class="fake-link">browse files</span> · JSON, up to 10 MB</span>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button class="button subtle">Use Postman import instead</button>
+        <div class="footer-right">
+          <button class="button">Cancel</button>
+          <button class="button primary" disabled>Continue</button>
+        </div>
+      </footer>
+    </section>
+  </div>
+</body>
+</html>

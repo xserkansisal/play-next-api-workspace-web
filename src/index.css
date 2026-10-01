@@ -295,6 +295,53 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .modal-backdrop { z-index: 10; position: fixed; inset: 0; display: grid; place-items: center; padding: 18px; background: #15192377; }
 .restore-dialog { width: min(560px, 100%); max-height: 90vh; overflow: auto; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: #fff; box-shadow: 0 18px 60px #11182735; }
 .import-dialog { width: min(680px, 100%); display: flex; flex-direction: column; gap: 12px; }
+.bulk-import-dialog { width: min(740px, 100%); display: flex; flex-direction: column; gap: 10px; }
+.bulk-import-steps { display: flex; gap: 26px; padding: 10px 0 12px; border-top: 1px solid #f0f0f3; border-bottom: 1px solid #f0f0f3; color: #858b97; font-size: 11px; }
+.bulk-import-steps .active { color: #5849c0; font-weight: 650; }
+.bulk-import-steps .done { color: #178c62; font-weight: 650; }
+.bulk-import-content { display: flex; min-height: 100px; flex-direction: column; gap: 9px; }
+.bulk-import-content > .field-label { margin-top: 5px; }
+.bulk-import-dropzone { min-height: 116px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; margin-top: 10px; border: 1px dashed #c9c4ed; border-radius: 9px; color: #858b97; background: #faf9ff; cursor: pointer; font-size: 11px; }
+.bulk-import-dropzone:focus-within { outline: 2px solid #9b8af2; outline-offset: 2px; }
+.bulk-import-dropzone strong { max-width: 90%; overflow: hidden; color: #414653; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-import-dropzone input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.bulk-import-upload-icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 9px; color: #6756d8; background: #efedff; font-size: 19px; }
+.bulk-import-file-summary { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; color: #777e8c; font-size: 11px; }
+.bulk-import-file-summary .field-label { margin: 8px 0 0; }
+.bulk-import-file-summary small { line-height: 1.5; }
+.bulk-import-valid { color: #178c62; font-weight: 650; }
+.bulk-import-file-name { margin: 0 0 3px; color: #777e8c; font-size: 11px; }
+.bulk-import-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.bulk-import-stats > div { padding: 10px; border: 1px solid #e9e9ee; border-radius: 8px; background: #fff; }
+.bulk-import-stats strong { display: block; color: #343a46; font-size: 17px; }
+.bulk-import-stats span { display: block; margin-top: 3px; color: #858b97; font-size: 10px; }
+.bulk-import-tree-preview { overflow: hidden; border: 1px solid #e9e9ee; border-radius: 8px; background: #fbfbfc; }
+.bulk-import-tree-preview h3 { margin: 0; padding: 9px 11px; border-bottom: 1px solid #ededf1; color: #424854; font-size: 11px; }
+.bulk-import-tree-preview > div { max-height: 180px; overflow: auto; padding: 5px 0; }
+.bulk-import-tree-preview > div > p { margin: 6px 11px; color: #858b97; font-size: 10px; }
+.bulk-import-tree-row { display: flex; min-height: 26px; align-items: center; gap: 7px; overflow: hidden; padding-right: 10px; color: #545b68; font-size: 11px; }
+.bulk-import-tree-row > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-import-tree-indent { flex: 0 0 auto; }
+.bulk-import-tree-icon { color: #777e8c; font-size: 11px; }
+.bulk-import-method { min-width: 35px; color: #16845b; font-size: 9px; font-weight: 750; }
+.bulk-import-method.post, .bulk-import-method.put, .bulk-import-method.patch { color: #bf7909; }
+.bulk-import-method.delete { color: #d04747; }
+.bulk-import-policy-summary, .bulk-import-dry-run, .bulk-import-no-warnings { margin: 3px 0; color: #747b88; font-size: 11px; line-height: 1.5; }
+.bulk-import-result-list { overflow: hidden; border: 1px solid #e9e9ee; border-radius: 8px; }
+.bulk-import-result-list h3, .bulk-import-warnings h3 { margin: 0; padding: 9px 11px; color: #424854; font-size: 11px; }
+.bulk-import-result-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 34px; padding: 7px 11px; border-top: 1px solid #f0f0f3; color: #646b77; font-size: 10px; }
+.bulk-import-result-row strong { color: #414753; text-align: right; font-size: 10px; }
+.bulk-import-warnings { border: 1px solid #f0ddaf; border-radius: 8px; background: #fffaf0; }
+.bulk-import-warnings p { margin: 0; padding: 8px 11px; border-top: 1px solid #f4e8ce; color: #775715; font-size: 10px; line-height: 1.5; }
+.bulk-import-api-error { padding: 12px; border: 1px solid #efc7c3; border-radius: 8px; color: #a12a20; background: #fff7f6; font-size: 11px; }
+.bulk-import-api-error strong { font-size: 12px; }
+.bulk-import-api-error p { margin: 6px 0; line-height: 1.5; }
+.bulk-import-api-error [data-slot="button"] { margin-top: 6px; }
+.bulk-import-success-mark { display: grid; width: 48px; height: 48px; place-items: center; align-self: center; border-radius: 50%; color: #16845b; background: #e9f7f0; font-size: 25px; }
+.bulk-import-success-heading { text-align: center; }
+.bulk-import-success-heading h3 { margin: 0; font-size: 15px; }
+.bulk-import-success-heading p { margin: 5px 0 8px; color: #777e8c; font-size: 11px; }
+.bulk-import-refresh-error { margin: 3px 0; color: #b42318; font-size: 11px; line-height: 1.5; }
 .import-preview { display: flex; flex-direction: column; gap: 12px; }
 .import-warning-list { margin: 6px 0 0; padding-left: 20px; font-size: 13px; color: var(--muted-foreground); display: flex; flex-direction: column; gap: 4px; }
 .modal-heading { display: flex; justify-content: space-between; gap: 15px; }
@@ -628,6 +675,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .trash-list,
 :root[data-theme='dark'] .compare-panel,
 :root[data-theme='dark'] .restore-dialog,
+:root[data-theme='dark'] .bulk-import-stats > div,
+:root[data-theme='dark'] .bulk-import-result-list,
 :root[data-theme='dark'] .sign-in-card,
 :root[data-theme='dark'] .runtime-vars-panel,
 :root[data-theme='dark'] .runtime-vars-move-menu {
@@ -815,6 +864,7 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .sign-in-card,
 :root[data-theme='dark'] .trash-list,
 :root[data-theme='dark'] .compare-panel,
+:root[data-theme='dark'] .bulk-import-stats > div,
 :root[data-theme='dark'] .text-field,
 :root[data-theme='dark'] .method-select,
 :root[data-theme='dark'] .url-input,
@@ -839,6 +889,64 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .runtime-vars-input {
   color-scheme: dark;
 }
+
+:root[data-theme='dark'] .bulk-import-dropzone {
+  border-color: #544b83;
+  color: #aaaebe;
+  background: #211f2c;
+}
+
+:root[data-theme='dark'] .bulk-import-dropzone strong,
+:root[data-theme='dark'] .bulk-import-result-list h3,
+:root[data-theme='dark'] .bulk-import-tree-preview h3,
+:root[data-theme='dark'] .bulk-import-stats strong,
+:root[data-theme='dark'] .bulk-import-success-heading h3,
+:root[data-theme='dark'] .bulk-import-result-row strong {
+  color: #e2e4eb;
+}
+
+:root[data-theme='dark'] .bulk-import-stats > div,
+:root[data-theme='dark'] .bulk-import-result-list,
+:root[data-theme='dark'] .bulk-import-tree-preview,
+:root[data-theme='dark'] .bulk-import-tree-preview h3,
+:root[data-theme='dark'] .bulk-import-result-row {
+  border-color: #343741;
+}
+
+:root[data-theme='dark'] .bulk-import-tree-preview {
+  background: #1d2028;
+}
+
+:root[data-theme='dark'] .bulk-import-tree-row {
+  color: #c4c7d0;
+}
+
+:root[data-theme='dark'] .bulk-import-result-row,
+:root[data-theme='dark'] .bulk-import-policy-summary,
+:root[data-theme='dark'] .bulk-import-dry-run,
+:root[data-theme='dark'] .bulk-import-no-warnings,
+:root[data-theme='dark'] .bulk-import-tree-preview > div > p,
+:root[data-theme='dark'] .bulk-import-success-heading p {
+  color: #aeb2bf;
+}
+
+:root[data-theme='dark'] .bulk-import-warnings {
+  border-color: #61502d;
+  background: #2c261b;
+}
+
+:root[data-theme='dark'] .bulk-import-warnings p {
+  border-color: #4e422b;
+  color: #e2c991;
+}
+
+:root[data-theme='dark'] .bulk-import-api-error {
+  border-color: #663b3b;
+  color: #f0aaa4;
+  background: #2c1f21;
+}
+
+:root[data-theme='dark'] .bulk-import-refresh-error { color: #f0aaa4; }
 
 :root[data-theme='dark'] .sidebar-link:hover,
 :root[data-theme='dark'] .sidebar-tools button:hover:not(:disabled),
