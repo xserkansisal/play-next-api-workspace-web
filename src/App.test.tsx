@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '@/App'
 import { workspaceApi } from '@/lib/api'
+import { presenceApi } from '@/lib/presence'
 import { browserFetchRunner, serverProxyRunner } from '@/lib/request-runner'
 import type { CollectionResource, RequestResource } from '@/lib/workspace-types'
 
@@ -66,6 +67,13 @@ describe('workspace live update flow', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('provides light and dark theme logo assets in the workspace header', () => {
+    const { container } = render(<App />)
+
+    expect(screen.getByRole('img', { name: 'Play Next' })).toHaveAttribute('src', '/assets/play-next-logo.png')
+    expect(container.querySelector('.brand-logo-dark')).toHaveAttribute('src', '/assets/play-next-logo-dark.png')
   })
 
   it('keeps unsaved input unchanged until the user explicitly loads the reviewed server version', async () => {
@@ -146,6 +154,32 @@ describe('workspace live update flow', () => {
     await waitFor(() => expect(workspaceApi.collections).toHaveBeenCalledTimes(2))
     expect(workspaceApi.environments).toHaveBeenCalledTimes(2)
     expect(workspaceApi.trash).toHaveBeenCalledTimes(2)
+  })
+
+  it('publishes the selected resource and renders live viewers from presence events', async () => {
+    const heartbeat = vi.spyOn(presenceApi, 'heartbeat').mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<App user={{ id: 'self', email: 'serkan.taghan@sisal.com' }} />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await waitFor(() => expect(heartbeat).toHaveBeenCalledWith(expect.any(String), {
+      kind: 'request',
+      collectionId: collection.id,
+      itemId: request.id,
+    }))
+
+    MockEventSource.current.emit('presence', JSON.stringify({
+      users: [{
+        userId: 'teammate',
+        firstName: 'Ayse',
+        lastName: 'Yilmaz',
+        avatarUrl: null,
+        avatarColor: 'blue',
+        location: { kind: 'request', collectionId: collection.id, itemId: request.id },
+      }],
+    }))
+
+    expect(await screen.findAllByRole('img', { name: 'Viewing now: Ayse Yilmaz' })).toHaveLength(2)
+    expect(screen.getByText('1 viewing')).toBeInTheDocument()
   })
 
   it('checks a restore conflict with the proposed environment rename before restoring', async () => {

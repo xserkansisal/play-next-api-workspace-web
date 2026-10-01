@@ -56,6 +56,35 @@ function renderTree(props: Partial<React.ComponentProps<typeof WorkspaceTree>> =
 }
 
 describe('WorkspaceTree expand/collapse all', () => {
+  it('shows each viewer beside the collection, folder, and request they have open', () => {
+    renderTree({
+      presenceByResource: {
+        'collection:c1': [{
+          userId: 'u3',
+          firstName: 'Ece',
+          lastName: 'Demir',
+          location: { kind: 'collection', collectionId: 'c1' },
+        }],
+        'folder:c1:f1': [{
+          userId: 'u2',
+          firstName: 'Mehmet',
+          lastName: 'Kaya',
+          location: { kind: 'folder', collectionId: 'c1', itemId: 'f1' },
+        }],
+        'request:c1:r1': [{
+          userId: 'u1',
+          firstName: 'Ayse',
+          lastName: 'Yilmaz',
+          location: { kind: 'request', collectionId: 'c1', itemId: 'r1' },
+        }],
+      },
+    })
+
+    expect(screen.getByRole('img', { name: 'Viewing now: Ece Demir' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Viewing now: Mehmet Kaya' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Viewing now: Ayse Yilmaz' })).toBeInTheDocument()
+  })
+
   it('collapses every collection and folder in one action', async () => {
     const user = userEvent.setup()
     renderTree()

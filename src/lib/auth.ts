@@ -5,6 +5,28 @@ import { apiClient } from '@/lib/api'
 export interface AuthUser {
   id: string
   email: string
+  firstName?: string | null
+  lastName?: string | null
+  avatarUrl?: string | null
+  avatarColor?: string | null
+}
+
+export interface UserName {
+  firstName: string
+  lastName: string
+}
+
+function capitalizeNamePart(part: string): string {
+  return part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : ''
+}
+
+export function nameFromEmail(email: string): UserName {
+  const localPart = email.split('@', 1)[0] ?? ''
+  const parts = localPart.split('.').map((part) => part.trim()).filter(Boolean)
+  return {
+    firstName: capitalizeNamePart(parts[0] ?? ''),
+    lastName: parts.slice(1).map(capitalizeNamePart).join(' '),
+  }
 }
 
 /**
@@ -92,6 +114,20 @@ export const authApi = {
   /** GET /api/v1/auth/me. Requires the session cookie; 401s like any other protected route if it's missing/expired/revoked. */
   async me(): Promise<AuthUser> {
     const { data } = await apiClient.get<{ user: AuthUser }>('/auth/me')
+    return data.user
+  },
+  async uploadAvatar(file: File): Promise<AuthUser> {
+    const form = new FormData()
+    form.append('avatar', file)
+    const { data } = await apiClient.post<{ user: AuthUser }>('/auth/me/avatar', form)
+    return data.user
+  },
+  async removeAvatar(): Promise<AuthUser> {
+    const { data } = await apiClient.delete<{ user: AuthUser }>('/auth/me/avatar')
+    return data.user
+  },
+  async setAvatarColor(avatarColor: string): Promise<AuthUser> {
+    const { data } = await apiClient.patch<{ user: AuthUser }>('/auth/me/profile', { avatarColor })
     return data.user
   },
   /** POST /api/v1/auth/sign-out. Revokes the session server-side and expires the cookie. Safe to call even if already signed out. */

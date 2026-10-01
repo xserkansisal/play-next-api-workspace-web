@@ -4,7 +4,9 @@ import { fitSidebarWidth } from '@/lib/sidebar-width-storage'
 import { loadCollapsedIds, pruneCollapsedIds, saveCollapsedIds } from '@/lib/tree-expansion-storage'
 import { checkMove, type MoveSource, type MoveTarget } from '@/lib/tree-move'
 import { methodLabel, sortByName, sortTreeItems } from '@/lib/workspace-ui'
-import type { CollectionResource, EnvironmentResource, OpenResource, WorkspaceItem } from '@/lib/workspace-types'
+import { resourceKey, type CollectionResource, type EnvironmentResource, type OpenResource, type WorkspaceItem } from '@/lib/workspace-types'
+import { PresenceAvatars } from '@/components/PresenceAvatars'
+import type { PresenceUser } from '@/lib/presence'
 
 /**
  * The two sidebar sections fold like any other node, so their state rides along in the same stored
@@ -43,6 +45,7 @@ interface WorkspaceTreeProps {
    * is what the read-only surfaces want.
    */
   onMove?: (source: MoveSource, target: MoveTarget) => void
+  presenceByResource?: Record<string, PresenceUser[]>
 }
 
 /** Stable identity for a drop destination, so one hovered row can be highlighted at a time. */
@@ -237,6 +240,7 @@ function TreeItem({
   filter,
   expansion,
   drag,
+  presenceByResource,
 }: {
   collectionId: string
   item: WorkspaceItem
@@ -249,6 +253,7 @@ function TreeItem({
   filter: string
   expansion: ExpansionState
   drag: DragState
+  presenceByResource?: Record<string, PresenceUser[]>
 }) {
   const expanded = !expansion.isCollapsed(item.id)
   const childMatch = item.type === 'folder' && item.items.some((child) => containsMatch(child, filter))
@@ -313,6 +318,7 @@ function TreeItem({
           </span>
         )}
         <button className="tree-name" onClick={() => onSelect(resource)} title={item.name}>{item.name}</button>
+        <PresenceAvatars users={presenceByResource?.[resourceKey(resource)] ?? []} compact />
         <button className="tree-clone" title={`Duplicate ${item.name}`} aria-label={`Duplicate ${item.name}`} disabled={cloningId === item.id} onClick={() => onClone(resource)}>⧉</button>
         <button className="tree-delete" title={`Move ${item.name} to Trash`} aria-label={`Move ${item.name} to Trash`} onClick={() => onDelete(resource)}>×</button>
       </div>
@@ -330,6 +336,7 @@ function TreeItem({
           filter={filter}
           expansion={expansion}
           drag={drag}
+          presenceByResource={presenceByResource}
         />
       ))}
     </>
@@ -385,6 +392,7 @@ export function WorkspaceTree({
   width,
   onResize,
   onMove,
+  presenceByResource,
 }: WorkspaceTreeProps) {
   const [search, setSearch] = useState('')
   // Restored from storage on first render so the tree opens the way the user left it, rather
@@ -541,6 +549,7 @@ export function WorkspaceTree({
                 selectedCollectionId={selectedCollectionId}
                 expansion={expansion}
                 drag={drag}
+                presenceByResource={presenceByResource}
               />
             ))}
             {sorted.length === 0 && <p className="empty-tree">No collections yet.</p>}
@@ -611,6 +620,7 @@ function CollectionTree({
   selectedCollectionId,
   expansion,
   drag,
+  presenceByResource,
 }: {
   collection: CollectionResource
   selected: OpenResource | null
@@ -622,6 +632,7 @@ function CollectionTree({
   selectedCollectionId?: string
   expansion: ExpansionState
   drag: DragState
+  presenceByResource?: Record<string, PresenceUser[]>
 }) {
   const expanded = !expansion.isCollapsed(collection.id)
   const isSelected = selected?.kind === 'collection' && selected.collectionId === collection.id
@@ -654,11 +665,12 @@ function CollectionTree({
         <button className="tree-name" onClick={() => onSelect({ kind: 'collection', collectionId: collection.id })} title={collection.name}>
           {collection.name}
         </button>
+        <PresenceAvatars users={presenceByResource?.[resourceKey({ kind: 'collection', collectionId: collection.id })] ?? []} compact />
         <button className="tree-clone" title={`Duplicate ${collection.name}`} aria-label={`Duplicate ${collection.name}`} disabled={cloningId === collection.id} onClick={() => onClone({ kind: 'collection', collectionId: collection.id })}>⧉</button>
         <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>
       </div>
       {(expanded || !!filter) && sortTreeItems(children).map((item) => (
-        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} drag={drag} />
+        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} drag={drag} presenceByResource={presenceByResource} />
       ))}
       {collection.id === selectedCollectionId && expanded && !filter && collection.items.length === 0 && (
         <p className="empty-tree nested">No requests yet.</p>

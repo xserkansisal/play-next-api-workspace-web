@@ -2,7 +2,7 @@ import { AxiosError, AxiosHeaders } from 'axios'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiClient } from '@/lib/api'
-import { authApi, authEvents, describeAuthError, onUnauthenticated } from '@/lib/auth'
+import { authApi, authEvents, describeAuthError, nameFromEmail, onUnauthenticated } from '@/lib/auth'
 
 function authErrorResponse(status: number, code: string, message: string) {
   const config = { headers: new AxiosHeaders() }
@@ -28,8 +28,38 @@ describe('authApi', () => {
   })
 
   it('reads the signed-in user from GET /auth/me', async () => {
-    vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { user: { id: 'u1', email: 'a@sisal.com' } } })
-    await expect(authApi.me()).resolves.toEqual({ id: 'u1', email: 'a@sisal.com' })
+    vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { user: { id: 'u1', email: 'a@sisal.com', firstName: 'Ada', lastName: 'Lovelace' } } })
+    await expect(authApi.me()).resolves.toEqual({ id: 'u1', email: 'a@sisal.com', firstName: 'Ada', lastName: 'Lovelace' })
+  })
+
+  it('uploads and removes the authenticated user avatar', async () => {
+    const file = new File(['image'], 'avatar.png', { type: 'image/png' })
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { user: { id: 'u1', email: 'a@sisal.com', avatarUrl: '/media/u1.png' } } })
+    const remove = vi.spyOn(apiClient, 'delete').mockResolvedValue({ data: { user: { id: 'u1', email: 'a@sisal.com', avatarUrl: null } } })
+
+    await expect(authApi.uploadAvatar(file)).resolves.toMatchObject({ avatarUrl: '/media/u1.png' })
+    expect(post).toHaveBeenCalledWith('/auth/me/avatar', expect.any(FormData))
+    expect((post.mock.calls[0]?.[1] as FormData).get('avatar')).toBe(file)
+    await expect(authApi.removeAvatar()).resolves.toMatchObject({ avatarUrl: null })
+    expect(remove).toHaveBeenCalledWith('/auth/me/avatar')
+  })
+
+  it('saves the chosen fallback avatar color', async () => {
+    const patch = vi.spyOn(apiClient, 'patch').mockResolvedValue({ data: { user: { id: 'u1', email: 'a@sisal.com', avatarColor: 'green' } } })
+    await expect(authApi.setAvatarColor('green')).resolves.toMatchObject({ avatarColor: 'green' })
+    expect(patch).toHaveBeenCalledWith('/auth/me/profile', { avatarColor: 'green' })
+  })
+})
+
+describe('nameFromEmail', () => {
+  it('uses the first local-part segment as the first name and the rest as the last name', () => {
+    expect(nameFromEmail('serkan.taghan@sisal.com')).toEqual({ firstName: 'Serkan', lastName: 'Taghan' })
+    expect(nameFromEmail('ada.marie.lovelace@example.com')).toEqual({ firstName: 'Ada', lastName: 'Marie Lovelace' })
+  })
+
+  it('handles a single segment and ignores empty dot-separated segments', () => {
+    expect(nameFromEmail('serkan@sisal.com')).toEqual({ firstName: 'Serkan', lastName: '' })
+    expect(nameFromEmail('.serkan..taghan.@sisal.com')).toEqual({ firstName: 'Serkan', lastName: 'Taghan' })
   })
 })
 

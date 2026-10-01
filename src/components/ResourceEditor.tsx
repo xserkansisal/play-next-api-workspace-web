@@ -2,11 +2,13 @@ import { lazy, Suspense, useEffect, useState, type PointerEvent as ReactPointerE
 
 import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
+import { PresenceAvatars } from '@/components/PresenceAvatars'
 import { VariableInput, type VariableLookup } from '@/components/VariableInput'
 import type { ProxySettings } from '@/lib/api'
 import { copyVariableKey } from '@/lib/copy-key'
 import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import type { EnvironmentResource, EnvironmentVariable, KeyValueEntry, RequestMethod, ResourceDraft } from '@/lib/workspace-types'
+import type { PresenceUser } from '@/lib/presence'
 
 const NO_VARIABLES: VariableLookup = {}
 
@@ -37,6 +39,7 @@ interface ResourceEditorProps {
   requestKey?: string | null
   /** Resolved variables, used to colour `{{name}}` references as defined or undefined. */
   variables?: VariableLookup
+  viewers?: PresenceUser[]
 }
 
 /**
@@ -57,7 +60,7 @@ function describeRunnerChoice(proxy: ProxySettings | null): string {
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [] }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const isRequest = draft.kind === 'request'
@@ -112,6 +115,12 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               <AttributionLine createdBy={draft.resource.createdBy} updatedBy={draft.resource.updatedBy} />
             </div>
             <div className="resource-actions">
+              {viewers.length > 0 && (
+                <div className="resource-viewers">
+                  <PresenceAvatars users={viewers} />
+                  <span>{viewers.length} viewing</span>
+                </div>
+              )}
               <SaveState dirty={dirty} />
               <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>
               <Button size="sm" onClick={onSave} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save'}</Button>

@@ -6,12 +6,15 @@ import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { VariablesMenu } from '@/components/VariablesMenu'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { describeApiError, workspaceApi, type ProxySettings } from '@/lib/api'
 import { authApi } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
+import { parsePresenceSnapshot, presenceApi, presenceLocation, presenceResourceKey } from '@/lib/presence'
+import type { PresenceUser } from '@/lib/presence'
 import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
@@ -171,6 +174,8 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [saving, setSaving] = useState(false)
   const [resourceError, setResourceError] = useState<string | null>(null)
   const [connected, setConnected] = useState(false)
+  const [presenceUsers, setPresenceUsers] = useState<PresenceUser[]>([])
+  const [presenceError, setPresenceError] = useState<string | null>(null)
   const [syncNotice, setSyncNotice] = useState<string | null>(null)
   const [reconnectKey, setReconnectKey] = useState(0)
   const [remoteUpdate, setRemoteUpdate] = useState<RemoteUpdate | null>(null)
@@ -184,6 +189,11 @@ function App({ user, onSignOut }: AppProps = {}) {
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
   const lastEventId = useRef('')
+  const presenceClientId = useRef(
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  )
   selectedRef.current = selected
   draftsRef.current = drafts
   baselinesRef.current = baselines
@@ -307,14 +317,18 @@ function App({ user, onSignOut }: AppProps = {}) {
       }
     }
     source.onmessage = onChange
-    // The API only ever emits `change` and `resync` as named SSE events (plus
-    // `ready`, which parseChangeEvent ignores); it does not emit per-kind
-    // event names.
+    // Workspace updates and presence snapshots share the authenticated SSE stream;
+    // the presence listener is separate so it does not enter resource-change handling.
     source.addEventListener('change', onChange as EventListener)
     source.addEventListener('resync', onChange as EventListener)
+    source.addEventListener('presence', ((message: MessageEvent<string>) => {
+      const snapshot = parsePresenceSnapshot(message.data)
+      if (snapshot) setPresenceUsers(snapshot.users.filter((entry) => entry.userId !== user?.id))
+    }) as EventListener)
     source.onerror = () => {
       if (closed) return
       setConnected(false)
+      setPresenceUsers([])
       source.close()
       // EventSource never exposes the HTTP status of a failed connection,
       // so a 401 (session expired/revoked) and a genuine network/server
@@ -331,7 +345,7 @@ function App({ user, onSignOut }: AppProps = {}) {
       closed = true
       source.close()
     }
-  }, [reconnectKey, reloadAll])
+  }, [reconnectKey, reloadAll, user?.id])
 
   const currentKey = selected ? resourceKey(selected) : ''
   const activeDraft = currentKey ? drafts[currentKey] : undefined
@@ -351,6 +365,59 @@ function App({ user, onSignOut }: AppProps = {}) {
     && activeResponse.serverRetryFailed !== true
     && canProxy(activeResponse.url ?? '', proxy)
   const selectedEnvironment = environments.find(({ id }) => id === selectedEnvironmentId)
+  const activePresenceLocation = useMemo(
+    () => view === 'workspace' ? presenceLocation(selected) : null,
+    [selected, view],
+  )
+  const activePresenceUsers = useMemo(() => {
+    if (!selected || !activePresenceLocation) return []
+    const key = resourceKey(selected)
+    const seen = new Set<string>()
+    return presenceUsers.filter((entry) => {
+      if (presenceResourceKey(entry.location) !== key || seen.has(entry.userId)) return false
+      seen.add(entry.userId)
+      return true
+    })
+  }, [activePresenceLocation, presenceUsers, selected])
+  const presenceByResource = useMemo(() => {
+    const grouped: Record<string, PresenceUser[]> = {}
+    for (const entry of presenceUsers) {
+      const key = presenceResourceKey(entry.location)
+      const users = grouped[key] ?? (grouped[key] = [])
+      if (!users.some(({ userId }) => userId === entry.userId)) users.push(entry)
+    }
+    return grouped
+  }, [presenceUsers])
+
+  useEffect(() => {
+    if (!user) return
+    let stopped = false
+    const clientId = presenceClientId.current
+    const publish = async (location: ReturnType<typeof presenceLocation>) => {
+      try {
+        await presenceApi.heartbeat(clientId, location)
+        if (!stopped) setPresenceError(null)
+      } catch (error) {
+        if (!stopped) setPresenceError(`Live presence is unavailable: ${describeApiError(error)}`)
+      }
+    }
+    const syncVisibility = () => {
+      void publish(document.visibilityState === 'visible' ? activePresenceLocation : null)
+    }
+
+    void publish(document.visibilityState === 'visible' ? activePresenceLocation : null)
+    const heartbeat = activePresenceLocation
+      ? window.setInterval(() => {
+        if (document.visibilityState === 'visible') void publish(activePresenceLocation)
+      }, 15_000)
+      : null
+    document.addEventListener('visibilitychange', syncVisibility)
+    return () => {
+      stopped = true
+      if (heartbeat !== null) window.clearInterval(heartbeat)
+      document.removeEventListener('visibilitychange', syncVisibility)
+    }
+  }, [activePresenceLocation, user?.id])
   // The one place the three layers are collapsed into a lookup, so what a request substitutes and
   // what the Variables menu reports can never disagree about which value wins.
   const resolvedVariables = useMemo(
@@ -982,7 +1049,8 @@ function App({ user, onSignOut }: AppProps = {}) {
       <header className="topbar">
         <div className="brand">
           <button className="sidebar-toggle" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}>☰</button>
-          <img className="brand-logo" src="/assets/play-next-logo.png" alt="Play Next" />
+          <img className="brand-logo brand-logo-light" src="/assets/play-next-logo.png" alt="Play Next" />
+          <img className="brand-logo brand-logo-dark" src="/assets/play-next-logo-dark.png" alt="" aria-hidden="true" />
           <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
@@ -1005,7 +1073,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
-            {user && <span className="account-email" title={user.email}>{user.email}</span>}
+            {user && <UserProfileMenu user={user} />}
             <Button variant="outline" size="sm" onClick={() => onSignOut?.()}>Sign out</Button>
           </div>
         </div>
@@ -1016,6 +1084,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           <button onClick={() => setReconnectKey((value) => value + 1)}>Reconnect</button>
         </div>
       )}
+      {presenceError && <div className="connection-notice presence-unavailable" role="status">{presenceError}</div>}
       {syncNotice && <div className="connection-notice" role="status"><span>{syncNotice}</span><button onClick={() => setSyncNotice(null)}>Dismiss</button></div>}
       {loadingError && <div className="global-error" role="alert">{loadingError}<button aria-label="Dismiss error" onClick={() => setLoadingError(null)}>×</button></div>}
       <div className="main-layout">
@@ -1038,6 +1107,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           onCreateEnvironment={() => void createEnvironment()}
           width={sidebarWidth}
           onResize={(next) => setSidebarWidth(clampSidebarWidth(next))}
+          presenceByResource={presenceByResource}
         />
         <div className="main-content">
           {view === 'trash' ? (
@@ -1111,6 +1181,7 @@ function App({ user, onSignOut }: AppProps = {}) {
                   runnerId={runnerId}
                   onRunnerChange={setRunnerId}
                   proxy={proxy}
+                  viewers={activePresenceUsers}
                   onRetryFromServer={canRetryFromServer
                     ? () => {
                       // Switching the selector as well as retrying: the user has just chosen to
