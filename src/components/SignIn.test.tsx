@@ -22,6 +22,13 @@ describe('SignIn', () => {
     vi.restoreAllMocks()
   })
 
+  it('provides light and dark logo assets on the sign-in screen', () => {
+    const { container } = render(<SignIn onSignedIn={vi.fn()} />)
+
+    expect(container.querySelector('.sign-in-logo-light')).toHaveAttribute('src', '/assets/play-next-logo.png')
+    expect(container.querySelector('.sign-in-logo-dark')).toHaveAttribute('src', '/assets/play-next-logo-dark.png')
+  })
+
   it('requests a code, then reports the specific domain-rejection error', async () => {
     const requestCode = vi.spyOn(authApi, 'requestCode').mockRejectedValue(authErrorResponse(400, 'EMAIL_DOMAIN_NOT_ALLOWED', 'Domain not allowed'))
     const user = userEvent.setup()

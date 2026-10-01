@@ -416,6 +416,9 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .avatar-color-option.selected { outline: 2px solid var(--avatar-fg); outline-offset: 2px; }
 .avatar-color-option:disabled { cursor: wait; opacity: .55; }
 .profile-panel-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 11px; border-top: 1px solid var(--border); color: #747b88; font-size: 12px; }
+.profile-panel-actions { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.profile-sign-out { padding: 7px 12px; border: 1px solid var(--border); border-radius: 7px; color: #303540; background: transparent; font-size: 13px; font-weight: 500; }
+.profile-sign-out:hover { background: #f4f5f7; }
 .profile-error { margin: 8px 0 0; color: #b42318; font-size: 12px; }
 .presence-avatars { display: inline-flex; flex: none; align-items: center; padding-left: 4px; }
 .presence-avatar { width: 23px; height: 23px; margin-left: -4px; border: 2px solid #fff; font-size: 9px; }
@@ -435,6 +438,9 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .sign-in-screen { display: flex; height: 100dvh; align-items: center; justify-content: center; background: #f6f7f9; }
 .sign-in-card { display: flex; width: min(380px, 92vw); flex-direction: column; gap: 12px; padding: 32px 28px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 18px 60px #11182715; }
 .sign-in-logo { display: block; width: min(220px, 100%); height: auto; margin: 0 auto 8px; }
+.sign-in-logo-dark { display: none; }
+:root[data-theme='dark'] .sign-in-logo-light { display: none; }
+:root[data-theme='dark'] .sign-in-logo-dark { display: block; }
 .sign-in-card h1 { margin: 4px 0 0; color: #24272f; font-size: 18px; font-weight: 600; text-align: center; }
 .sign-in-card > p { margin: 0 0 6px; color: #7d8492; font-size: 13px; line-height: 1.5; text-align: center; }
 .sign-in-card .inline-error, .sign-in-card > p[role] { text-align: left; }
@@ -722,6 +728,15 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .profile-panel {
   border-color: #343741;
   background: #191b22;
+}
+
+:root[data-theme='dark'] .profile-sign-out {
+  border-color: #3a3e49;
+  color: #e2e4eb;
+}
+
+:root[data-theme='dark'] .profile-sign-out:hover {
+  background: #232630;
 }
 
 :root[data-theme='dark'] .profile-panel-heading strong {

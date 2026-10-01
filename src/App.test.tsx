@@ -70,10 +70,11 @@ describe('workspace live update flow', () => {
   })
 
   it('provides light and dark theme logo assets in the workspace header', () => {
-    const { container } = render(<App />)
+    const { container } = render(<App user={{ id: 'self', email: 'serkan.taghan@sisal.com' }} />)
 
     expect(screen.getByRole('img', { name: 'Play Next' })).toHaveAttribute('src', '/assets/play-next-logo.png')
     expect(container.querySelector('.brand-logo-dark')).toHaveAttribute('src', '/assets/play-next-logo-dark.png')
+    expect(container.querySelector('.account-menu > .theme-toggle')).toBe(container.querySelector('.account-menu')?.lastElementChild)
   })
 
   it('keeps unsaved input unchanged until the user explicitly loads the reviewed server version', async () => {

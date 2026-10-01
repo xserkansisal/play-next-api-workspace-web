@@ -6,6 +6,19 @@ import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { authApi } from '@/lib/auth'
 
 describe('UserProfileMenu', () => {
+  it('shows sign out inside the open profile panel', async () => {
+    const user = userEvent.setup()
+    const onSignOut = vi.fn()
+    render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} onSignOut={onSignOut} />)
+
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    expect(onSignOut).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog', { name: 'User profile' })).not.toBeInTheDocument()
+  })
+
   it('opens read-only profile details and derives names from the email when the API omits them', async () => {
     const user = userEvent.setup()
     render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)

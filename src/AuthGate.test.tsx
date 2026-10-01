@@ -54,6 +54,8 @@ describe('AuthGate', () => {
     await user.click(screen.getByRole('button', { name: 'Verify code' }))
 
     expect(await screen.findByText('a@sisal.com')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /a@sisal\.com/i }))
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   })
 

@@ -98,7 +98,8 @@ export function SignIn({ onSignedIn }: SignInProps) {
       <div className="sign-in-screen">
         <form className="sign-in-card" onSubmit={(event) => void submitEmail(event)}>
           <ThemeToggle />
-          <img className="sign-in-logo" src="/assets/play-next-logo.png" alt="Play Next" />
+          <img className="sign-in-logo sign-in-logo-light" src="/assets/play-next-logo.png" alt="Play Next" />
+          <img className="sign-in-logo sign-in-logo-dark" src="/assets/play-next-logo-dark.png" alt="" aria-hidden="true" />
           <h1>Sign in to Play Next API Workspace</h1>
           <p>Enter your work email. We'll send a 6-digit sign-in code.</p>
           <label className="field-label">
@@ -124,7 +125,8 @@ export function SignIn({ onSignedIn }: SignInProps) {
     <div className="sign-in-screen">
       <form className="sign-in-card" onSubmit={(event) => void submitCode(event)}>
         <ThemeToggle />
-        <img className="sign-in-logo" src="/assets/play-next-logo.png" alt="Play Next" />
+        <img className="sign-in-logo sign-in-logo-light" src="/assets/play-next-logo.png" alt="Play Next" />
+        <img className="sign-in-logo sign-in-logo-dark" src="/assets/play-next-logo-dark.png" alt="" aria-hidden="true" />
         <h1>Enter your code</h1>
         <p>We sent a 6-digit code to <strong>{step.email}</strong>. It expires 15 minutes after it was sent.</p>
         <label className="field-label">

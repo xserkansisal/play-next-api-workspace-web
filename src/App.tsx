@@ -1158,7 +1158,6 @@ function App({ user, onSignOut }: AppProps = {}) {
           <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
-          <ThemeToggle />
           <label className="env-picker">
             <span className="env-dot" />
             <select aria-label="Environment" value={selectedEnvironmentId} onChange={(event) => setSelectedEnvironmentId(event.target.value)}>
@@ -1178,8 +1177,8 @@ function App({ user, onSignOut }: AppProps = {}) {
           <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
-            {user && <UserProfileMenu user={user} />}
-            <Button variant="outline" size="sm" onClick={() => onSignOut?.()}>Sign out</Button>
+            {user && <UserProfileMenu user={user} onSignOut={onSignOut} />}
+            <ThemeToggle />
           </div>
         </div>
       </header>

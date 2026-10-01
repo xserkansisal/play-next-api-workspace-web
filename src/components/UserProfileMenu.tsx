@@ -8,12 +8,13 @@ import type { AuthUser } from '@/lib/auth'
 
 interface UserProfileMenuProps {
   user: AuthUser
+  onSignOut?: () => void
 }
 
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const maxAvatarBytes = 5 * 1024 * 1024
 
-export function UserProfileMenu({ user }: UserProfileMenuProps) {
+export function UserProfileMenu({ user, onSignOut }: UserProfileMenuProps) {
   const [open, setOpen] = useState(false)
   const [profile, setProfile] = useState(user)
   const [saving, setSaving] = useState(false)
@@ -167,6 +168,20 @@ export function UserProfileMenu({ user }: UserProfileMenuProps) {
             <span>Names and email are read-only.</span>
             <span>Avatar: {saving ? 'Saving…' : 'Saved to profile'}</span>
           </div>
+          {onSignOut && (
+            <div className="profile-panel-actions">
+              <button
+                className="profile-sign-out"
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  onSignOut()
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
           {error && <p className="profile-error" role="alert">{error}</p>}
         </section>
       )}
