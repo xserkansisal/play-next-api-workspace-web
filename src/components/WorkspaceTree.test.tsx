@@ -396,6 +396,41 @@ describe('collection indent guides', () => {
   })
 })
 
+describe('container icons', () => {
+  function toggleFor(name: string) {
+    return screen.getByLabelText(new RegExp(`^(Collapse|Expand) ${name}$`))
+  }
+
+  it('gives collections an archive box and folders a folder, so the two tiers stay distinct', () => {
+    const { container } = renderTree()
+    expect(toggleFor('Payments').querySelector('.tree-collection-icon')).toBeTruthy()
+    expect(toggleFor('Charges').querySelector('.tree-folder-icon')).toBeTruthy()
+    // The old text mark is gone; the icon is the only collection glyph.
+    expect(container.querySelectorAll('.tree-collection-mark').length).toBe(0)
+  })
+
+  it('swaps the collection icon between its open and closed shapes', async () => {
+    const user = userEvent.setup()
+    renderTree()
+    const shapeOf = (name: string) =>
+      [...toggleFor(name).querySelectorAll('.tree-collection-icon path')].map((p) => p.getAttribute('d')).join('|')
+
+    const openShape = shapeOf('Payments')
+    await user.click(toggleFor('Payments'))
+    const closedShape = shapeOf('Payments')
+
+    expect(toggleFor('Payments').getAttribute('aria-label')).toBe('Expand Payments')
+    expect(closedShape).not.toBe(openShape)
+    expect(closedShape.length).toBeGreaterThan(0)
+  })
+
+  it('keeps the expand/collapse label on the icon button, since the glyph alone is not readable', () => {
+    renderTree()
+    expect(toggleFor('Payments').getAttribute('aria-label')).toBe('Collapse Payments')
+    expect(toggleFor('Charges').getAttribute('aria-label')).toBe('Collapse Charges')
+  })
+})
+
 describe('sidebar width', () => {
   it('applies the width it is given', () => {
     const { container } = renderTree({ width: 420 })

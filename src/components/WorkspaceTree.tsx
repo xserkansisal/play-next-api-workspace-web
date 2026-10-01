@@ -67,6 +67,51 @@ function collectExpandableIds(collections: CollectionResource[]): string[] {
   return ids
 }
 
+/**
+ * Folders get a folder glyph rather than a bare chevron: the open/closed state reads as "this is a
+ * container and it is open", which a triangle alone does not convey. Inline SVG rather than an
+ * emoji folder, which would render in colour and differently on every platform.
+ */
+function FolderIcon({ open }: { open: boolean }) {
+  return (
+    <svg className="tree-folder-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      {open ? (
+        <>
+          <path d="M1.5 4.25A1.75 1.75 0 0 1 3.25 2.5h2.4c.46 0 .9.18 1.23.51l.8.8c.1.1.23.15.36.15h4.71c.97 0 1.75.78 1.75 1.75v.54H5.1a2 2 0 0 0-1.9 1.37L1.5 12.2z" />
+          <path d="M4.15 8.1a1 1 0 0 1 .95-.68h9.4a1 1 0 0 1 .95 1.32l-1.4 4.2a1 1 0 0 1-.95.68H2.7a1 1 0 0 1-.95-1.32z" />
+        </>
+      ) : (
+        <path d="M1.5 4.25A1.75 1.75 0 0 1 3.25 2.5h2.4c.46 0 .9.18 1.23.51l.8.8c.1.1.23.15.36.15h4.71c.97 0 1.75.78 1.75 1.75v6.04c0 .97-.78 1.75-1.75 1.75H3.25A1.75 1.75 0 0 1 1.5 11.75z" />
+      )}
+    </svg>
+  )
+}
+
+/**
+ * Collections are the tier above folders, so they get an archive box rather than a second folder
+ * glyph, which would make the two levels look interchangeable. Closed is a lidded box; open lifts
+ * the lid clear of the body, which reads at 15px where a subtler difference would not.
+ */
+function CollectionIcon({ open }: { open: boolean }) {
+  return (
+    <svg className="tree-collection-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      {open ? (
+        <>
+          {/* Lid, detached and tilted above the body. */}
+          <path d="M2.4 3.3a.9.9 0 0 1 .64-.78l9.1-1.3a.9.9 0 0 1 1.02.72l.26 1.5-10.8 1.54z" />
+          <path d="M2.5 6h11a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1m3.6 2.1a.75.75 0 0 0 0 1.5h3.8a.75.75 0 0 0 0-1.5z" />
+        </>
+      ) : (
+        <>
+          {/* Lid seated flat on the body. */}
+          <path d="M1.5 3.2a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v1.3a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
+          <path d="M2.4 6.8h11.2v6.1a1 1 0 0 1-1 1H3.4a1 1 0 0 1-1-1zm3.7 1.9a.75.75 0 0 0 0 1.5h3.8a.75.75 0 0 0 0-1.5z" />
+        </>
+      )}
+    </svg>
+  )
+}
+
 function TreeItem({
   collectionId,
   item,
@@ -105,8 +150,8 @@ function TreeItem({
     <>
       <div className={`tree-row ${item.type} ${active ? 'selected' : ''}`} style={{ '--indent': depth } as CSSProperties}>
         {item.type === 'folder' ? (
-          <button className="tree-chevron" onClick={() => expansion.toggle(item.id)} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}>
-            {expanded ? '▾' : '▸'}
+          <button className="tree-chevron tree-folder-toggle" onClick={() => expansion.toggle(item.id)} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}>
+            <FolderIcon open={expanded} />
           </button>
         ) : (
           <span className={`tree-method method-${item.method.toLowerCase()}`} title={item.method}>
@@ -396,11 +441,11 @@ function CollectionTree({
   return (
     <>
       <div className={`tree-row collection ${isSelected ? 'selected' : ''}`}>
-        <button className="tree-chevron" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${collection.name}`} onClick={() => expansion.toggle(collection.id)}>
-          {expanded ? '▾' : '▸'}
+        <button className="tree-chevron tree-collection-toggle" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${collection.name}`} onClick={() => expansion.toggle(collection.id)}>
+          <CollectionIcon open={expanded} />
         </button>
         <button className="tree-name" onClick={() => onSelect({ kind: 'collection', collectionId: collection.id })} title={collection.name}>
-          <span className="tree-collection-mark">▤</span> {collection.name}
+          {collection.name}
         </button>
         <button className="tree-clone" title={`Duplicate ${collection.name}`} aria-label={`Duplicate ${collection.name}`} disabled={cloningId === collection.id} onClick={() => onClone({ kind: 'collection', collectionId: collection.id })}>⧉</button>
         <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>

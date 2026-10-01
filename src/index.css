@@ -78,6 +78,16 @@ button:disabled { cursor: not-allowed; }
 .tree-row:not(.selected):hover { background-color: #eeedf7; }
 .tree-chevron { width: 20px; height: 28px; flex: 0 0 20px; color: #6b7280; font-size: 16px; line-height: 1; }
 .tree-chevron:hover { color: #2b2f38; }
+/* Folders swap the chevron glyph for a folder icon; the button keeps its size so every row's name
+   still starts on the same indent column. */
+.tree-folder-toggle { display: grid; place-items: center; color: #8a7fe8; }
+.tree-folder-toggle:hover { color: #6d5ce8; }
+.tree-folder-icon { width: 15px; height: 15px; fill: currentColor; }
+/* Collections use an archive box instead, a tier up from the folder glyph. Slightly darker than
+   the folder icon so the top level reads first when scanning the tree. */
+.tree-collection-toggle { display: grid; place-items: center; color: #7a70c8; }
+.tree-collection-toggle:hover { color: #5a4fd0; }
+.tree-collection-icon { width: 15px; height: 15px; fill: currentColor; }
 /* Sized like a label rather than a dot: the method is the first thing scanned in a long tree. */
 .tree-method { display: grid; place-items: center; width: 38px; flex: 0 0 38px; padding: 2px 0; border-radius: 4px; font: 700 9px ui-monospace, monospace; letter-spacing: .02em; }
 .method-get { color: #18825a; background: #e8f7ef; }
@@ -85,7 +95,6 @@ button:disabled { cursor: not-allowed; }
 .method-put { color: #1d4ed8; background: #e9effe; }
 .method-patch { color: #6d28d9; background: #f2ecfe; }
 .method-delete { color: #b42318; background: #fdecec; }
-.tree-collection-mark { color: #8a82d4; }
 .tree-name { overflow: hidden; flex: 1; padding: 6px 0; border: 0; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .tree-delete, .tree-clone { width: 23px; height: 25px; flex: 0 0 23px; border-radius: 4px; opacity: 0; font-size: 16px; }
 .tree-clone { font-size: 13px; }
@@ -343,7 +352,10 @@ button:disabled { cursor: not-allowed; }
   .sidebar.collapsed .tree-row.collection { justify-content: center; padding: 0; font-size: 0; }
   .sidebar.collapsed .tree-row.collection .tree-name { flex: 0; font-size: 0; }
   .sidebar.collapsed .tree-row.collection .tree-chevron, .sidebar.collapsed .tree-delete { display: none; }
-  .sidebar.collapsed .tree-collection-mark { font-size: 14px; }
+  /* The collection toggle is the only thing identifying a row on the narrow rail, now that the
+     separate text mark is gone, so it is exempted from the rule above and enlarged instead. */
+  .sidebar.collapsed .tree-row.collection .tree-collection-toggle { display: grid; }
+  .sidebar.collapsed .tree-collection-icon { width: 18px; height: 18px; }
   .sidebar-toggle { display: inline-grid; place-items: center; width: 26px; height: 28px; padding: 0; }
   .topbar { padding: 0 8px; }
   .top-actions { gap: 4px; }
