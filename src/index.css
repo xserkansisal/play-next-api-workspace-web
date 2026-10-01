@@ -261,17 +261,28 @@ button:disabled { cursor: not-allowed; }
 .runtime-vars > summary { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; list-style: none; }
 .runtime-vars > summary::-webkit-details-marker { display: none; }
 .runtime-vars-count { margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(109, 92, 232, 0.14); font-size: 11px; }
-.runtime-vars-panel { position: absolute; z-index: 20; right: 0; width: 320px; margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background, #fff); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12); }
-.runtime-vars-table { width: 100%; font-size: 11px; border-collapse: collapse; }
-.runtime-vars-table td { padding: 3px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.runtime-vars-value { max-width: 150px; overflow: hidden; color: #6b7280; text-overflow: ellipsis; white-space: nowrap; }
-.runtime-vars-empty, .runtime-vars-note { margin: 6px 0 0; color: #6b7280; font-size: 11px; }
-.runtime-vars-panel { width: 420px; }
+.runtime-vars-panel { position: absolute; z-index: 20; right: 0; display: flex; flex-direction: column; width: min(560px, calc(100vw - 24px)); max-height: min(70vh, 560px); margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background, #fff); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12); }
+.runtime-vars-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border); border-radius: 6px; }
+.runtime-vars-table { width: 100%; font-size: 11px; border-collapse: collapse; table-layout: auto; }
+.runtime-vars-table th { position: sticky; top: 0; z-index: 1; padding: 5px 6px; border-bottom: 1px solid var(--border); background: var(--background, #fff); color: #6b7280; font-size: 10px; font-weight: 600; text-align: left; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+.runtime-vars-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.runtime-vars-table tr:last-child td { border-bottom: 0; }
+.runtime-vars-name code { white-space: nowrap; }
+.runtime-vars-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-vars-value { max-width: 180px; overflow: hidden; color: #6b7280; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-vars-actions { text-align: right; white-space: nowrap; }
+.runtime-vars-empty, .runtime-vars-note { flex: 0 0 auto; margin: 6px 0 0; color: #6b7280; font-size: 11px; }
 .runtime-vars-scope { color: #6b7280; white-space: nowrap; }
 .runtime-vars-note-inline { color: #9ca3af; white-space: nowrap; }
 /* An override is deliberate, but an invisible one is how a stale personal value keeps beating a
    shared one a teammate has since corrected. */
 .runtime-vars-shadow { display: inline-block; padding: 0 4px; border-radius: 4px; background: rgba(217, 119, 6, 0.12); color: #92400e; font-size: 10px; white-space: nowrap; }
+@media (max-width: 640px) {
+  .runtime-vars-panel { position: fixed; top: 56px; right: 12px; left: 12px; width: auto; max-height: calc(100vh - 80px); }
+  .runtime-vars-name { max-width: 140px; }
+  .runtime-vars-value { max-width: 110px; }
+  .runtime-vars-col-scope, .runtime-vars-scope { display: none; }
+}
 
 @media (max-width: 850px) {
   .sidebar { width: 225px; min-width: 205px; flex-basis: 225px; }

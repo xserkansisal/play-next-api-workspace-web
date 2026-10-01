@@ -1123,13 +1123,23 @@ function VariablesMenu({ resolved, hasEnvironment }: {
         {names.length === 0 ? (
           <p className="runtime-vars-empty">No variables yet. Send a request, then use “Save a value as a variable” on the response to capture one.</p>
         ) : (
+          <div className="runtime-vars-scroll">
           <table className="runtime-vars-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th className="runtime-vars-col-scope">Scope</th>
+                <th>Value</th>
+                <th aria-label="Overrides" />
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
             <tbody>
               {names.map((name) => {
                 const entry = resolved[name]!
                 return (
                   <tr key={name}>
-                    <td><code>{`{{${name}}}`}</code></td>
+                    <td className="runtime-vars-name" title={`{{${name}}}`}><code>{`{{${name}}}`}</code></td>
                     <td className="runtime-vars-scope">{entry.origin === 'user' ? 'only me' : entry.origin === 'global' ? 'everyone' : 'environment'}</td>
                     <td className="runtime-vars-value" title={entry.value}>{entry.value}</td>
                     <td>
@@ -1141,9 +1151,9 @@ function VariablesMenu({ resolved, hasEnvironment }: {
                         </span>
                       )}
                     </td>
-                    <td>
+                    <td className="runtime-vars-actions">
                       {entry.origin === 'environment'
-                        ? <span className="runtime-vars-note-inline">edit in the environment</span>
+                        ? <span className="runtime-vars-note-inline" title="Edit in the environment">edit in env</span>
                         : <button className="link-button" aria-label={`Remove ${name}`} onClick={() => forget(name, entry.origin)}>Remove</button>}
                     </td>
                   </tr>
@@ -1151,6 +1161,7 @@ function VariablesMenu({ resolved, hasEnvironment }: {
               })}
             </tbody>
           </table>
+          </div>
         )}
         {shadowed.length > 0 && (
           <p className="runtime-vars-note" role="status">
