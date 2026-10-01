@@ -1,4 +1,4 @@
-import { MAX_REQUEST_BODY_LENGTH, type RequestMethod, type RequestResource } from '@/lib/workspace-types'
+import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type RequestMethod, type RequestResource } from '@/lib/workspace-types'
 import type { PreparedRequest } from '@/lib/request-runner'
 import { parseMultipartFields, parseUrlEncodedFields, serializeMultipart, serializeUrlEncodedFields } from '@/lib/request-body'
 
@@ -162,8 +162,16 @@ export type PrepareOutcome =
  *   editor's checkbox semantics.
  * - A body is only attached for methods that allow one; `fetch` rejects a
  *   body on GET.
+ * - `effectiveAuth` is resolved by the caller (it depends on the collection/folder tree, which
+ *   this function has no access to) and is applied here, after user-authored headers/params, so
+ *   its `{{variables}}` are substituted the same way as everything else and so a Basic/Bearer
+ *   value always wins over a stray manually-typed `Authorization` header rather than duplicating it.
  */
-export function prepareRequest(resource: RequestResource, variables: Record<string, string>): PrepareOutcome {
+export function prepareRequest(
+  resource: RequestResource,
+  variables: Record<string, string>,
+  effectiveAuth: AuthCredentials = { type: 'none' },
+): PrepareOutcome {
   const missing: string[] = []
 
   const substitute = (text: string) => {
@@ -177,6 +185,9 @@ export function prepareRequest(resource: RequestResource, variables: Record<stri
   const resolvedParams = enabledParams.map((entry) => ({ key: substitute(entry.key), value: substitute(entry.value) }))
   const enabledHeaders = resource.headers.filter((entry) => entry.enabled && entry.key.trim())
   const resolvedHeaders = enabledHeaders.map((entry) => ({ key: substitute(entry.key), value: substitute(entry.value) }))
+
+  applyAuth(effectiveAuth, substitute, resolvedHeaders, resolvedParams)
+
   let bodyContent: string | null = null
   let contentType: string | null = null
   let bodyError: string | null = null
@@ -283,4 +294,69 @@ function appendQueryParams(url: string, params: { key: string; value: string }[]
   const query = search.toString()
   if (!query) return url
   return `${url}${url.includes('?') ? '&' : '?'}${query}`
+}
+
+/**
+ * Mutates `headers`/`params` in place to add or overwrite whatever the resolved auth requires.
+ * Runs before the missing-variable check, substituting credential fields through the same
+ * `substitute()` the rest of the request uses, so an unresolved `{{variable}}` inside a token or
+ * password is reported like any other missing variable instead of being sent as literal text.
+ */
+function applyAuth(
+  auth: AuthCredentials,
+  substitute: (text: string) => string,
+  headers: { key: string; value: string }[],
+  params: { key: string; value: string }[],
+): void {
+  function setHeader(name: string, value: string) {
+    const existing = headers.filter((header) => header.key.toLowerCase() === name.toLowerCase())
+    if (existing.length > 0) {
+      for (const header of existing) header.value = value
+    } else {
+      headers.push({ key: name, value })
+    }
+  }
+
+  function setParam(name: string, value: string) {
+    const existing = params.find((param) => param.key === name)
+    if (existing) {
+      existing.value = value
+    } else {
+      params.push({ key: name, value })
+    }
+  }
+
+  switch (auth.type) {
+  case 'none':
+    return
+  case 'basic': {
+    const username = substitute(auth.username)
+    const password = substitute(auth.password)
+    setHeader('Authorization', `Basic ${base64EncodeUtf8(`${username}:${password}`)}`)
+    return
+  }
+  case 'bearer':
+    setHeader('Authorization', `Bearer ${substitute(auth.token)}`)
+    return
+  case 'api-key': {
+    const key = substitute(auth.key)
+    const value = substitute(auth.value)
+    if (auth.in === 'header') setHeader(key, value)
+    else setParam(key, value)
+    return
+  }
+  }
+}
+
+/**
+ * `btoa()` only handles Latin1 text and throws on characters outside that range, but the API
+ * contract requires `base64(UTF-8(username:password))`. This encodes to UTF-8 bytes first and
+ * builds the binary string `btoa` expects from those bytes, so non-ASCII credentials round-trip
+ * correctly.
+ */
+function base64EncodeUtf8(text: string): string {
+  const bytes = new TextEncoder().encode(text)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
 }

@@ -133,7 +133,7 @@ export const workspaceApi = {
     )
     return data
   },
-  async createCollection(input: Pick<CollectionResource, 'name' | 'description'> & { items?: TreeNodeInput[] }) {
+  async createCollection(input: Pick<CollectionResource, 'name' | 'description' | 'auth'> & { items?: TreeNodeInput[] }) {
     // A Postman import can be tens of MB saved in one transaction; the default 10s timeout is too short.
     const { data } = await apiClient.post<CollectionResource>('/collections', input, input.items ? { timeout: 120_000 } : undefined)
     return data
@@ -142,6 +142,7 @@ export const workspaceApi = {
     const { data } = await apiClient.put<CollectionResource>(`/collections/${resource.id}`, {
       name: resource.name,
       description: resource.description,
+      auth: resource.auth ?? null,
     })
     return data
   },
@@ -194,6 +195,7 @@ export const workspaceApi = {
       type: 'folder',
       name: resource.name,
       description: resource.description,
+      auth: resource.auth ?? null,
     })
     return data
   },

@@ -4,11 +4,13 @@ import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { PresenceAvatars } from '@/components/PresenceAvatars'
 import { VariableInput, type VariableLookup } from '@/components/VariableInput'
+import { AuthEditor } from '@/components/AuthEditor'
 import type { ProxySettings } from '@/lib/api'
 import { copyVariableKey } from '@/lib/copy-key'
+import type { AuthSource } from '@/lib/auth-resolution'
 import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import { parseMultipartFields, parseUrlEncodedFields, serializeUrlEncodedFields, type MultipartField } from '@/lib/request-body'
-import { MAX_REQUEST_BODY_LENGTH, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type RequestBody, type RequestMethod, type ResourceDraft } from '@/lib/workspace-types'
+import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type RequestAuth, type RequestBody, type RequestMethod, type ResourceAuth, type ResourceDraft } from '@/lib/workspace-types'
 import type { PresenceUser } from '@/lib/presence'
 
 const NO_VARIABLES: VariableLookup = {}
@@ -42,6 +44,8 @@ interface ResourceEditorProps {
   /** Resolved variables, used to colour `{{name}}` references as defined or undefined. */
   variables?: VariableLookup
   viewers?: PresenceUser[]
+  /** What the open item's "Inherit" auth setting currently resolves to, for a live preview. */
+  effectiveAuth?: { auth: AuthCredentials; source: AuthSource }
 }
 
 /**
@@ -73,7 +77,7 @@ function suggestedContentType(type: RequestBody['type']): string {
   }
 }
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onShowVersionHistory, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [] }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onShowVersionHistory, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const isRequest = draft.kind === 'request'
@@ -216,7 +220,15 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                     onBodyChange={(body) => onChange({ ...draft, resource: { ...draft.resource, body } })}
                   />
                 )}
-                {tab === 'Auth' && <div className="auth-placeholder"><strong>No Auth</strong><p>Authentication is not configured for this request.</p></div>}
+                {tab === 'Auth' && (
+                  <AuthEditor
+                    mode="request"
+                    auth={draft.resource.auth}
+                    variables={variables}
+                    effective={effectiveAuth}
+                    onChange={(auth) => onChange({ ...draft, resource: { ...draft.resource, auth: auth as RequestAuth } })}
+                  />
+                )}
               </div>
             </>
           ) : draft.kind === 'environment' ? (
@@ -225,10 +237,29 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
             <div className="resource-form">
               <label className="field-label">Name<input className="text-field" value={name} onChange={(event) => updateName(event.target.value)} /></label>
               {draft.kind === 'collection' && (
-                <label className="field-label">Description<textarea className="text-field description-field" value={draft.resource.description} onChange={(event) => onChange({ kind: 'collection', resource: { ...draft.resource, description: event.target.value } })} /></label>
+                <>
+                  <label className="field-label">Description<textarea className="text-field description-field" value={draft.resource.description} onChange={(event) => onChange({ kind: 'collection', resource: { ...draft.resource, description: event.target.value } })} /></label>
+                  <h2 className="auth-section-heading">Authentication</h2>
+                  <AuthEditor
+                    mode="resource"
+                    auth={draft.resource.auth ?? null}
+                    variables={variables}
+                    onChange={(auth) => onChange({ kind: 'collection', resource: { ...draft.resource, auth: auth as ResourceAuth } })}
+                  />
+                </>
               )}
               {draft.kind === 'folder' && (
-                <label className="field-label">Description<textarea className="text-field description-field" value={draft.resource.description} onChange={(event) => onChange({ kind: 'folder', collectionId: draft.collectionId, resource: { ...draft.resource, description: event.target.value } })} /></label>
+                <>
+                  <label className="field-label">Description<textarea className="text-field description-field" value={draft.resource.description} onChange={(event) => onChange({ kind: 'folder', collectionId: draft.collectionId, resource: { ...draft.resource, description: event.target.value } })} /></label>
+                  <h2 className="auth-section-heading">Authentication</h2>
+                  <AuthEditor
+                    mode="resource"
+                    auth={draft.resource.auth ?? null}
+                    variables={variables}
+                    effective={effectiveAuth}
+                    onChange={(auth) => onChange({ kind: 'folder', collectionId: draft.collectionId, resource: { ...draft.resource, auth: auth as ResourceAuth } })}
+                  />
+                </>
               )}
             </div>
           )}

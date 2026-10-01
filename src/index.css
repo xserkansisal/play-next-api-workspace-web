@@ -193,6 +193,11 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .add-param { margin-top: 8px; padding: 6px 4px; border: 0; color: #777e8c; background: transparent; font-size: 13px; }
 .auth-placeholder { padding: 15px; color: #4d5461; font-size: 13px; }
 .auth-placeholder p { color: #858b97; }
+.auth-editor { padding: 15px; display: flex; flex-direction: column; gap: 12px; }
+.auth-type-select { max-width: 260px; }
+.auth-fields { display: flex; flex-direction: column; gap: 10px; }
+.auth-inherit-preview { color: #858b97; font-size: 13px; margin: 0; }
+.auth-section-heading { margin: 18px 0 2px; font-size: 14px; color: #4d5461; }
 .body-editor { overflow: auto; }
 .body-type-control { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #626977; font-size: 12px; }
 .body-type-control select { min-width: 170px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--foreground); background: var(--background); font-size: 13px; }
@@ -803,6 +808,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .sidebar-link,
 :root[data-theme='dark'] .auth-placeholder,
 :root[data-theme='dark'] .auth-placeholder p,
+:root[data-theme='dark'] .auth-inherit-preview,
+:root[data-theme='dark'] .auth-section-heading,
 :root[data-theme='dark'] .breadcrumbs,
 :root[data-theme='dark'] .request-tab,
 :root[data-theme='dark'] .resource-heading-copy p,

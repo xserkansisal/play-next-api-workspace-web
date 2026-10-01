@@ -13,6 +13,27 @@ export interface RequestBody {
   content: string
 }
 
+/**
+ * Resolved, sendable authentication. Never `inherit` - this is what a request, folder, or
+ * collection setting resolves to once inheritance has been applied, and what the proxy/outbound
+ * request preparer turns into headers or query parameters.
+ */
+export type AuthCredentials =
+  | { type: 'none' }
+  | { type: 'basic'; username: string; password: string }
+  | { type: 'bearer'; token: string }
+  | { type: 'api-key'; in: 'header' | 'query'; key: string; value: string }
+
+/** A request's own saved auth setting. `inherit` defers to the nearest configured ancestor. */
+export type RequestAuth = AuthCredentials | { type: 'inherit' }
+
+/**
+ * A collection/folder's own saved auth setting. `null` means "inherit from the parent" (or no
+ * auth, for a collection, which has no parent) - it is not a variant of `AuthCredentials` because
+ * a collection/folder cannot itself say "inherit", only "be inherited from" or not.
+ */
+export type ResourceAuth = AuthCredentials | null
+
 export interface RequestResource {
   id: string
   collectionId: string
@@ -25,7 +46,12 @@ export interface RequestResource {
   queryParams: KeyValueEntry[]
   headers: KeyValueEntry[]
   body: RequestBody | null
-  auth: { type: 'none' }
+  auth: RequestAuth
+  /**
+   * The resolved auth this request actually runs with, computed server-side from its own setting
+   * and its ancestors. Response-only - never send this back in a create/update payload.
+   */
+  effectiveAuth?: AuthCredentials
   /** Email of the user who created/last modified this, or null for resources that predate sign-in. */
   createdBy?: string | null
   updatedBy?: string | null
@@ -39,6 +65,8 @@ export interface FolderResource {
   name: string
   description: string
   items: WorkspaceItem[]
+  /** Omitted/undefined is treated the same as `null`: no setting of its own, inherit from the parent. */
+  auth?: ResourceAuth
   createdBy?: string | null
   updatedBy?: string | null
 }
@@ -46,18 +74,20 @@ export interface FolderResource {
 export type WorkspaceItem = RequestResource | FolderResource
 export type CreateItemInput =
   | (Omit<FolderResource, 'id' | 'collectionId' | 'parentId' | 'items'> & { parentId?: string })
-  | (Omit<RequestResource, 'id' | 'collectionId' | 'parentId'> & { parentId?: string })
+  | (Omit<RequestResource, 'id' | 'collectionId' | 'parentId' | 'effectiveAuth'> & { parentId?: string })
 
 /** A node in the id-free tree accepted by `POST /api/v1/collections` (created atomically, one transaction). */
 export type TreeNodeInput =
-  | { type: 'request'; name: string; description: string; method: RequestMethod; url: string; queryParams: KeyValueEntry[]; headers: KeyValueEntry[]; body: RequestBody | null; auth: { type: 'none' } }
-  | { type: 'folder'; name: string; description: string; items: TreeNodeInput[] }
+  | { type: 'request'; name: string; description: string; method: RequestMethod; url: string; queryParams: KeyValueEntry[]; headers: KeyValueEntry[]; body: RequestBody | null; auth: RequestAuth }
+  | { type: 'folder'; name: string; description: string; items: TreeNodeInput[]; auth?: ResourceAuth }
 
 export interface CollectionResource {
   id: string
   name: string
   description: string
   items: WorkspaceItem[]
+  /** Omitted/undefined is treated the same as `null`: no setting, so descendants resolve to `none`. */
+  auth?: ResourceAuth
   createdAt?: string
   updatedAt?: string
   createdBy?: string | null
@@ -67,10 +97,11 @@ export interface CollectionResource {
 export interface CollectionVersionSnapshot {
   name: string
   description: string
+  auth?: ResourceAuth
 }
 
 export type ItemVersionSnapshot =
-  | { type: 'folder'; name: string; description: string }
+  | { type: 'folder'; name: string; description: string; auth?: ResourceAuth }
   | {
       type: 'request'
       name: string
@@ -80,7 +111,7 @@ export type ItemVersionSnapshot =
       queryParams: KeyValueEntry[]
       headers: KeyValueEntry[]
       body: RequestBody | null
-      auth: { type: 'none' }
+      auth: RequestAuth
     }
 
 export interface ResourceVersion<TSnapshot> {

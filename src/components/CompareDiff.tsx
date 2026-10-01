@@ -15,11 +15,11 @@ export function comparableText(draft: ResourceDraft | undefined, snapshotOnly = 
   if (draft.kind === 'collection') {
     const { items: _items, ...resource } = draft.resource
     return JSON.stringify(snapshotOnly
-      ? { name: resource.name, description: resource.description }
+      ? { name: resource.name, description: resource.description, auth: resource.auth ?? null }
       : resource, null, 2)
   }
   if (snapshotOnly && draft.kind === 'folder') {
-    return JSON.stringify({ type: 'folder', name: draft.resource.name, description: draft.resource.description }, null, 2)
+    return JSON.stringify({ type: 'folder', name: draft.resource.name, description: draft.resource.description, auth: draft.resource.auth ?? null }, null, 2)
   }
   if (draft.kind === 'request') {
     const { body, ...rest } = draft.resource

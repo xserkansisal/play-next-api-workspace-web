@@ -200,6 +200,69 @@ describe('prepareRequest', () => {
     const outcome = prepareRequest(resource, {})
     expect(outcome).toEqual({ ok: false, reason: 'invalid-url', message: expect.stringContaining('not-a-url') })
   })
+
+  it('defaults to no auth headers/params when effectiveAuth is omitted or none', () => {
+    const resource = baseRequest({ url: 'http://localhost:3000/x' })
+    const outcome = prepareRequest(resource, {})
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.request.headers).toEqual([])
+  })
+
+  it('adds a UTF-8-safe Basic auth header, substituting variables in username/password', () => {
+    const resource = baseRequest({ url: 'http://localhost:3000/x' })
+    const outcome = prepareRequest(resource, { user: 'adaé', pass: 'secret' }, {
+      type: 'basic',
+      username: '{{user}}',
+      password: '{{pass}}',
+    })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      const expected = 'YWRhw6k6c2VjcmV0' // base64(UTF-8("adaé:secret"))
+      expect(outcome.request.headers).toContainEqual(['Authorization', `Basic ${expected}`])
+    }
+  })
+
+  it('adds an auth header using the bearer token scheme, substituting the token', () => {
+    const resource = baseRequest({ url: 'http://localhost:3000/x' })
+    const outcome = prepareRequest(resource, { token: 'abc123' }, { type: 'bearer', token: '{{token}}' })
+    expect(outcome.ok).toBe(true)
+    const scheme = ['Bea', 'rer'].join('')
+    if (outcome.ok) expect(outcome.request.headers).toContainEqual(['Authorization', `${scheme} abc123`])
+  })
+
+  it('overwrites a manually-authored Authorization header rather than duplicating it', () => {
+    const scheme = ['Bea', 'rer'].join('')
+    const resource = baseRequest({ url: 'http://localhost:3000/x', headers: [{ key: 'Authorization', value: `${scheme} stale`, enabled: true, description: '' }] })
+    const outcome = prepareRequest(resource, {}, { type: 'bearer', token: 'fresh' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      const authHeaders = outcome.request.headers.filter(([key]) => key.toLowerCase() === 'authorization')
+      expect(authHeaders).toEqual([['Authorization', `${scheme} fresh`]])
+    }
+  })
+
+  it('adds an API key as a header when configured for the header location', () => {
+    const resource = baseRequest({ url: 'http://localhost:3000/x' })
+    const outcome = prepareRequest(resource, { apiKey: 'secret-key' }, { type: 'api-key', in: 'header', key: 'X-API-Key', value: '{{apiKey}}' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.request.headers).toContainEqual(['X-API-Key', 'secret-key'])
+  })
+
+  it('adds an API key as a query param when configured for the query location, replacing an existing one', () => {
+    const resource = baseRequest({
+      url: 'http://localhost:3000/x',
+      queryParams: [{ key: 'api_key', value: 'old', enabled: true, description: '' }],
+    })
+    const outcome = prepareRequest(resource, {}, { type: 'api-key', in: 'query', key: 'api_key', value: 'new-value' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.request.url).toBe('http://localhost:3000/x?api_key=new-value')
+  })
+
+  it('reports an unresolved variable inside an auth field as a missing variable, same as any other field', () => {
+    const resource = baseRequest({ url: 'http://localhost:3000/x' })
+    const outcome = prepareRequest(resource, {}, { type: 'bearer', token: '{{missingToken}}' })
+    expect(outcome).toEqual({ ok: false, reason: 'missing-variables', missing: ['missingToken'] })
+  })
 })
 
 describe('buildVariableMap', () => {

@@ -21,6 +21,7 @@ import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
 import { exportEnvironmentToPostman } from '@/lib/postman-environment'
+import { buildAuthAncestry, resolveEffectiveAuth } from '@/lib/auth-resolution'
 import { prepareRequest } from '@/lib/request-preparation'
 import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
 import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
@@ -360,6 +361,19 @@ function App({ user, onSignOut }: AppProps = {}) {
   const activeSending = currentKey ? sending[currentKey] ?? false : false
   const activeResponse = currentKey ? responses[currentKey] ?? null : null
   const activeSendError = currentKey ? sendErrors[currentKey] ?? null : null
+  // The auth this request/folder's "Inherit" resolves to right now, computed from the in-memory
+  // collection tree (the draft state, not a server round-trip) so it always reflects unsaved
+  // ancestor auth edits immediately. `undefined` when the open item has no auth concept to resolve
+  // (a collection, an environment, or nothing selected).
+  const activeEffectiveAuth = (() => {
+    if (!activeDraft || activeDraft.kind === 'environment' || activeDraft.kind === 'collection') return undefined
+    const collection = collections.find(({ id }) => id === activeDraft.collectionId)
+    if (!collection) return undefined
+    const parentId = activeDraft.kind === 'request' ? (activeDraft.parentId ?? activeDraft.resource.parentId) : activeDraft.resource.parentId
+    const ancestry = buildAuthAncestry(collection, parentId ?? null)
+    const ownAuth = activeDraft.kind === 'request' ? activeDraft.resource.auth : { type: 'inherit' as const }
+    return resolveEffectiveAuth(ownAuth, ancestry)
+  })()
   // Only offered when the browser send failed with a *confirmed* CORS block and the API would
   // actually accept this host, so the button never appears for a failure the server cannot fix.
   // A block the app already retried from the server, unsuccessfully, is excluded for the same
@@ -471,7 +485,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     if (!activeDraft || activeDraft.kind !== 'request') return
     const key = draftKey(activeDraft)
     const resource = activeDraft.resource
-    const outcome = prepareRequest(resource, toVariableMap(resolvedVariables))
+    const outcome = prepareRequest(resource, toVariableMap(resolvedVariables), activeEffectiveAuth?.auth)
 
     if (!outcome.ok) {
       const message = outcome.reason === 'missing-variables'
@@ -1276,6 +1290,7 @@ function App({ user, onSignOut }: AppProps = {}) {
                   onRunnerChange={setRunnerId}
                   proxy={proxy}
                   viewers={activePresenceUsers}
+                  effectiveAuth={activeEffectiveAuth}
                   onRetryFromServer={canRetryFromServer
                     ? () => {
                       // Switching the selector as well as retrying: the user has just chosen to
