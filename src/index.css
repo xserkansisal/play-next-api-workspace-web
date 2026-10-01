@@ -47,7 +47,7 @@ button:disabled { cursor: not-allowed; }
 .brand, .top-actions, .env-picker { display: flex; align-items: center; }
 .sidebar-toggle { display: none; border: 0; color: #727987; background: transparent; }
 .brand { gap: 10px; min-width: 0; font-weight: 700; letter-spacing: -.02em; }
-.brand-mark { display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border-radius: 9px; color: white; background: #6d5ce8; font-size: 16px; }
+.brand-logo { display: block; width: 104px; height: auto; flex: 0 0 auto; }
 .workspace-label { margin-left: 8px; padding-left: 18px; border-left: 1px solid var(--border); color: #626977; font-size: 12px; font-weight: 500; }
 .top-actions { gap: 9px; }
 .env-picker { gap: 8px; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; background: white; }
@@ -238,6 +238,7 @@ button:disabled { cursor: not-allowed; }
 
 .sign-in-screen { display: flex; height: 100dvh; align-items: center; justify-content: center; background: #f6f7f9; }
 .sign-in-card { display: flex; width: min(380px, 92vw); flex-direction: column; gap: 12px; padding: 32px 28px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 18px 60px #11182715; }
+.sign-in-logo { display: block; width: min(220px, 100%); height: auto; margin: 0 auto 8px; }
 .sign-in-card h1 { margin: 4px 0 0; color: #24272f; font-size: 18px; }
 .sign-in-card > p { margin: 0; color: #7d8492; font-size: 12px; line-height: 1.5; }
 .sign-in-card .text-field { padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; }

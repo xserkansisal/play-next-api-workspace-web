@@ -918,7 +918,7 @@ function App({ user, onSignOut }: AppProps = {}) {
       <header className="topbar">
         <div className="brand">
           <button className="sidebar-toggle" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}>☰</button>
-          <span className="brand-mark">↗</span>
+          <img className="brand-logo" src="/assets/play-next-logo.png" alt="Play Next" />
           <span>Play Next API Workspace</span>
           <span className="workspace-label">Engineering</span>
         </div>

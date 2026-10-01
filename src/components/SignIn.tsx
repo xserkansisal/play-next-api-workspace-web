@@ -96,7 +96,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
     return (
       <div className="sign-in-screen">
         <form className="sign-in-card" onSubmit={(event) => void submitEmail(event)}>
-          <span className="brand-mark">↗</span>
+          <img className="sign-in-logo" src="/assets/play-next-logo.png" alt="Play Next" />
           <h1>Sign in to Play Next API Workspace</h1>
           <p>Enter your work email. We'll send a 6-digit sign-in code.</p>
           <label className="field-label">
@@ -121,7 +121,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
   return (
     <div className="sign-in-screen">
       <form className="sign-in-card" onSubmit={(event) => void submitCode(event)}>
-        <span className="brand-mark">↗</span>
+        <img className="sign-in-logo" src="/assets/play-next-logo.png" alt="Play Next" />
         <h1>Enter your code</h1>
         <p>We sent a 6-digit code to <strong>{step.email}</strong>. It expires 15 minutes after it was sent.</p>
         <label className="field-label">
