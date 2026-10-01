@@ -2,10 +2,13 @@ import { lazy, Suspense, useEffect, useState, type PointerEvent as ReactPointerE
 
 import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
+import { VariableInput, type VariableLookup } from '@/components/VariableInput'
 import type { ProxySettings } from '@/lib/api'
 import { copyVariableKey } from '@/lib/copy-key'
 import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import type { EnvironmentResource, EnvironmentVariable, KeyValueEntry, RequestMethod, ResourceDraft } from '@/lib/workspace-types'
+
+const NO_VARIABLES: VariableLookup = {}
 
 const JsonEditor = lazy(() => import('@/components/JsonEditor').then(({ JsonEditor: Editor }) => ({ default: Editor })))
 
@@ -32,6 +35,8 @@ interface ResourceEditorProps {
   onRetryFromServer?: () => void
   /** Identifies the open request, so a response-sync rule can be bound to it. */
   requestKey?: string | null
+  /** Resolved variables, used to colour `{{name}}` references as defined or undefined. */
+  variables?: VariableLookup
 }
 
 /**
@@ -52,7 +57,7 @@ function describeRunnerChoice(proxy: ProxySettings | null): string {
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const isRequest = draft.kind === 'request'
@@ -123,7 +128,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 >
                   {methods.map((method) => <option key={method}>{method}</option>)}
                 </select>
-                <input className="url-input" aria-label="Request URL" value={draft.resource.url} placeholder="{{baseUrl}}:{{port}}/path" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, url: event.target.value } })} />
+                <VariableInput className="url-input" variables={variables} aria-label="Request URL" value={draft.resource.url} placeholder="{{baseUrl}}:{{port}}/path" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, url: event.target.value } })} />
                 <select
                   className="runner-select"
                   aria-label="Send from"
@@ -149,14 +154,15 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 ))}
               </div>
               <div className="editor-body">
-                {tab === 'Params' && <KeyValueEditor label="Query parameters" entries={draft.resource.queryParams} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, queryParams: entries } })} />}
-                {tab === 'Headers' && <KeyValueEditor label="Headers" entries={draft.resource.headers} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, headers: entries } })} />}
+                {tab === 'Params' && <KeyValueEditor label="Query parameters" entries={draft.resource.queryParams} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, queryParams: entries } })} />}
+                {tab === 'Headers' && <KeyValueEditor label="Headers" entries={draft.resource.headers} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, headers: entries } })} />}
                 {tab === 'Body' && (
                   <div className="body-editor">
                       <div className="body-toolbar"><span>JSON</span><span>JSON is saved as text; template variables are allowed.</span></div>
                     <Suspense fallback={<div className="editor-loading">Loading JSON editor…</div>}>
                       <JsonEditor
                         value={draft.resource.body?.content ?? ''}
+                        variables={variables}
                         onChange={(content) => onChange({ ...draft, resource: { ...draft.resource, body: content ? { type: 'json', content } : null } })}
                       />
                     </Suspense>
@@ -205,7 +211,7 @@ function AttributionLine({ createdBy, updatedBy }: { createdBy?: string | null; 
   return <p className="attribution-line">Created by {created} · Last updated by {updated}</p>
 }
 
-function KeyValueEditor({ label, entries, onChange }: { label: string; entries: KeyValueEntry[]; onChange: (entries: KeyValueEntry[]) => void }) {
+function KeyValueEditor({ label, entries, variables, onChange }: { label: string; entries: KeyValueEntry[]; variables: VariableLookup; onChange: (entries: KeyValueEntry[]) => void }) {
   const change = (index: number, patch: Partial<KeyValueEntry>) => onChange(entries.map((entry, i) => i === index ? { ...entry, ...patch } : entry))
   const add = () => onChange([...entries, { key: '', value: '', enabled: true, description: '' }])
   return (
@@ -214,8 +220,8 @@ function KeyValueEditor({ label, entries, onChange }: { label: string; entries: 
       {entries.map((entry, index) => (
         <div className="param-row" key={`${label}-${index}`}>
           <input className="check" type="checkbox" aria-label={`Enable ${label} ${entry.key || index + 1}`} checked={entry.enabled} onChange={(event) => change(index, { enabled: event.target.checked })} />
-          <input className="cell-input" aria-label={`${label} key ${index + 1}`} value={entry.key} placeholder="Key" onChange={(event) => change(index, { key: event.target.value })} />
-          <input className="cell-input" aria-label={`${label} value ${index + 1}`} value={entry.value} placeholder="Value" onChange={(event) => change(index, { value: event.target.value })} />
+          <VariableInput className="cell-input" variables={variables} aria-label={`${label} key ${index + 1}`} value={entry.key} placeholder="Key" onChange={(event) => change(index, { key: event.target.value })} />
+          <VariableInput className="cell-input" variables={variables} aria-label={`${label} value ${index + 1}`} value={entry.value} placeholder="Value" onChange={(event) => change(index, { value: event.target.value })} />
           <input className="cell-input description" aria-label={`${label} description ${index + 1}`} value={entry.description} placeholder="Description" onChange={(event) => change(index, { description: event.target.value })} />
           <button className="row-remove" aria-label={`Remove ${label} ${index + 1}`} onClick={() => onChange(entries.filter((_, i) => i !== index))}>×</button>
         </div>

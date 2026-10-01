@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { CompareDiff } from '@/components/CompareDiff'
 import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
@@ -65,6 +66,33 @@ interface RestoreState {
 }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+
+async function fetchLatestDraft(selected: OpenResource): Promise<ResourceDraft | null> {
+  if (selected.kind === 'collection') {
+    return { kind: 'collection', resource: await workspaceApi.collection(selected.collectionId) }
+  }
+  if (selected.kind === 'environment') {
+    return { kind: 'environment', resource: await workspaceApi.environment(selected.environmentId) }
+  }
+  const resource = await workspaceApi.item(selected.collectionId, selected.itemId)
+  if (selected.kind === 'request') return resource.type === 'request' ? { kind: 'request', collectionId: selected.collectionId, resource } : null
+  return resource.type === 'folder' ? { kind: 'folder', collectionId: selected.collectionId, resource } : null
+}
+
+/**
+ * True when the server copy is what this tab last saved or loaded. The API broadcasts a change
+ * event for every write, including this tab's own saves, so without this check every Save would
+ * raise a "newer version" warning about content the user just wrote. A collection's item tree is
+ * left out because it changes with every child edit and is not part of the collection form.
+ */
+function matchesKnownServerState(known: ResourceDraft, latest: ResourceDraft): boolean {
+  if (known.kind === 'collection' && latest.kind === 'collection') {
+    const { items: _knownItems, ...knownRest } = known.resource
+    const { items: _latestItems, ...latestRest } = latest.resource
+    return !isDraftDirty(knownRest, latestRest)
+  }
+  return !isDraftDirty(known.resource, latest.resource)
+}
 
 function jsonCopy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -158,6 +186,12 @@ function App({ user, onSignOut }: AppProps = {}) {
   selectedRef.current = selected
   draftsRef.current = drafts
   baselinesRef.current = baselines
+  // Settles when the save in flight (if any) has finished. A change event for our own write can
+  // arrive before the PUT response does, so the echo check waits for it.
+  const pendingSaveRef = useRef<Promise<void>>(Promise.resolve())
+  // The server copy each open resource was last saved as, written synchronously on save so the
+  // echo check never races React's render that refreshes `baselinesRef`.
+  const lastSavedRef = useRef<Record<string, ResourceDraft>>({})
 
   const reloadAll = useCallback(async () => {
     setLoadingError(null)
@@ -245,16 +279,28 @@ function App({ user, onSignOut }: AppProps = {}) {
         return
       }
       if (applyChangeEvent(event, selectedRef.current) === 'review') {
-        const active = selectedRef.current
-        const currentKey = active ? resourceKey(active) : ''
-        const currentDraft = draftsRef.current[currentKey]
-        const baseline = baselinesRef.current[currentKey]
-        setRemoteUpdate({
-          event,
-          error: currentDraft && baseline && isDraftDirty(currentDraft, baseline)
-            ? 'You have unsaved edits. They are preserved; compare before choosing either version.'
-            : undefined,
-        })
+        const active = selectedRef.current!
+        const activeKey = resourceKey(active)
+        void (async () => {
+          await pendingSaveRef.current
+          let latest: ResourceDraft | null = null
+          try {
+            latest = await fetchLatestDraft(active)
+          } catch {
+            // Could not confirm; fall through and let the user review it.
+          }
+          if (closed || !selectedRef.current || resourceKey(selectedRef.current) !== activeKey) return
+          const known = [lastSavedRef.current[activeKey], baselinesRef.current[activeKey]]
+          if (latest && known.some((entry) => entry && matchesKnownServerState(entry, latest))) return
+          const currentDraft = draftsRef.current[activeKey]
+          const baseline = baselinesRef.current[activeKey]
+          setRemoteUpdate({
+            event,
+            error: currentDraft && baseline && isDraftDirty(currentDraft, baseline)
+              ? 'You have unsaved edits. They are preserved; compare before choosing either version.'
+              : undefined,
+          })
+        })()
       } else {
         void reloadAll()
       }
@@ -428,6 +474,9 @@ function App({ user, onSignOut }: AppProps = {}) {
     if (!activeDraft || !dirty) return
     setSaving(true)
     setResourceError(null)
+    let settle: () => void = () => {}
+    const done = new Promise<void>((resolve) => { settle = resolve })
+    pendingSaveRef.current = Promise.all([pendingSaveRef.current, done]).then(() => undefined)
     try {
       let saved: ResourceDraft
       if (activeDraft.kind === 'collection') {
@@ -495,12 +544,14 @@ function App({ user, onSignOut }: AppProps = {}) {
         saved = { kind: 'environment', resource }
       }
       const savedKey = draftKey(saved)
+      lastSavedRef.current[savedKey] = jsonCopy(saved)
       setDrafts((current) => ({ ...current, [savedKey]: saved }))
       setBaselines((current) => ({ ...current, [savedKey]: jsonCopy(saved) }))
     } catch (error) {
       setResourceError(describeApiError(error))
     } finally {
       setSaving(false)
+      settle()
     }
   }
 
@@ -897,18 +948,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     if (!remoteUpdate || !selected) return
     setRemoteUpdate((current) => current ? { ...current, loading: true, error: undefined } : current)
     try {
-      let latest: ResourceDraft | null = null
-      if (selected.kind === 'collection') {
-        latest = { kind: 'collection', resource: await workspaceApi.collection(selected.collectionId) }
-      } else if (selected.kind === 'environment') {
-        latest = { kind: 'environment', resource: await workspaceApi.environment(selected.environmentId) }
-      } else if (selected.kind === 'request') {
-        const resource = await workspaceApi.item(selected.collectionId, selected.itemId)
-        if (resource.type === 'request') latest = { kind: 'request', collectionId: selected.collectionId, resource }
-      } else {
-        const resource = await workspaceApi.item(selected.collectionId, selected.itemId)
-        if (resource.type === 'folder') latest = { kind: 'folder', collectionId: selected.collectionId, resource }
-      }
+      const latest = await fetchLatestDraft(selected)
       if (!latest) throw new Error('The resource is no longer available. Refresh the workspace to see the latest state.')
       setRemoteUpdate((current) => current ? { ...current, latest, loading: false } : current)
     } catch (error) {
@@ -1041,11 +1081,8 @@ function App({ user, onSignOut }: AppProps = {}) {
                 {remoteUpdate?.latest && (
                   <div className="compare-panel" role="dialog" aria-label="Compare server version">
                     <div className="compare-heading"><strong>Review server version</strong><button aria-label="Close comparison" onClick={() => setRemoteUpdate(null)}>×</button></div>
-                    <p>Your local draft remains unchanged until you choose a version.</p>
-                    <div className="compare-columns">
-                      <div><h3>Your local draft</h3><pre>{JSON.stringify(activeDraft, null, 2)}</pre></div>
-                      <div><h3>Latest on server</h3><pre>{JSON.stringify(remoteUpdate.latest, null, 2)}</pre></div>
-                    </div>
+                    <p>Lines marked − are only in your local draft; lines marked + are only in the server version. Your draft stays unchanged until you choose.</p>
+                    <CompareDiff local={activeDraft} latest={remoteUpdate.latest} />
                     <div className="compare-actions">
                       <Button variant="outline" onClick={() => setRemoteUpdate(null)}>Keep my draft</Button>
                       <Button onClick={useLatest}>Replace local draft with server version</Button>
@@ -1054,6 +1091,7 @@ function App({ user, onSignOut }: AppProps = {}) {
                 )}
                 <ResourceEditor
                   draft={activeDraft}
+                  variables={resolvedVariables}
                   collectionName={activeDraft.kind !== 'collection' && activeDraft.kind !== 'environment'
                     ? collections.find(({ id }) => id === activeDraft.collectionId)?.name
                     : undefined}

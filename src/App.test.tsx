@@ -97,6 +97,46 @@ describe('workspace live update flow', () => {
     await waitFor(() => expect(MockEventSource.current.url).toContain('?lastEventId=event-1'))
   })
 
+  it('ignores the change event echoed back for content the server already matches', async () => {
+    vi.mocked(workspaceApi.item).mockResolvedValue({ ...request })
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+
+    MockEventSource.current.emit('message', JSON.stringify({
+      eventId: 'event-echo',
+      kind: 'request',
+      id: request.id,
+      collectionId: collection.id,
+      operation: 'updated',
+      changedAt: '2026-09-29T09:00:00.000Z',
+    }))
+
+    await waitFor(() => expect(workspaceApi.item).toHaveBeenCalledWith(collection.id, request.id))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.queryByText(/a newer version is available/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a line diff of what differs from the server version', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    MockEventSource.current.emit('message', JSON.stringify({
+      eventId: 'event-2',
+      kind: 'request',
+      id: request.id,
+      collectionId: collection.id,
+      operation: 'updated',
+      changedAt: '2026-09-29T09:00:00.000Z',
+    }))
+    await user.click(await screen.findByRole('button', { name: 'Review latest' }))
+    const diff = await screen.findByRole('table', { name: /changes between your draft/i })
+    expect(diff).toHaveTextContent('"url": "/orders",')
+    expect(diff).toHaveTextContent('"url": "/server-version",')
+    expect(screen.getByText('−1')).toBeInTheDocument()
+    expect(screen.getByText('+1')).toBeInTheDocument()
+  })
+
   it('refetches the workspace after a resync frame and exposes the recovery state', async () => {
     render(<App />)
     await screen.findByRole('button', { name: 'List orders' })
