@@ -59,7 +59,7 @@ button:disabled { cursor: not-allowed; }
 .sidebar-tools { display: flex; gap: 3px; }
 .sidebar-tools button, .tree-chevron, .tree-delete, .tree-clone, .row-remove { display: grid; place-items: center; border: 0; background: transparent; color: #808694; }
 .sidebar-tools button { width: 27px; height: 27px; border-radius: 6px; font-size: 17px; }
-.sidebar-tools button:hover:not(:disabled), .tree-row:hover { background: #f5f4fb; }
+.sidebar-tools button:hover:not(:disabled) { background: #f5f4fb; }
 .sidebar-tools button:disabled { opacity: 0.35; cursor: default; }
 .sidebar-tools-divider { width: 1px; align-self: stretch; margin: 4px 2px; background: #e6e5ef; }
 .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
@@ -67,12 +67,24 @@ button:disabled { cursor: not-allowed; }
 .search { height: 34px; display: flex; align-items: center; gap: 8px; margin: 0 13px 15px; padding: 0 10px; border: 1px solid var(--border); border-radius: 7px; color: #a1a6b0; font-size: 12px; }
 .search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #454b57; background: transparent; font-size: 12px; }
 .tree { overflow: auto; flex: 1; padding: 0 8px 14px; }
-.tree-row { min-height: 34px; display: flex; align-items: center; gap: 7px; border-radius: 6px; color: #5c6370; font-size: 12px; white-space: nowrap; }
-.tree-row.collection { color: #404652; font-weight: 600; }
-.tree-row.folder { color: #454b57; font-weight: 600; }
-.tree-row.selected { color: #4c40b4; background: #f0edff; }
-.tree-chevron { width: 17px; height: 28px; flex: 0 0 17px; font-size: 12px; }
-.tree-request-mark { width: 17px; flex: 0 0 17px; color: #419b7b; font-size: 8px; text-align: center; }
+/* Indent guides are drawn as a repeating gradient rather than nested DOM, because the tree renders
+   as a flat list of rows. One vertical line per ancestor level, aligned to that ancestor's chevron. */
+.tree-row { --indent: 0; min-height: 34px; display: flex; align-items: center; gap: 7px; padding-left: calc(10px + var(--indent) * 18px); border-radius: 6px; color: #5c6370; font-size: 12px; white-space: nowrap; background-image: repeating-linear-gradient(to right, #e4e6ec 0 1px, transparent 1px 18px); background-position: 20px 0; background-size: calc(var(--indent) * 18px) 100%; background-repeat: no-repeat; }
+.tree-row.collection { color: #404652; font-weight: 600; background-color: rgba(109, 92, 232, .06); }
+.tree-row.folder { color: #454b57; font-weight: 600; background-color: rgba(109, 92, 232, .025); }
+.tree-row.selected { color: #4c40b4; background-color: #f0edff; }
+/* Declared after the tint rules so it outranks them on equal specificity, and `background-color`
+   rather than the shorthand so hovering never wipes the indent-guide gradient. */
+.tree-row:not(.selected):hover { background-color: #eeedf7; }
+.tree-chevron { width: 20px; height: 28px; flex: 0 0 20px; color: #6b7280; font-size: 16px; line-height: 1; }
+.tree-chevron:hover { color: #2b2f38; }
+/* Sized like a label rather than a dot: the method is the first thing scanned in a long tree. */
+.tree-method { display: grid; place-items: center; width: 38px; flex: 0 0 38px; padding: 2px 0; border-radius: 4px; font: 700 9px ui-monospace, monospace; letter-spacing: .02em; }
+.method-get { color: #18825a; background: #e8f7ef; }
+.method-post { color: #b45309; background: #fdf3e3; }
+.method-put { color: #1d4ed8; background: #e9effe; }
+.method-patch { color: #6d28d9; background: #f2ecfe; }
+.method-delete { color: #b42318; background: #fdecec; }
 .tree-collection-mark { color: #8a82d4; }
 .tree-name { overflow: hidden; flex: 1; padding: 6px 0; border: 0; background: transparent; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .tree-delete, .tree-clone { width: 23px; height: 25px; flex: 0 0 23px; border-radius: 4px; opacity: 0; font-size: 16px; }
@@ -409,7 +421,7 @@ button:disabled { cursor: not-allowed; }
 .sidebar-resize-handle:hover, .sidebar-resize-handle:active { background: #dcd9f2; }
 .sidebar-section-toggle { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; border: 0; background: transparent; padding: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; text-align: left; }
 .sidebar-section-toggle:hover { color: #5b6170; }
-.tree-chevron-mark { width: 10px; font-size: 9px; flex: none; }
+.tree-chevron-mark { width: 13px; font-size: 13px; line-height: 1; flex: none; }
 .sidebar-section-count { color: #b0b5c0; font-weight: 600; }
 /* Bounded rather than flex:1, so the environments list cannot take half the sidebar from the
    collections tree, which is the one that needs the room. */
@@ -417,3 +429,11 @@ button:disabled { cursor: not-allowed; }
 .environments-section .sidebar-heading { height: 40px; flex: 0 0 40px; }
 .environments-tree { flex: 0 1 auto; max-height: 32vh; }
 .tree-row.environment .tree-environment-mark { display: grid; place-items: center; width: 17px; color: #8b90f5; font-size: 9px; flex: none; }
+/* The environment actually applied to requests, matching the topbar picker's green dot. Its own
+   hover rule is needed because this selector outranks the shared `.tree-row:not(.selected):hover`. */
+.tree-row.environment.active-environment { background-color: rgba(23, 140, 98, .08); }
+.tree-row.environment.active-environment:hover { background-color: rgba(23, 140, 98, .14); }
+.tree-row.environment.active-environment .tree-environment-mark { color: #178c62; font-size: 11px; }
+.tree-row.environment.active-environment .tree-name { color: #136c4d; font-weight: 600; }
+.tree-row.environment.active-environment.selected { background-color: #e4f3ec; }
+.environment-active-tag { flex: none; margin-right: 2px; padding: 1px 6px; border-radius: 999px; color: #136c4d; background: rgba(23, 140, 98, .16); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }

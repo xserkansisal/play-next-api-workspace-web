@@ -3,9 +3,27 @@ import type {
   EnvironmentResource,
   EnvironmentVariable,
   OpenResource,
+  RequestMethod,
   RequestResource,
   WorkspaceItem,
 } from '@/lib/workspace-types'
+
+/**
+ * Short labels for the sidebar, where a row has room for a badge but not a full method name.
+ * Only DELETE is abbreviated; the rest already fit, and shortening them would cost more in
+ * readability than it saves in width.
+ */
+const METHOD_LABELS: Record<RequestMethod, string> = {
+  GET: 'GET',
+  POST: 'POST',
+  PUT: 'PUT',
+  PATCH: 'PATCH',
+  DELETE: 'DEL',
+}
+
+export function methodLabel(method: RequestMethod): string {
+  return METHOD_LABELS[method] ?? method
+}
 
 export function sortByName<T extends { name: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))

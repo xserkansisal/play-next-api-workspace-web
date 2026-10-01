@@ -969,6 +969,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           onShowHistory={() => setView('history')}
           collapsed={sidebarCollapsed}
           environments={environments}
+          activeEnvironmentId={selectedEnvironmentId}
           onCreateEnvironment={() => void createEnvironment()}
           width={sidebarWidth}
           onResize={(next) => setSidebarWidth(clampSidebarWidth(next))}

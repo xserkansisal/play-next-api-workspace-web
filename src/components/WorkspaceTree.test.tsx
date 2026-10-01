@@ -47,6 +47,7 @@ function renderTree(props: Partial<React.ComponentProps<typeof WorkspaceTree>> =
       collapsed={false}
       environments={[]}
       onCreateEnvironment={vi.fn()}
+      activeEnvironmentId=""
       width={260}
       onResize={vi.fn()}
       {...props}
@@ -126,6 +127,7 @@ describe('WorkspaceTree expand/collapse all', () => {
         collapsed={false}
         environments={[]}
         onCreateEnvironment={vi.fn()}
+        activeEnvironmentId=""
         width={260}
         onResize={vi.fn()}
       />,
@@ -268,6 +270,96 @@ describe('foldable sidebar sections', () => {
     renderTree({ environments })
     const header = screen.getByLabelText('Collapse Environments')
     expect(header.textContent).toContain('2')
+  })
+})
+
+describe('request method badges', () => {
+  function withMethods(): CollectionResource[] {
+    const methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
+    return [{
+      id: 'c1',
+      name: 'Payments',
+      description: '',
+      items: methods.map((method, index) => ({
+        ...request(`r${index}`, `Call ${method}`),
+        method,
+      })),
+    }]
+  }
+
+  it('labels each request with its method instead of an undifferentiated dot', () => {
+    const { container } = renderTree({ collections: withMethods() })
+    const badges = [...container.querySelectorAll('.tree-method')].map((node) => node.textContent?.trim())
+    // Rows are name-sorted, so this is "Call DELETE" through "Call PUT".
+    // DELETE is the only method abbreviated, because it is the only one that does not fit.
+    expect(badges).toEqual(['DEL', 'GET', 'PATCH', 'POST', 'PUT'])
+  })
+
+  it('colour-codes the badge by method, so the tree is scannable without reading each label', () => {
+    const { container } = renderTree({ collections: withMethods() })
+    const classes = [...container.querySelectorAll('.tree-method')].map((node) => node.className)
+    expect(classes).toEqual([
+      'tree-method method-delete',
+      'tree-method method-get',
+      'tree-method method-patch',
+      'tree-method method-post',
+      'tree-method method-put',
+    ])
+  })
+
+  it('keeps the full method available on hover, since DEL is an abbreviation', () => {
+    const { container } = renderTree({ collections: withMethods() })
+    const del = container.querySelector('.method-delete')
+    expect(del?.getAttribute('title')).toBe('DELETE')
+  })
+
+  it('does not put a method badge on folders or collections', () => {
+    const { container } = renderTree()
+    expect(container.querySelectorAll('.tree-method').length).toBe(1)
+  })
+})
+
+describe('the active environment', () => {
+  function rowFor(name: string) {
+    return screen.getByTitle(new RegExp(`^${name}`)).closest('.tree-row')
+  }
+
+  it('marks the environment applied to requests, not merely the one open in the editor', () => {
+    renderTree({ environments, activeEnvironmentId: 'e1', selected: { kind: 'environment', environmentId: 'e2' } })
+
+    expect(rowFor('localhost-develop')?.className).toContain('active-environment')
+    // e2 is open in the editor, but e1 is the one whose variables resolve.
+    expect(rowFor('staging')?.className).not.toContain('active-environment')
+    expect(rowFor('staging')?.className).toContain('selected')
+  })
+
+  it('labels the active row, so the state survives being read without colour', () => {
+    renderTree({ environments, activeEnvironmentId: 'e2' })
+
+    const tag = screen.getByText('Active')
+    expect(tag.closest('.tree-row')).toBe(rowFor('staging'))
+    expect(screen.getByTitle('staging (active)')).toBeTruthy()
+  })
+
+  it('marks nothing when no environment is selected', () => {
+    const { container } = renderTree({ environments, activeEnvironmentId: '' })
+    expect(container.querySelectorAll('.active-environment').length).toBe(0)
+    expect(screen.queryByText('Active')).toBeNull()
+  })
+})
+
+describe('collection indent guides', () => {
+  it('gives each row its depth, so the stylesheet can draw one guide per ancestor level', () => {
+    const { container } = renderTree()
+    const depthOf = (name: string) =>
+      (screen.getByTitle(name).closest('.tree-row') as HTMLElement).style.getPropertyValue('--indent')
+
+    // Payments is a collection (top level) and carries no inline depth.
+    expect((screen.getByTitle('Payments').closest('.tree-row') as HTMLElement).style.getPropertyValue('--indent')).toBe('')
+    expect(depthOf('Charges')).toBe('1')
+    expect(depthOf('Nested')).toBe('2')
+    expect(depthOf('Deep request')).toBe('3')
+    expect(container.querySelectorAll('.tree-row').length).toBe(4)
   })
 })
 

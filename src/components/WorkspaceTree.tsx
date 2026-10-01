@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 
 import { fitSidebarWidth } from '@/lib/sidebar-width-storage'
 import { loadCollapsedIds, pruneCollapsedIds, saveCollapsedIds } from '@/lib/tree-expansion-storage'
-import { sortByName } from '@/lib/workspace-ui'
+import { methodLabel, sortByName } from '@/lib/workspace-ui'
 import type { CollectionResource, EnvironmentResource, OpenResource, WorkspaceItem } from '@/lib/workspace-types'
 
 /**
@@ -27,6 +27,12 @@ interface WorkspaceTreeProps {
   onShowHistory: () => void
   collapsed: boolean
   environments: EnvironmentResource[]
+  /**
+   * The environment currently applied to requests, chosen in the topbar picker. This is distinct
+   * from `selected`, which is merely the row open in the editor - an environment can be open for
+   * editing without being the one whose variables actually resolve.
+   */
+  activeEnvironmentId: string
   onCreateEnvironment: () => void
   /** Width in pixels; owned by the caller so it can be persisted and applied to the layout. */
   width: number
@@ -97,12 +103,16 @@ function TreeItem({
 
   return (
     <>
-      <div className={`tree-row ${item.type} ${active ? 'selected' : ''}`} style={{ paddingLeft: `${10 + depth * 18}px` }}>
+      <div className={`tree-row ${item.type} ${active ? 'selected' : ''}`} style={{ '--indent': depth } as CSSProperties}>
         {item.type === 'folder' ? (
           <button className="tree-chevron" onClick={() => expansion.toggle(item.id)} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}>
             {expanded ? '▾' : '▸'}
           </button>
-        ) : <span className="tree-request-mark">●</span>}
+        ) : (
+          <span className={`tree-method method-${item.method.toLowerCase()}`} title={item.method}>
+            {methodLabel(item.method)}
+          </span>
+        )}
         <button className="tree-name" onClick={() => onSelect(resource)} title={item.name}>{item.name}</button>
         <button className="tree-clone" title={`Duplicate ${item.name}`} aria-label={`Duplicate ${item.name}`} disabled={cloningId === item.id} onClick={() => onClone(resource)}>⧉</button>
         <button className="tree-delete" title={`Move ${item.name} to Trash`} aria-label={`Move ${item.name} to Trash`} onClick={() => onDelete(resource)}>×</button>
@@ -170,6 +180,7 @@ export function WorkspaceTree({
   onShowHistory,
   collapsed,
   environments,
+  activeEnvironmentId,
   onCreateEnvironment,
   width,
   onResize,
@@ -313,12 +324,14 @@ export function WorkspaceTree({
             <nav className="tree environments-tree" aria-label="Environments">
               {visibleEnvironments.map((environment) => {
                 const isSelected = selected?.kind === 'environment' && selected.environmentId === environment.id
+                const isActive = environment.id === activeEnvironmentId
                 return (
-                  <div key={environment.id} className={`tree-row environment ${isSelected ? 'selected' : ''}`}>
+                  <div key={environment.id} className={`tree-row environment ${isSelected ? 'selected' : ''} ${isActive ? 'active-environment' : ''}`}>
                     <span className="tree-environment-mark" aria-hidden="true">◉</span>
-                    <button className="tree-name" title={environment.name} onClick={() => onSelect({ kind: 'environment', environmentId: environment.id })}>
+                    <button className="tree-name" title={isActive ? `${environment.name} (active)` : environment.name} onClick={() => onSelect({ kind: 'environment', environmentId: environment.id })}>
                       {environment.name}
                     </button>
+                    {isActive && <span className="environment-active-tag">Active</span>}
                     <button
                       className="tree-clone"
                       title={`Duplicate ${environment.name}`}
