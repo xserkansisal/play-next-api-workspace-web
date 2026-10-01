@@ -1,12 +1,16 @@
 # Sidebar drag and drop: moving items — backend requirements
 
-The sidebar tree now supports dragging a folder or request onto another folder, or onto a
-collection row, to **reparent** it together with its whole subtree. The UI, its validation and its
-optimistic update are complete and tested.
+The sidebar supports dragging a folder or request onto another folder, or onto a collection row,
+to **reparent** it together with its whole subtree. The API endpoint is implemented and covered by
+integration tests in
+[`play-next-api-workspace-api`](https://github.com/xserkansisal/play-next-api-workspace-api):
+`POST /api/v1/collections/:collectionId/items/:itemId/move`.
 
-**The endpoint it calls does not exist yet.** Until it is added, every drop will fail: the sidebar
-shows the move for a moment, the API answers, and the client restores the previous tree and shows
-the error. Nothing is corrupted, but no move is saved.
+The implementation moves the subtree transactionally, including cross-collection moves; checks
+that the destination exists and is a folder, prevents moving an item into itself or its subtree,
+and rejects case-insensitive sibling-folder name conflicts. It publishes change events for the
+destination and, for cross-collection moves, the source. The frontend optimistically updates its
+tree and restores the prior state if the API rejects the move.
 
 Code: `src/lib/tree-move.ts` (validation and the optimistic update), `moveItem`
 (`src/lib/api.ts`), `moveItem` (`src/App.tsx`), the drag handlers in
@@ -34,7 +38,7 @@ deliberately not part of this work.
 
 ---
 
-## 2. Required: the move endpoint
+## 2. Implemented: the move endpoint
 
 ```
 POST /api/v1/collections/:collectionId/items/:itemId/move
@@ -87,10 +91,12 @@ Use the standard error body so `describeApiError` can show it:
 { "error": { "code": "NAME_CONFLICT", "message": "A folder named \"Auth\" already exists here." } }
 ```
 
-### Authorization
+### Authentication and active resources
 
-Same rule as editing the item today. A move across collections touches **two** collections, so it
-must be authorized against both the source and the destination, not only the source.
+The route requires a signed-in user and records that user as the mover. The service verifies that
+the source item, destination collection, and destination folder (when supplied) are active and
+belong to the collections named in the request. Workspace collections are shared with the signed-in
+team; this project does not use per-role or per-collection authorization.
 
 ---
 
@@ -119,7 +125,7 @@ So the backend work can be scoped accurately, the UI already:
 - Never attempts to reorder siblings, and never drags a collection — collections are roots and are
   drop targets only.
 
-## 5. Known gap
+## 5. Remaining frontend gap
 
 Drag and drop is pointer-only. There is no keyboard equivalent for moving an item, so this is not
 reachable for keyboard or screen-reader users. A "Move to…" command would close that gap and needs

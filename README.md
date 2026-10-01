@@ -12,15 +12,32 @@ npm install
 cp .env.example .env.local
 ```
 
-Set `VITE_API_BASE_URL` in `.env.local` to the API origin (for example `http://localhost:3000`). The frontend uses the API's `/api/v1` shared-data endpoints and `/api/v1/events` SSE stream.
+Set `VITE_API_BASE_URL` in `.env.local` to the API origin (for example `http://localhost:3000`).
+The frontend uses the API's `/api/v1` workspace and authentication endpoints and `/api/v1/events`
+SSE stream.
 
 The API's CORS check is an exact match against its own `CORS_ORIGIN` environment variable — it does not allow `http://localhost:5173` (the Vite dev server's default origin) by default. When running the API locally against this frontend, set `CORS_ORIGIN` on the API side to match the origin this dev server actually runs on (`http://localhost:5173` by default), or requests from the browser will fail with an opaque CORS error and no indication of why.
 
-## Slice 3 workspace
+## Workspace features
 
-The workspace loads collections, environments, and Trash; supports searchable alphabetic collection trees; creates collections, folders, requests, and environments; and saves each resource independently. Request drafts have explicit Save and unsaved indicators. Trash restoration runs a conflict check before restoring and supports per-item rename overrides. Live updates show review/keep-working actions, preserve local edits, and never auto-merge or replace an open draft. The request body is JSON-highlighted in CodeMirror and saved as text so `{{variables}}` remain editable.
+The workspace supports searchable, alphabetically sorted collection trees with collections,
+folders, requests, and environments. Resources can be duplicated, moved to Trash, and restored
+after a conflict check. Folders and requests can be dragged to a new parent within or across
+collections; the API moves the entire subtree atomically and publishes live change events. See
+[`docs/tree-drag-and-drop-backend.md`](docs/tree-drag-and-drop-backend.md) for the endpoint contract.
+Request drafts are saved independently, with explicit unsaved indicators and live-change review
+controls that preserve local edits rather than silently merging or replacing them. The request body
+is edited with JSON highlighting while remaining text, so `{{variables}}` stay editable.
 
-Sending is intentionally a Slice 4 stub. Import/export controls are disabled until Slice 5. There is no permanent delete, authentication, deployment configuration, or request proxy in this slice.
+Users sign in with an emailed code. The workspace shows who is viewing a resource and receives
+live updates over SSE. Requests can be sent from the browser or, when enabled and allow-listed by
+the API, from the server. Responses include JSON tree viewing and filtering, request history,
+and tools to capture response values as variables and keep them in sync.
+
+Postman collection and environment files can be imported and exported. Bulk import adds requests
+and folders to an existing collection after a review step. Variables resolve across personal,
+selected-environment, and shared scopes. The app does not permanently delete trashed resources;
+they can be restored from Trash.
 
 ## Importing and exporting Postman files
 
