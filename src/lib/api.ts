@@ -151,6 +151,16 @@ export const workspaceApi = {
     })
     return data
   },
+  async moveItem(collectionId: string, itemId: string, target: { collectionId: string; parentId: string | null }) {
+    // Reparents the item together with its whole subtree, in one server-side transaction.
+    // See docs/tree-drag-and-drop-backend.md - this endpoint does not exist yet.
+    const { data } = await apiClient.post<WorkspaceItem>(
+      `/collections/${collectionId}/items/${itemId}/move`,
+      { targetCollectionId: target.collectionId, parentId: target.parentId },
+      { timeout: 120_000 },
+    )
+    return data
+  },
   async deleteItem(collectionId: string, itemId: string) {
     await apiClient.delete(`/collections/${collectionId}/items/${itemId}`)
   },

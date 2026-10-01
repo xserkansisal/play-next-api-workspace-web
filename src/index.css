@@ -73,9 +73,18 @@ button:disabled { cursor: not-allowed; }
 .tree-row.collection { color: #404652; font-weight: 600; background-color: rgba(109, 92, 232, .06); }
 .tree-row.folder { color: #454b57; font-weight: 600; background-color: rgba(109, 92, 232, .025); }
 .tree-row.selected { color: #4c40b4; background-color: #f0edff; }
+/* Drag feedback. The dragged row fades rather than disappearing, so the user keeps track of what
+   is in flight, and the destination gets a ring instead of a line: a drop reparents into a
+   container, it never inserts between two siblings. */
+.tree-row.dragging { opacity: .4; }
+.tree-row[draggable='true'] { cursor: grab; }
+.tree-row.dragging[draggable='true'] { cursor: grabbing; }
 /* Declared after the tint rules so it outranks them on equal specificity, and `background-color`
    rather than the shorthand so hovering never wipes the indent-guide gradient. */
 .tree-row:not(.selected):hover { background-color: #eeedf7; }
+/* Last, and matched on two classes plus :not, so the drop ring outranks both the tints and the
+   hover rule above - otherwise the row under the pointer would not look like the destination. */
+.tree-row.drop-into:not(.dragging) { background-color: rgba(109, 92, 232, .14); box-shadow: inset 0 0 0 2px #6d5ce8; }
 .tree-chevron { width: 20px; height: 28px; flex: 0 0 20px; color: #6b7280; font-size: 16px; line-height: 1; }
 .tree-chevron:hover { color: #2b2f38; }
 /* Folders swap the chevron glyph for a folder icon; the button keeps its size so every row's name

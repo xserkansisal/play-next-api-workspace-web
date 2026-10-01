@@ -41,6 +41,7 @@ import type {
   TreeNodeInput,
   WorkspaceItem,
 } from '@/lib/workspace-types'
+import { applyMove, type MoveSource, type MoveTarget } from '@/lib/tree-move'
 import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName } from '@/lib/workspace-ui'
 
 type View = 'workspace' | 'environments' | 'trash' | 'history'
@@ -747,6 +748,28 @@ function App({ user, onSignOut }: AppProps = {}) {
     }
   }
 
+  /**
+   * Reparents a node and its subtree. The tree updates optimistically so the drop feels immediate,
+   * and the previous state is restored if the API refuses, rather than leaving the sidebar showing
+   * a move that never happened.
+   */
+  async function moveItem(source: MoveSource, target: MoveTarget) {
+    const previous = collections
+    const next = applyMove(previous, source, target)
+    if (next === previous) return
+    setCollections(next)
+    try {
+      await workspaceApi.moveItem(source.collectionId, source.itemId, {
+        collectionId: target.collectionId,
+        parentId: target.kind === 'folder' ? target.itemId : null,
+      })
+      setResourceError(null)
+    } catch (error) {
+      setCollections(previous)
+      setLoadingError(describeApiError(error))
+    }
+  }
+
   function seedDraft(draft: ResourceDraft) {
     const key = draftKey(draft)
     setDrafts((current) => ({ ...current, [key]: draft }))
@@ -963,6 +986,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           onCreateRequest={createRequest}
           onDelete={(resource) => void deleteResource(resource)}
           onClone={(resource) => void cloneResource(resource)}
+          onMove={(source, target) => void moveItem(source, target)}
           cloningId={cloningId}
           onShowTrash={() => { setView('trash'); void reloadTrash() }}
           onShowHistory={() => setView('history')}

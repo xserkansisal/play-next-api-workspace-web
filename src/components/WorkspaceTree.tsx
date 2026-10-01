@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Poi
 
 import { fitSidebarWidth } from '@/lib/sidebar-width-storage'
 import { loadCollapsedIds, pruneCollapsedIds, saveCollapsedIds } from '@/lib/tree-expansion-storage'
+import { checkMove, type MoveSource, type MoveTarget } from '@/lib/tree-move'
 import { methodLabel, sortByName, sortTreeItems } from '@/lib/workspace-ui'
 import type { CollectionResource, EnvironmentResource, OpenResource, WorkspaceItem } from '@/lib/workspace-types'
 
@@ -37,6 +38,30 @@ interface WorkspaceTreeProps {
   /** Width in pixels; owned by the caller so it can be persisted and applied to the layout. */
   width: number
   onResize: (width: number) => void
+  /**
+   * Reparents a node and everything under it. Omit to render a tree that cannot be dragged, which
+   * is what the read-only surfaces want.
+   */
+  onMove?: (source: MoveSource, target: MoveTarget) => void
+}
+
+/** Stable identity for a drop destination, so one hovered row can be highlighted at a time. */
+function targetKey(target: MoveTarget): string {
+  return target.kind === 'collection' ? `collection:${target.collectionId}` : `folder:${target.itemId}`
+}
+
+/**
+ * Drag state is threaded down the recursive tree the same way expansion is, rather than held in a
+ * context, because the tree is small and this keeps the data flow visible at each call site.
+ */
+type DragState = {
+  draggingId: string | null
+  overKey: string | null
+  allows: (target: MoveTarget) => boolean
+  begin: (source: MoveSource) => void
+  over: (key: string | null) => void
+  drop: (target: MoveTarget) => void
+  end: () => void
 }
 
 /**
@@ -123,6 +148,7 @@ function TreeItem({
   cloningId,
   filter,
   expansion,
+  drag,
 }: {
   collectionId: string
   item: WorkspaceItem
@@ -134,6 +160,7 @@ function TreeItem({
   cloningId: string | null
   filter: string
   expansion: ExpansionState
+  drag: DragState
 }) {
   const expanded = !expansion.isCollapsed(item.id)
   const childMatch = item.type === 'folder' && item.items.some((child) => containsMatch(child, filter))
@@ -146,9 +173,48 @@ function TreeItem({
     itemId: item.id,
   }
 
+  const dropTarget: MoveTarget | null = item.type === 'folder'
+    ? { kind: 'folder', collectionId, itemId: item.id }
+    : null
+  const isDropTarget = !!dropTarget && drag.allows(dropTarget)
+  const isOver = !!dropTarget && isDropTarget && drag.overKey === targetKey(dropTarget)
+
   return (
     <>
-      <div className={`tree-row ${item.type} ${active ? 'selected' : ''}`} style={{ '--indent': depth } as CSSProperties}>
+      <div
+        className={[
+          'tree-row',
+          item.type,
+          active ? 'selected' : '',
+          drag.draggingId === item.id ? 'dragging' : '',
+          isOver ? 'drop-into' : '',
+        ].filter(Boolean).join(' ')}
+        style={{ '--indent': depth } as CSSProperties}
+        draggable
+        onDragStart={(event) => {
+          event.stopPropagation()
+          event.dataTransfer.effectAllowed = 'move'
+          // Firefox starts no drag at all unless some data is set.
+          event.dataTransfer.setData('text/plain', item.id)
+          drag.begin({ collectionId, itemId: item.id })
+        }}
+        onDragEnd={drag.end}
+        onDragOver={(event) => {
+          if (!dropTarget || !isDropTarget) return
+          // Only preventDefault on a legal target: that is what makes this a drop zone, so an
+          // illegal one keeps the "no drop" cursor instead of silently accepting.
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          drag.over(targetKey(dropTarget))
+        }}
+        onDrop={(event) => {
+          if (!dropTarget || !isDropTarget) return
+          event.preventDefault()
+          event.stopPropagation()
+          drag.drop(dropTarget)
+        }}
+      >
         {item.type === 'folder' ? (
           <button className="tree-chevron tree-folder-toggle" onClick={() => expansion.toggle(item.id)} aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.name}`}>
             <FolderIcon open={expanded} />
@@ -175,6 +241,7 @@ function TreeItem({
           cloningId={cloningId}
           filter={filter}
           expansion={expansion}
+          drag={drag}
         />
       ))}
     </>
@@ -229,6 +296,7 @@ export function WorkspaceTree({
   onCreateEnvironment,
   width,
   onResize,
+  onMove,
 }: WorkspaceTreeProps) {
   const [search, setSearch] = useState('')
   // Restored from storage on first render so the tree opens the way the user left it, rather
@@ -249,6 +317,27 @@ export function WorkspaceTree({
     isCollapsed: (id: string) => collapsedIds.has(id),
     toggle,
   }), [collapsedIds, toggle])
+
+  const [dragSource, setDragSource] = useState<MoveSource | null>(null)
+  const [overKey, setOverKey] = useState<string | null>(null)
+  const drag = useMemo<DragState>(() => ({
+    draggingId: dragSource?.itemId ?? null,
+    overKey,
+    // Validating during the drag is what lets an illegal destination show the "no drop" cursor
+    // instead of accepting the drop and failing afterwards.
+    allows: (target: MoveTarget) => !!onMove && !!dragSource && checkMove(collections, dragSource, target).ok,
+    begin: (source: MoveSource) => setDragSource(source),
+    over: setOverKey,
+    drop: (target: MoveTarget) => {
+      if (onMove && dragSource && checkMove(collections, dragSource, target).ok) onMove(dragSource, target)
+      setDragSource(null)
+      setOverKey(null)
+    },
+    end: () => {
+      setDragSource(null)
+      setOverKey(null)
+    },
+  }), [collections, dragSource, onMove, overKey])
 
   // Forget nodes that no longer exist, so deleting and recreating folders cannot grow the stored
   // set forever. Skipped while the tree is empty, which is also how a not-yet-loaded tree looks.
@@ -342,7 +431,15 @@ export function WorkspaceTree({
           <input aria-label="Search collections" placeholder="Search collections and environments" value={search} onChange={(event) => setSearch(event.target.value)} />
         </label>
         {collectionsOpen && (
-          <nav className="tree" aria-label="Collections">
+          <nav
+            className="tree"
+            aria-label="Collections"
+            onDragLeave={(event) => {
+              // Leaving the tree entirely clears the highlight. Checked against relatedTarget
+              // because this also fires when the pointer crosses between two rows inside it.
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) drag.over(null)
+            }}
+          >
             {visibleCollections.map((collection) => (
               <CollectionTree
                 key={collection.id}
@@ -355,6 +452,7 @@ export function WorkspaceTree({
                 filter={filter}
                 selectedCollectionId={selectedCollectionId}
                 expansion={expansion}
+                drag={drag}
               />
             ))}
             {sorted.length === 0 && <p className="empty-tree">No collections yet.</p>}
@@ -424,6 +522,7 @@ function CollectionTree({
   filter,
   selectedCollectionId,
   expansion,
+  drag,
 }: {
   collection: CollectionResource
   selected: OpenResource | null
@@ -434,13 +533,33 @@ function CollectionTree({
   filter: string
   selectedCollectionId?: string
   expansion: ExpansionState
+  drag: DragState
 }) {
   const expanded = !expansion.isCollapsed(collection.id)
   const isSelected = selected?.kind === 'collection' && selected.collectionId === collection.id
   const children = collection.items.filter((item) => !filter || containsMatch(item, filter))
+  // Dropping on a collection row moves the node to that collection's root.
+  const dropTarget: MoveTarget = { kind: 'collection', collectionId: collection.id }
+  const isDropTarget = drag.allows(dropTarget)
+  const isOver = isDropTarget && drag.overKey === targetKey(dropTarget)
   return (
     <>
-      <div className={`tree-row collection ${isSelected ? 'selected' : ''}`}>
+      <div
+        className={`tree-row collection ${isSelected ? 'selected' : ''} ${isOver ? 'drop-into' : ''}`}
+        onDragOver={(event) => {
+          if (!isDropTarget) return
+          event.preventDefault()
+          event.stopPropagation()
+          event.dataTransfer.dropEffect = 'move'
+          drag.over(targetKey(dropTarget))
+        }}
+        onDrop={(event) => {
+          if (!isDropTarget) return
+          event.preventDefault()
+          event.stopPropagation()
+          drag.drop(dropTarget)
+        }}
+      >
         <button className="tree-chevron tree-collection-toggle" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${collection.name}`} onClick={() => expansion.toggle(collection.id)}>
           <CollectionIcon open={expanded} />
         </button>
@@ -451,7 +570,7 @@ function CollectionTree({
         <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>
       </div>
       {(expanded || !!filter) && sortTreeItems(children).map((item) => (
-        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} />
+        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} drag={drag} />
       ))}
       {collection.id === selectedCollectionId && expanded && !filter && collection.items.length === 0 && (
         <p className="empty-tree nested">No requests yet.</p>

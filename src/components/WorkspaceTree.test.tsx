@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -393,6 +393,107 @@ describe('collection indent guides', () => {
     expect(depthOf('Nested')).toBe('2')
     expect(depthOf('Deep request')).toBe('3')
     expect(container.querySelectorAll('.tree-row').length).toBe(4)
+  })
+})
+
+describe('dragging rows to reparent them', () => {
+  // jsdom has no DataTransfer; the component only needs these four members.
+  function transfer() {
+    const store: Record<string, string> = {}
+    return {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: (key: string, value: string) => { store[key] = value },
+      getData: (key: string) => store[key] ?? '',
+    }
+  }
+
+  function rowOf(name: string) {
+    return screen.getByTitle(name).closest('.tree-row') as HTMLElement
+  }
+
+  function dragOnto(from: string, to: string) {
+    const dataTransfer = transfer()
+    fireEvent.dragStart(rowOf(from), { dataTransfer })
+    fireEvent.dragOver(rowOf(to), { dataTransfer })
+    fireEvent.drop(rowOf(to), { dataTransfer })
+  }
+
+  it('moves a request into the folder it is dropped on', () => {
+    const onMove = vi.fn()
+    renderTree({ onMove })
+
+    dragOnto('Deep request', 'Charges')
+
+    expect(onMove).toHaveBeenCalledWith(
+      { collectionId: 'c1', itemId: 'r1' },
+      { kind: 'folder', collectionId: 'c1', itemId: 'f1' },
+    )
+  })
+
+  it('moves a node to the collection root when dropped on the collection row', () => {
+    const onMove = vi.fn()
+    renderTree({ onMove })
+
+    dragOnto('Nested', 'Payments')
+
+    expect(onMove).toHaveBeenCalledWith(
+      { collectionId: 'c1', itemId: 'f2' },
+      { kind: 'collection', collectionId: 'c1' },
+    )
+  })
+
+  it('refuses to drop a folder into its own subfolder', () => {
+    const onMove = vi.fn()
+    renderTree({ onMove })
+
+    dragOnto('Charges', 'Nested')
+
+    expect(onMove).not.toHaveBeenCalled()
+  })
+
+  it('refuses a drop back onto the parent the node already has', () => {
+    const onMove = vi.fn()
+    renderTree({ onMove })
+
+    dragOnto('Deep request', 'Nested')
+
+    expect(onMove).not.toHaveBeenCalled()
+  })
+
+  it('marks the row in flight and rings the destination under the pointer', () => {
+    renderTree({ onMove: vi.fn() })
+    const dataTransfer = transfer()
+
+    fireEvent.dragStart(rowOf('Deep request'), { dataTransfer })
+    fireEvent.dragOver(rowOf('Charges'), { dataTransfer })
+
+    expect(rowOf('Deep request').className).toContain('dragging')
+    expect(rowOf('Charges').className).toContain('drop-into')
+    // The illegal destination never lights up.
+    expect(rowOf('Nested').className).not.toContain('drop-into')
+  })
+
+  it('clears the drag state once the gesture ends', () => {
+    renderTree({ onMove: vi.fn() })
+    const dataTransfer = transfer()
+
+    fireEvent.dragStart(rowOf('Deep request'), { dataTransfer })
+    fireEvent.dragOver(rowOf('Charges'), { dataTransfer })
+    fireEvent.dragEnd(rowOf('Deep request'), { dataTransfer })
+
+    expect(rowOf('Deep request').className).not.toContain('dragging')
+    expect(rowOf('Charges').className).not.toContain('drop-into')
+  })
+
+  it('accepts no drops at all when the tree is rendered without a move handler', () => {
+    const { container } = renderTree()
+    const dataTransfer = transfer()
+
+    fireEvent.dragStart(rowOf('Deep request'), { dataTransfer })
+    fireEvent.dragOver(rowOf('Charges'), { dataTransfer })
+
+    expect(container.querySelectorAll('.drop-into').length).toBe(0)
   })
 })
 
