@@ -261,14 +261,33 @@ button:disabled { cursor: not-allowed; }
 .runtime-vars > summary { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; list-style: none; }
 .runtime-vars > summary::-webkit-details-marker { display: none; }
 .runtime-vars-count { margin-left: 4px; padding: 0 5px; border-radius: 8px; background: rgba(109, 92, 232, 0.14); font-size: 11px; }
-.runtime-vars-panel { position: absolute; z-index: 20; right: 0; width: 320px; margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background, #fff); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12); }
-.runtime-vars-table { width: 100%; font-size: 11px; border-collapse: collapse; }
-.runtime-vars-table td { padding: 3px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.runtime-vars-value { max-width: 150px; overflow: hidden; color: #6b7280; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-vars-panel { position: absolute; z-index: 20; right: 0; width: min(620px, calc(100vw - 24px)); max-height: min(70vh, 520px); overflow: auto; margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--background, #fff); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.12); }
+.runtime-vars-table-wrap { width: 100%; overflow-x: auto; }
+.runtime-vars-table { width: 100%; table-layout: fixed; font-size: 11px; border-collapse: collapse; }
+.runtime-vars-table th, .runtime-vars-table td { padding: 4px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.runtime-vars-table th { color: #6b7280; font-weight: 600; }
+.runtime-vars-table th:nth-child(1) { width: 19%; }
+.runtime-vars-table th:nth-child(2) { width: 15%; }
+.runtime-vars-table th:nth-child(3) { width: 30%; }
+.runtime-vars-table th:nth-child(4) { width: 36%; }
+.runtime-vars-name, .runtime-vars-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-vars-name code { display: block; overflow: hidden; text-overflow: ellipsis; }
+.runtime-vars-value { color: #6b7280; }
 .runtime-vars-empty, .runtime-vars-note { margin: 6px 0 0; color: #6b7280; font-size: 11px; }
-.runtime-vars-panel { width: 420px; }
 .runtime-vars-scope { color: #6b7280; white-space: nowrap; }
 .runtime-vars-note-inline { color: #9ca3af; white-space: nowrap; }
+.runtime-vars-add { margin: 0 0 8px; }
+.runtime-vars-create, .runtime-vars-edit { display: flex; align-items: center; gap: 4px; }
+.runtime-vars-create { flex-wrap: wrap; margin-bottom: 8px; }
+.runtime-vars-create label { display: flex; flex: 1 1 110px; flex-direction: column; gap: 2px; }
+.runtime-vars-create input, .runtime-vars-edit input { width: 100%; min-width: 0; padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px; font: inherit; }
+.runtime-vars-edit button, .runtime-vars-create button, .runtime-vars-moves button { padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; background: transparent; font: inherit; cursor: pointer; }
+.runtime-vars-moves { display: inline-flex; gap: 2px; margin-right: 4px; }
+.runtime-vars-moves button:disabled, .runtime-vars-edit button:disabled { opacity: .4; cursor: default; }
+.runtime-vars-actions { white-space: normal; }
+.runtime-vars-actions > * { margin: 1px; }
+.runtime-vars-dragging { opacity: .45; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 /* An override is deliberate, but an invisible one is how a stale personal value keeps beating a
    shared one a teammate has since corrected. */
 .runtime-vars-shadow { display: inline-block; padding: 0 4px; border-radius: 4px; background: rgba(217, 119, 6, 0.12); color: #92400e; font-size: 10px; white-space: nowrap; }
@@ -281,6 +300,12 @@ button:disabled { cursor: not-allowed; }
   .url-row { margin-right: 12px; margin-left: 12px; }
 }
 @media (max-width: 600px) {
+  .runtime-vars-panel { right: -4px; width: min(560px, calc(100vw - 16px)); padding: 7px; }
+  .runtime-vars-table { min-width: 480px; }
+  .runtime-vars-table th:nth-child(1) { width: 17%; }
+  .runtime-vars-table th:nth-child(2) { width: 14%; }
+  .runtime-vars-table th:nth-child(3) { width: 27%; }
+  .runtime-vars-table th:nth-child(4) { width: 42%; }
   .sidebar { width: min(225px, 48vw); min-width: 180px; flex-basis: min(225px, 48vw); }
   .sidebar.collapsed { width: 48px; min-width: 48px; flex-basis: 48px; }
   .sidebar.collapsed .sidebar-heading { justify-content: center; padding: 0; font-size: 0; }

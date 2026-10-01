@@ -62,6 +62,14 @@ export const workspaceApi = {
     const { data } = await apiClient.get<{ variables: ScopedVariable[] }>('/variables')
     return data.variables ?? []
   },
+  async variableOrder(): Promise<string[]> {
+    const { data } = await apiClient.get<{ order: string[] }>('/variables/order')
+    return data.order ?? []
+  },
+  async setVariableOrder(order: string[]): Promise<string[]> {
+    const { data } = await apiClient.put<{ order: string[] }>('/variables/order', { order })
+    return data.order ?? []
+  },
   async setVariable(scope: VariableScope, key: string, value: string): Promise<ScopedVariable> {
     // The key travels in the path, so it is encoded here rather than trusted: a key is free text
     // from a response and could hold a character that would otherwise change the route.

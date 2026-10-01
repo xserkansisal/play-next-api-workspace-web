@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
+import { VariablesMenu } from '@/components/VariablesMenu'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { describeApiError, workspaceApi, type ProxySettings } from '@/lib/api'
@@ -17,8 +18,8 @@ import { prepareRequest } from '@/lib/request-preparation'
 import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
 import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
-import { getScopedVariables, loadScopedVariables, removeScopedVariable, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
-import { describeOrigin, resolveVariables, shadowedNames, toVariableMap, type VariableOrigin, type VariableResolution } from '@/lib/variable-scopes'
+import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
+import { resolveVariables, toVariableMap } from '@/lib/variable-scopes'
 import { extractFromResponse } from '@/lib/response-extraction'
 import { applySyncRules } from '@/lib/sync-rules'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
@@ -1099,70 +1100,6 @@ function closeTab(
     return next
   })
   setSelected((current) => current && resourceKey(current) === key ? remaining[remaining.length - 1] ?? null : current)
-}
-
-function VariablesMenu({ resolved, hasEnvironment }: {
-  resolved: Record<string, VariableResolution>
-  hasEnvironment: boolean
-}) {
-  const [error, setError] = useState<string | null>(null)
-  const names = Object.keys(resolved).sort()
-  const shadowed = shadowedNames(resolved)
-
-  function forget(name: string, origin: VariableOrigin) {
-    if (origin === 'environment') return
-    setError(null)
-    void removeScopedVariable(origin, name).catch((removeError: unknown) => setError(describeApiError(removeError)))
-  }
-
-  return (
-    <details className="runtime-vars">
-      <summary aria-label={`Variables (${names.length})`}>Variables <span className="runtime-vars-count">{names.length}</span></summary>
-      <div className="runtime-vars-panel">
-        {error && <p className="extract-error" role="alert">{error}</p>}
-        {names.length === 0 ? (
-          <p className="runtime-vars-empty">No variables yet. Send a request, then use “Save a value as a variable” on the response to capture one.</p>
-        ) : (
-          <table className="runtime-vars-table">
-            <tbody>
-              {names.map((name) => {
-                const entry = resolved[name]!
-                return (
-                  <tr key={name}>
-                    <td><code>{`{{${name}}}`}</code></td>
-                    <td className="runtime-vars-scope">{entry.origin === 'user' ? 'only me' : entry.origin === 'global' ? 'everyone' : 'environment'}</td>
-                    <td className="runtime-vars-value" title={entry.value}>{entry.value}</td>
-                    <td>
-                      {/* Overriding a name is the point of the chain, but doing it without saying so
-                          is how a stale personal value keeps beating a shared one a teammate fixed. */}
-                      {entry.shadowed.length > 0 && (
-                        <span className="runtime-vars-shadow" title={`Also defined in ${entry.shadowed.map(describeOrigin).join(' and ')}, which this overrides.`}>
-                          overrides {entry.shadowed.map(describeOrigin).join(' and ')}
-                        </span>
-                      )}
-                    </td>
-                    <td>
-                      {entry.origin === 'environment'
-                        ? <span className="runtime-vars-note-inline">edit in the environment</span>
-                        : <button className="link-button" aria-label={`Remove ${name}`} onClick={() => forget(name, entry.origin)}>Remove</button>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
-        {shadowed.length > 0 && (
-          <p className="runtime-vars-note" role="status">
-            {`${shadowed.length === 1 ? 'One name is' : `${shadowed.length} names are`} defined more than once: ${shadowed.join(', ')}. The narrower definition is used.`}
-          </p>
-        )}
-        <p className="runtime-vars-note">
-          {`Order of preference: your own variables, then ${hasEnvironment ? 'the selected environment' : 'the selected environment (none selected)'}, then global ones. Yours are private to your account; global ones are shared with everyone signed in.`}
-        </p>
-      </div>
-    </details>
-  )
 }
 
 function TrashView({ entries, onRestore }: { entries: TrashEntry[]; onRestore: (entry: TrashEntry) => void }) {
