@@ -384,4 +384,38 @@ describe('which scope a {{name}} resolves from', () => {
     expect(await screen.findByText(/overrides the selected environment and global variables/)).toBeTruthy()
     expect(screen.getByText(/defined more than once: target/)).toBeTruthy()
   })
+
+  it('edits one of my variables from the Variables menu, renaming it on the server', async () => {
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([{ scope: 'user', key: 'token', value: 'old' }])
+    const setVariable = vi.spyOn(workspaceApi, 'setVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
+    const deleteVariable = vi.spyOn(workspaceApi, 'deleteVariable').mockResolvedValue()
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByText('Variables'))
+    await user.click(await screen.findByRole('button', { name: 'Edit token' }))
+    await user.clear(screen.getByRole('textbox', { name: 'Key for token' }))
+    await user.type(screen.getByRole('textbox', { name: 'Key for token' }), 'authToken')
+    await user.clear(screen.getByRole('textbox', { name: 'Value for token' }))
+    await user.type(screen.getByRole('textbox', { name: 'Value for token' }), 'new{Enter}')
+
+    await waitFor(() => expect(deleteVariable).toHaveBeenCalledWith('user', 'token'))
+    expect(setVariable).toHaveBeenCalledWith('user', 'authToken', 'new')
+    expect(await screen.findByRole('button', { name: 'Edit authToken' })).toBeTruthy()
+  })
+
+  it('deletes an environment variable by saving the latest copy of the environment without it', async () => {
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
+    const latest = { ...environment, variables: [...environment.variables, { key: 'other', value: 'x', enabled: true }] }
+    vi.spyOn(workspaceApi, 'environment').mockResolvedValue(latest as never)
+    const save = vi.spyOn(workspaceApi, 'saveEnvironment').mockImplementation(async (resource) => resource)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByText('Variables'))
+    await user.click(await screen.findByRole('button', { name: 'Remove target' }))
+
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    expect(save.mock.calls[0]![0].variables).toEqual([{ key: 'other', value: 'x', enabled: true }])
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove target' })).toBeNull())
+  })
 })

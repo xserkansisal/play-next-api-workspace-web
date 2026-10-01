@@ -20,6 +20,7 @@ import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
 import { resolveVariables, toVariableMap } from '@/lib/variable-scopes'
+import { editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
 import { extractFromResponse } from '@/lib/response-extraction'
 import { applySyncRules } from '@/lib/sync-rules'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
@@ -495,6 +496,34 @@ function App({ user, onSignOut }: AppProps = {}) {
     }
   }
 
+  /**
+   * Applies a Variables-menu edit to the selected environment.
+   *
+   * The API only saves whole environment documents, so the latest copy is fetched first and the
+   * edit applied to that, keeping the window in which a teammate's change could be overwritten as
+   * small as the API allows. An open editor tab with unsaved changes is never overwritten: the
+   * user is told to save or discard it first.
+   */
+  async function mutateSelectedEnvironmentVariables(mutate: (variables: EnvironmentVariable[]) => VariableEditResult) {
+    if (!selectedEnvironmentId) throw new Error('No environment is selected.')
+    const key = resourceKey({ kind: 'environment', environmentId: selectedEnvironmentId })
+    const openDraft = draftsRef.current[key]
+    const openBaseline = baselinesRef.current[key]
+    if (openDraft && (!openBaseline || isDraftDirty(openDraft, openBaseline))) {
+      throw new Error('This environment has unsaved changes in its tab. Save or discard them first.')
+    }
+    const latest = await workspaceApi.environment(selectedEnvironmentId)
+    const result = mutate(latest.variables)
+    if (!result.ok) throw new Error(result.error)
+    const resource = await workspaceApi.saveEnvironment({ ...latest, variables: result.variables })
+    setEnvironments((current) => sortByName(current.map((entry) => entry.id === resource.id ? resource : entry)))
+    if (draftsRef.current[key]) {
+      const saved: ResourceDraft = { kind: 'environment', resource }
+      setDrafts((current) => ({ ...current, [key]: saved }))
+      setBaselines((current) => ({ ...current, [key]: jsonCopy(saved) }))
+    }
+  }
+
   async function createCollection() {
     const name = window.prompt('Collection name')
     if (!name?.trim()) return
@@ -894,7 +923,12 @@ function App({ user, onSignOut }: AppProps = {}) {
               {sortByName(environments).map((environment) => <option value={environment.id} key={environment.id}>{environment.name}</option>)}
             </select>
           </label>
-          <VariablesMenu resolved={resolvedVariables} hasEnvironment={!!selectedEnvironment} />
+          <VariablesMenu
+            resolved={resolvedVariables}
+            hasEnvironment={!!selectedEnvironment}
+            onEditEnvironmentVariable={(oldKey, newKey, value) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value))}
+            onRemoveEnvironmentVariable={(name) => mutateSelectedEnvironmentVariables((variables) => removeEnvironmentVariable(variables, name))}
+          />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">

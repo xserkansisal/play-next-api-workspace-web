@@ -30,6 +30,7 @@ async function expectOrder(names: string[]) {
 
 beforeEach(() => {
   resetScopedVariables()
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
   vi.spyOn(workspaceApi, 'variableOrder').mockResolvedValue(['alpha', 'beta', 'gamma'])
   vi.spyOn(workspaceApi, 'setVariableOrder').mockImplementation(async (order) => order)
   vi.spyOn(workspaceApi, 'setVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))

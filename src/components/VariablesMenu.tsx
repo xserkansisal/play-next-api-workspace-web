@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
 import { describeApiError, workspaceApi } from '@/lib/api'
-import { removeScopedVariable, saveScopedVariable } from '@/lib/scoped-variables'
+import { removeScopedVariable, saveScopedVariable, updateScopedVariable } from '@/lib/scoped-variables'
 import { describeOrigin, shadowedNames, validateVariableName, type VariableOrigin, type VariableResolution } from '@/lib/variable-scopes'
 import { mergeVariableOrder, moveVariable, moveVariableBefore, replaceVisibleVariableOrder, type VariableMove } from '@/lib/variable-order'
 
-export function VariablesMenu({ resolved, hasEnvironment }: {
+type EditingVariable = { origin: VariableOrigin; name: string; key: string; value: string }
+
+export function VariablesMenu({ resolved, hasEnvironment, onEditEnvironmentVariable, onRemoveEnvironmentVariable }: {
   resolved: Record<string, VariableResolution>
   hasEnvironment: boolean
+  onEditEnvironmentVariable?: (oldKey: string, newKey: string, value: string) => Promise<void>
+  onRemoveEnvironmentVariable?: (name: string) => Promise<void>
 }) {
   const names = useMemo(() => Object.keys(resolved), [resolved])
   const [order, setOrder] = useState<string[]>([])
@@ -19,6 +23,7 @@ export function VariablesMenu({ resolved, hasEnvironment }: {
   const [values, setValues] = useState<Record<string, string>>({})
   const [draggedName, setDraggedName] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editing, setEditing] = useState<EditingVariable | null>(null)
   const orderWriteQueue = useRef(Promise.resolve())
   const latestOrderWrite = useRef(0)
 
@@ -78,9 +83,43 @@ export function VariablesMenu({ resolved, hasEnvironment }: {
   }
 
   function forget(name: string, origin: VariableOrigin) {
-    if (origin === 'environment') return
+    const where = origin === 'environment' ? 'the selected environment (shared with your team)' : origin === 'global' ? 'global variables (shared with everyone)' : 'your variables'
+    if (!window.confirm(`Delete "${name}" from ${where}?`)) return
     setError(null)
-    void removeScopedVariable(origin, name).catch((removeError: unknown) => setError(describeApiError(removeError)))
+    const action = origin === 'environment'
+      ? onRemoveEnvironmentVariable?.(name) ?? Promise.reject(new Error('Environment variable removal is unavailable.'))
+      : removeScopedVariable(origin, name)
+    void action.catch((removeError: unknown) => setError(describeApiError(removeError)))
+    if (editing?.name === name && editing.origin === origin) setEditing(null)
+  }
+
+  function startEdit(name: string, origin: VariableOrigin) {
+    setError(null)
+    setEditing({ origin, name, key: name, value: resolved[name]!.value })
+  }
+
+  async function saveEdit() {
+    if (!editing) return
+    const validation = validateVariableName(editing.key)
+    if (!validation.ok) {
+      setError(validation.error)
+      return
+    }
+    setError(null)
+    setSaving(true)
+    try {
+      if (editing.origin === 'environment') {
+        if (!onEditEnvironmentVariable) throw new Error('Environment variable editing is unavailable.')
+        await onEditEnvironmentVariable(editing.name, validation.name, editing.value)
+      } else {
+        await updateScopedVariable(editing.origin, editing.name, validation.name, editing.value)
+      }
+      setEditing(null)
+    } catch (saveError) {
+      setError(describeApiError(saveError))
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function saveValue(name: string) {
@@ -106,7 +145,6 @@ export function VariablesMenu({ resolved, hasEnvironment }: {
     setSaving(true)
     try {
       await saveScopedVariable('user', validation.name, newValue)
-      setValues((current) => ({ ...current, [validation.name]: newValue }))
       setNewName('')
       setNewValue('')
       setCreateOpen(false)
@@ -141,9 +179,11 @@ export function VariablesMenu({ resolved, hasEnvironment }: {
               <tbody>
                 {orderedNames.map((name, index) => {
                   const entry = resolved[name]!
-                  const label = entry.origin === 'user' ? 'Only me' : entry.origin === 'global' ? 'Everyone' : 'Environment'
+                  const origin = entry.origin
+                  const label = origin === 'user' ? 'Only me' : origin === 'global' ? 'Everyone' : 'Environment'
+                  const isEditing = editing?.origin === origin && editing.name === name
                   return (
-                    <tr key={name} draggable={orderLoaded} onDragStart={(event) => { setDraggedName(name); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', name) }}
+                    <tr key={name} draggable={orderLoaded && !isEditing} onDragStart={(event) => { setDraggedName(name); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', name) }}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={(event) => {
                         event.preventDefault()
@@ -152,29 +192,35 @@ export function VariablesMenu({ resolved, hasEnvironment }: {
                         setDraggedName(null)
                       }}
                       onDragEnd={() => setDraggedName(null)}
-                      className={draggedName === name ? 'runtime-vars-dragging' : undefined}>
-                      <td className="runtime-vars-name" title={name}><code>{`{{${name}}}`}</code></td>
+                      className={`${draggedName === name ? 'runtime-vars-dragging ' : ''}${isEditing ? 'runtime-vars-editing' : ''}`}>
+                      <td className="runtime-vars-name" title={name}>
+                        {isEditing
+                          ? <input className="runtime-vars-input" aria-label={`Key for ${name}`} value={editing.key} disabled={saving} autoFocus onChange={(event) => setEditing({ ...editing, key: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') void saveEdit(); if (event.key === 'Escape') setEditing(null) }} />
+                          : <code>{`{{${name}}}`}</code>}
+                        {!isEditing && entry.shadowed.length > 0 && <span className="runtime-vars-shadow" title={`Also defined in ${entry.shadowed.map(describeOrigin).join(' and ')}, which this overrides.`}>overrides {entry.shadowed.map(describeOrigin).join(' and ')}</span>}
+                      </td>
                       <td className="runtime-vars-scope">{label}</td>
                       <td className="runtime-vars-value" title={entry.value}>
-                        {entry.origin === 'user'
-                          ? <div className="runtime-vars-edit"><input aria-label={`Value for ${name}`} value={values[name] ?? entry.value} onChange={(event) => setValues((current) => ({ ...current, [name]: event.target.value }))} /><button type="button" disabled={saving || (values[name] ?? entry.value) === entry.value} onClick={() => void saveValue(name)}>Save</button></div>
-                          : <span>{entry.value}</span>}
+                        {isEditing
+                          ? <input className="runtime-vars-input" aria-label={`Value for ${name}`} value={editing.value} disabled={saving} onChange={(event) => setEditing({ ...editing, value: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter') void saveEdit(); if (event.key === 'Escape') setEditing(null) }} />
+                          : origin === 'user'
+                            ? <div className="runtime-vars-edit"><input aria-label={`Value for ${name}`} value={values[name] ?? entry.value} onChange={(event) => setValues((current) => ({ ...current, [name]: event.target.value }))} /><button type="button" disabled={saving || (values[name] ?? entry.value) === entry.value} onClick={() => void saveValue(name)}>Save</button></div>
+                            : <span>{entry.value}</span>}
                       </td>
                       <td className="runtime-vars-actions">
-                        <span className="runtime-vars-moves">
-                          <button type="button" className="runtime-vars-drag-handle" draggable={orderLoaded} disabled={!orderLoaded} aria-label={`Drag ${name} to reorder`} title="Drag to reorder"
-                            onDragStart={(event) => { setDraggedName(name); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', name) }}
-                            onDragEnd={() => setDraggedName(null)}>⠿</button>
-                          <button type="button" aria-label={`Move ${name} to top`} title="Move to top" disabled={!orderLoaded || index === 0} onClick={() => reorder(name, 'top')}>⇈</button>
-                          <button type="button" aria-label={`Move ${name} up`} title="Move up" disabled={!orderLoaded || index === 0} onClick={() => reorder(name, 'up')}>↑</button>
-                          <button type="button" aria-label={`Move ${name} down`} title="Move down" disabled={!orderLoaded || index === orderedNames.length - 1} onClick={() => reorder(name, 'down')}>↓</button>
-                          <button type="button" aria-label={`Move ${name} to bottom`} title="Move to bottom" disabled={!orderLoaded || index === orderedNames.length - 1} onClick={() => reorder(name, 'bottom')}>⇊</button>
-                        </span>
-                        {entry.shadowed.length > 0 && <span className="runtime-vars-shadow" title={`Also defined in ${entry.shadowed.map(describeOrigin).join(' and ')}, which this overrides.`}>overrides {entry.shadowed.map(describeOrigin).join(' and ')}</span>}
-                        {entry.origin === 'environment'
-                          ? <span className="runtime-vars-note-inline">edit in the environment</span>
-                          : <button className="link-button" aria-label={`Remove ${name}`} onClick={() => forget(name, entry.origin)}>Remove</button>}
-                        <span className="sr-only">Drag rows to reorder; move buttons also work with a keyboard.</span>
+                        {isEditing
+                          ? <><button type="button" disabled={saving} onClick={() => void saveEdit()}>Save</button><button type="button" disabled={saving} onClick={() => setEditing(null)}>Cancel</button></>
+                          : <>
+                            <span className="runtime-vars-moves">
+                              <button type="button" className="runtime-vars-drag-handle" draggable={orderLoaded} disabled={!orderLoaded} aria-label={`Drag ${name} to reorder`} title="Drag to reorder" onDragStart={(event) => { setDraggedName(name); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', name) }} onDragEnd={() => setDraggedName(null)}>⠿</button>
+                              <button type="button" aria-label={`Move ${name} to top`} title="Move to top" disabled={!orderLoaded || index === 0} onClick={() => reorder(name, 'top')}>⇈</button>
+                              <button type="button" aria-label={`Move ${name} up`} title="Move up" disabled={!orderLoaded || index === 0} onClick={() => reorder(name, 'up')}>↑</button>
+                              <button type="button" aria-label={`Move ${name} down`} title="Move down" disabled={!orderLoaded || index === orderedNames.length - 1} onClick={() => reorder(name, 'down')}>↓</button>
+                              <button type="button" aria-label={`Move ${name} to bottom`} title="Move to bottom" disabled={!orderLoaded || index === orderedNames.length - 1} onClick={() => reorder(name, 'bottom')}>⇊</button>
+                            </span>
+                            <button type="button" className="link-button" aria-label={`Edit ${name}`} onClick={() => startEdit(name, origin)}>Edit</button>
+                            <button className="link-button" aria-label={`Remove ${name}`} onClick={() => forget(name, origin)}>Remove</button>
+                          </>}
                       </td>
                     </tr>
                   )

@@ -12,7 +12,7 @@
 // - Values are stored in the API's database in plain text, exactly as environment variables
 //   already are. Anything genuinely secret is no safer here than it is there.
 
-import { workspaceApi } from '@/lib/api'
+import { describeApiError, workspaceApi } from '@/lib/api'
 import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
 
 const LEGACY_STORAGE_KEY = 'play-next-api-workspace.runtime-variables.v1'
@@ -64,6 +64,26 @@ export async function saveScopedVariable(scope: VariableScope, key: string, valu
   } catch (error) {
     publish(before)
     throw error
+  }
+}
+
+/**
+ * Edits a variable in place, renaming it when the key changed.
+ *
+ * The API has no rename, so a rename is "write the new key, then delete the old one". The new key
+ * is written first: if the delete then fails, the user ends up with both names rather than with
+ * neither, and the error tells them so.
+ */
+export async function updateScopedVariable(scope: VariableScope, oldKey: string, newKey: string, value: string): Promise<void> {
+  if (newKey !== oldKey && cache.some((entry) => entry.scope === scope && entry.key === newKey)) {
+    throw new Error(`"${newKey}" already exists in this scope.`)
+  }
+  await saveScopedVariable(scope, newKey, value)
+  if (newKey === oldKey) return
+  try {
+    await removeScopedVariable(scope, oldKey)
+  } catch (error) {
+    throw new Error(`Saved "${newKey}", but "${oldKey}" could not be removed: ${describeApiError(error)}`)
   }
 }
 

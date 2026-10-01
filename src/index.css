@@ -288,6 +288,23 @@ button:disabled { cursor: not-allowed; }
 .runtime-vars-actions > * { margin: 1px; }
 .runtime-vars-dragging { opacity: .45; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.runtime-vars-group + .runtime-vars-group { margin-top: 6px; }
+.runtime-vars-group > summary { display: flex; align-items: center; gap: 4px; padding: 4px 2px; border-radius: 4px; color: #374151; font-size: 11px; font-weight: 600; cursor: pointer; list-style: none; user-select: none; }
+.runtime-vars-group > summary::-webkit-details-marker { display: none; }
+.runtime-vars-group > summary:hover { background: rgba(16, 24, 40, 0.04); }
+.runtime-vars-chevron { flex: none; width: 14px; height: 14px; color: #6b7280; transition: transform 0.15s; }
+.runtime-vars-group[open] .runtime-vars-chevron { transform: rotate(90deg); }
+.runtime-vars-col-key { width: 45%; }
+.runtime-vars-col-actions { width: 35%; }
+.runtime-vars-key { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.runtime-vars-icon { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; color: #6b7280; cursor: pointer; }
+.runtime-vars-icon:hover:not(:disabled) { background: rgba(16, 24, 40, 0.06); color: #111827; }
+.runtime-vars-icon-danger:hover:not(:disabled) { background: rgba(220, 38, 38, 0.08); color: #b42318; }
+.runtime-vars-input { box-sizing: border-box; width: 100%; padding: 2px 4px; border: 1px solid var(--border); border-radius: 4px; background: transparent; font: inherit; }
+.runtime-vars-input:focus { border-color: #6d5ce8; outline: none; }
+.runtime-vars-editing td { background: rgba(109, 92, 232, 0.05); }
+.runtime-vars-icon:disabled { color: #d1d5db; cursor: not-allowed; }
+.runtime-vars-key .runtime-vars-shadow { display: block; width: fit-content; max-width: 100%; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; }
 /* An override is deliberate, but an invisible one is how a stale personal value keeps beating a
    shared one a teammate has since corrected. */
 .runtime-vars-shadow { display: inline-block; padding: 0 4px; border-radius: 4px; background: rgba(217, 119, 6, 0.12); color: #92400e; font-size: 10px; white-space: nowrap; }
