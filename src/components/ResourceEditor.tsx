@@ -7,7 +7,8 @@ import { VariableInput, type VariableLookup } from '@/components/VariableInput'
 import type { ProxySettings } from '@/lib/api'
 import { copyVariableKey } from '@/lib/copy-key'
 import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
-import type { EnvironmentResource, EnvironmentVariable, KeyValueEntry, RequestMethod, ResourceDraft } from '@/lib/workspace-types'
+import { parseMultipartFields, parseUrlEncodedFields, serializeUrlEncodedFields, type MultipartField } from '@/lib/request-body'
+import { MAX_REQUEST_BODY_LENGTH, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type RequestBody, type RequestMethod, type ResourceDraft } from '@/lib/workspace-types'
 import type { PresenceUser } from '@/lib/presence'
 
 const NO_VARIABLES: VariableLookup = {}
@@ -24,6 +25,7 @@ interface ResourceEditorProps {
   error: string | null
   onChange: (draft: ResourceDraft) => void
   onSave: () => void
+  onShowVersionHistory?: () => void
   onDelete: () => void
   onSend: () => void
   sending: boolean
@@ -59,11 +61,23 @@ function describeRunnerChoice(proxy: ProxySettings | null): string {
 
 const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+const bodyTypes: RequestBody['type'][] = ['json', 'form-urlencoded', 'multipart', 'raw', 'graphql']
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [] }: ResourceEditorProps) {
+function suggestedContentType(type: RequestBody['type']): string {
+  switch (type) {
+    case 'json':
+    case 'graphql': return 'application/json'
+    case 'form-urlencoded': return 'application/x-www-form-urlencoded'
+    case 'multipart': return 'multipart/form-data'
+    case 'raw': return 'text/plain'
+  }
+}
+
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onShowVersionHistory, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [] }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const isRequest = draft.kind === 'request'
+  const bodyTooLong = draft.kind === 'request' && (draft.resource.body?.content.length ?? 0) > MAX_REQUEST_BODY_LENGTH
   const name = draft.resource.name
   const collectionId = draft.kind === 'collection' ? draft.resource.id : draft.kind === 'environment' ? '' : draft.collectionId
   const collectionName = draft.kind === 'collection' ? draft.resource.name : parentCollectionName ?? collectionId
@@ -74,6 +88,33 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
 
   function updateName(value: string) {
     onChange({ ...draft, resource: { ...draft.resource, name: value } } as ResourceDraft)
+  }
+
+  function updateBodyType(type: RequestBody['type'] | null) {
+    if (draft.kind !== 'request') return
+    const body = type === null
+      ? null
+      : { type, content: draft.resource.body?.content ?? '' } satisfies RequestBody
+    if (type === null) {
+      onChange({ ...draft, resource: { ...draft.resource, body } })
+      return
+    }
+
+    const contentType = suggestedContentType(type)
+    const existing = draft.resource.headers
+      .map((header, index) => ({ header, index }))
+      .filter(({ header }) => header.key.trim().toLowerCase() === 'content-type')
+    const headers = existing.length === 0
+      ? [...draft.resource.headers, { key: 'Content-Type', value: contentType, description: '', enabled: true }]
+      : draft.resource.headers.map((header, index) => {
+          if (header.key.trim().toLowerCase() !== 'content-type') return header
+          return {
+            ...header,
+            value: contentType,
+            enabled: index === existing[0].index ? true : header.enabled,
+          }
+        })
+    onChange({ ...draft, resource: { ...draft.resource, body, headers } })
   }
 
   function resize(event: ReactPointerEvent<HTMLDivElement>) {
@@ -122,8 +163,9 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 </div>
               )}
               <SaveState dirty={dirty} />
+              {onShowVersionHistory && <Button variant="outline" size="sm" onClick={onShowVersionHistory}>Version history</Button>}
               <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>
-              <Button size="sm" onClick={onSave} disabled={!dirty || saving}>{saving ? 'Saving…' : 'Save'}</Button>
+              <Button size="sm" onClick={onSave} disabled={!dirty || saving || bodyTooLong}>{saving ? 'Saving…' : 'Save'}</Button>
             </div>
           </header>
           {draft.kind === 'request' ? (
@@ -157,6 +199,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 <span>Description</span>
                 <input aria-label="Request description" value={draft.resource.description} placeholder="Add a description" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, description: event.target.value } })} />
               </label>
+              {bodyTooLong && <p className="inline-error" role="alert">Request body content exceeds the {MAX_REQUEST_BODY_LENGTH.toLocaleString()} character limit.</p>}
               <div className="editor-tabs" role="tablist" aria-label="Request editor">
                 {requestTabs.map((entry) => (
                   <button key={entry} role="tab" aria-selected={tab === entry} className={tab === entry ? 'editor-tab active' : 'editor-tab'} onClick={() => setTab(entry)}>{entry}</button>
@@ -166,16 +209,12 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 {tab === 'Params' && <KeyValueEditor label="Query parameters" entries={draft.resource.queryParams} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, queryParams: entries } })} />}
                 {tab === 'Headers' && <KeyValueEditor label="Headers" entries={draft.resource.headers} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, headers: entries } })} />}
                 {tab === 'Body' && (
-                  <div className="body-editor">
-                      <div className="body-toolbar"><span>JSON</span><span>JSON is saved as text; template variables are allowed.</span></div>
-                    <Suspense fallback={<div className="editor-loading">Loading JSON editor…</div>}>
-                      <JsonEditor
-                        value={draft.resource.body?.content ?? ''}
-                        variables={variables}
-                        onChange={(content) => onChange({ ...draft, resource: { ...draft.resource, body: content ? { type: 'json', content } : null } })}
-                      />
-                    </Suspense>
-                  </div>
+                  <RequestBodyEditor
+                    body={draft.resource.body}
+                    variables={variables}
+                    onBodyTypeChange={updateBodyType}
+                    onBodyChange={(body) => onChange({ ...draft, resource: { ...draft.resource, body } })}
+                  />
                 )}
                 {tab === 'Auth' && <div className="auth-placeholder"><strong>No Auth</strong><p>Authentication is not configured for this request.</p></div>}
               </div>
@@ -203,6 +242,153 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
         )}
       </div>
     </section>
+  )
+}
+
+function RequestBodyEditor({
+  body,
+  variables,
+  onBodyTypeChange,
+  onBodyChange,
+}: {
+  body: RequestBody | null
+  variables: VariableLookup
+  onBodyTypeChange: (type: RequestBody['type'] | null) => void
+  onBodyChange: (body: RequestBody) => void
+}) {
+  const multipart = body?.type === 'multipart' ? parseMultipartFields(body.content) : null
+  const multipartFields = multipart?.ok ? multipart.fields : []
+
+  function updateMultipart(fields: MultipartField[]) {
+    if (body?.type === 'multipart') onBodyChange({ ...body, content: JSON.stringify(fields) })
+  }
+
+  const typeDescription = body?.type === 'json' || body?.type === 'graphql'
+    ? 'JSON text; template variables are allowed.'
+    : body?.type === 'form-urlencoded'
+      ? 'Fields are URL-encoded in row order; repeated keys are supported.'
+      : body?.type === 'multipart'
+        ? 'Text fields only. File and browser FormData uploads are not supported.'
+        : 'Uninterpreted text. Set or adjust Content-Type in Headers.'
+
+  return (
+    <div className="body-editor">
+      <label className="body-type-control">
+        <span>Body type</span>
+        <select
+          aria-label="Body type"
+          value={body?.type ?? ''}
+          onChange={(event) => onBodyTypeChange(event.target.value ? event.target.value as RequestBody['type'] : null)}
+        >
+          <option value="">No body</option>
+          {bodyTypes.map((type) => <option key={type} value={type}>{type === 'form-urlencoded' ? 'URL-encoded' : type === 'json' ? 'JSON' : type === 'graphql' ? 'GraphQL' : type === 'raw' ? 'Raw' : 'Multipart'}</option>)}
+        </select>
+      </label>
+      {body && (
+        <>
+          <div className="body-toolbar">
+            <span>{body.type === 'form-urlencoded' ? 'URL-encoded' : body.type[0].toUpperCase() + body.type.slice(1)}</span>
+            <span>{typeDescription}</span>
+          </div>
+          {(body.type === 'json' || body.type === 'graphql') && (
+            <Suspense fallback={<div className="editor-loading">Loading JSON editor…</div>}>
+              <JsonEditor
+                value={body.content}
+                variables={variables}
+                onChange={(content) => onBodyChange({ ...body, content })}
+              />
+            </Suspense>
+          )}
+          {body.type === 'raw' && (
+            <textarea
+              className="body-textarea"
+              aria-label="Raw request body"
+              value={body.content}
+              onChange={(event) => onBodyChange({ ...body, content: event.target.value })}
+              spellCheck={false}
+            />
+          )}
+          {body.type === 'form-urlencoded' && (
+            <FormUrlEncodedEditor content={body.content} variables={variables} onChange={(content) => onBodyChange({ ...body, content })} />
+          )}
+          {body.type === 'multipart' && (
+            multipart?.ok
+              ? <MultipartEditor fields={multipartFields} variables={variables} onChange={updateMultipart} />
+              : <div className="multipart-invalid">
+                  <p className="inline-error" role="alert">{multipart?.message}</p>
+                  <label className="field-label">
+                    Multipart fields JSON
+                    <textarea
+                      className="body-textarea"
+                      aria-label="Multipart fields JSON"
+                      value={body.content}
+                      onChange={(event) => onBodyChange({ ...body, content: event.target.value })}
+                      spellCheck={false}
+                    />
+                  </label>
+                </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function FormUrlEncodedEditor({
+  content,
+  variables,
+  onChange,
+}: {
+  content: string
+  variables: VariableLookup
+  onChange: (content: string) => void
+}) {
+  const rows = parseUrlEncodedFields(content)
+  const update = (index: number, patch: Partial<(typeof rows)[number]>) => {
+    const changed = rows.map((row, rowIndex) => rowIndex === index ? { ...row, ...patch } : row)
+    onChange(serializeUrlEncodedFields(changed))
+  }
+  const add = () => onChange(serializeUrlEncodedFields([...rows, { key: '', value: '' }]))
+  const remove = (index: number) => onChange(serializeUrlEncodedFields(rows.filter((_, rowIndex) => rowIndex !== index)))
+  return (
+    <div>
+      <div className="param-head body-rows-head"><span>KEY</span><span>VALUE</span><span></span></div>
+      {rows.map((row, index) => (
+        <div className="body-param-row" key={`${index}-${row.key}`}>
+          <VariableInput className="cell-input" variables={variables} aria-label={`URL-encoded key ${index + 1}`} value={row.key} placeholder="Key" onChange={(event) => update(index, { key: event.target.value })} />
+          <VariableInput className="cell-input" variables={variables} aria-label={`URL-encoded value ${index + 1}`} value={row.value} placeholder="Value" onChange={(event) => update(index, { value: event.target.value })} />
+          <button className="row-remove" aria-label={`Remove URL-encoded field ${index + 1}`} onClick={() => remove(index)}>×</button>
+        </div>
+      ))}
+      <button className="add-param" onClick={add}>＋ Add field</button>
+    </div>
+  )
+}
+
+function MultipartEditor({
+  fields,
+  variables,
+  onChange,
+}: {
+  fields: MultipartField[]
+  variables: VariableLookup
+  onChange: (fields: MultipartField[]) => void
+}) {
+  const update = (index: number, patch: Partial<MultipartField>) => onChange(fields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field))
+  const add = () => onChange([...fields, { key: '', value: '', enabled: true }])
+  return (
+    <div>
+      <div className="param-head body-rows-head body-multipart-head"><span></span><span>FIELD</span><span>VALUE</span><span></span></div>
+      {fields.map((field, index) => (
+        <div className="body-param-row body-multipart-row" key={`${index}-${field.key}`}>
+          <input className="check" type="checkbox" aria-label={`Enable multipart field ${field.key || index + 1}`} checked={field.enabled} onChange={(event) => update(index, { enabled: event.target.checked })} />
+          <VariableInput className="cell-input" variables={variables} aria-label={`Multipart field name ${index + 1}`} value={field.key} placeholder="Field name" onChange={(event) => update(index, { key: event.target.value })} />
+          <VariableInput className="cell-input" variables={variables} aria-label={`Multipart field value ${index + 1}`} value={field.value} placeholder="Value" onChange={(event) => update(index, { value: event.target.value })} />
+          <button className="row-remove" aria-label={`Remove multipart field ${index + 1}`} onClick={() => onChange(fields.filter((_, fieldIndex) => fieldIndex !== index))}>×</button>
+        </div>
+      ))}
+      <button className="add-param" onClick={add}>＋ Add text field</button>
+    </div>
   )
 }
 

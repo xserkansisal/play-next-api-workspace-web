@@ -10,15 +10,32 @@ const CONTEXT = 3
  * a request body split into lines so a whitespace or line-ending change is visible instead of
  * hiding inside one long escaped string.
  */
-export function comparableText(draft: ResourceDraft | undefined): string {
+export function comparableText(draft: ResourceDraft | undefined, snapshotOnly = false): string {
   if (!draft) return ''
   if (draft.kind === 'collection') {
     const { items: _items, ...resource } = draft.resource
-    return JSON.stringify(resource, null, 2)
+    return JSON.stringify(snapshotOnly
+      ? { name: resource.name, description: resource.description }
+      : resource, null, 2)
+  }
+  if (snapshotOnly && draft.kind === 'folder') {
+    return JSON.stringify({ type: 'folder', name: draft.resource.name, description: draft.resource.description }, null, 2)
   }
   if (draft.kind === 'request') {
     const { body, ...rest } = draft.resource
-    return JSON.stringify({ ...rest, body: body ? { ...body, content: body.content.split('\n') } : null }, null, 2)
+    const resource = snapshotOnly
+      ? {
+          type: 'request',
+          name: rest.name,
+          description: rest.description,
+          method: rest.method,
+          url: rest.url,
+          queryParams: rest.queryParams,
+          headers: rest.headers,
+          auth: rest.auth,
+        }
+      : rest
+    return JSON.stringify({ ...resource, body: body ? { type: body.type, content: body.content.split('\n') } : null }, null, 2)
   }
   return JSON.stringify(draft.resource, null, 2)
 }
@@ -46,17 +63,29 @@ function collapse(lines: readonly DiffLine[]): Row[] {
   return rows
 }
 
-export function CompareDiff({ local, latest }: { local: ResourceDraft | undefined; latest: ResourceDraft }) {
+export function CompareDiff({
+  local,
+  latest,
+  localLabel = 'Your local draft',
+  latestLabel = 'Latest on server',
+  snapshotOnly = false,
+}: {
+  local: ResourceDraft | undefined
+  latest: ResourceDraft
+  localLabel?: string
+  latestLabel?: string
+  snapshotOnly?: boolean
+}) {
   const [changesOnly, setChangesOnly] = useState(true)
-  const lines = useMemo(() => diffLines(comparableText(local), comparableText(latest)), [local, latest])
+  const lines = useMemo(() => diffLines(comparableText(local, snapshotOnly), comparableText(latest, snapshotOnly)), [local, latest, snapshotOnly])
   const { added, removed } = countChanges(lines)
   const rows = changesOnly ? collapse(lines) : lines
 
   return (
     <div className="diff-view">
       <div className="diff-toolbar">
-        <span className="diff-legend"><span className="diff-swatch removed" />Your local draft</span>
-        <span className="diff-legend"><span className="diff-swatch added" />Latest on server</span>
+        <span className="diff-legend"><span className="diff-swatch removed" />{localLabel}</span>
+        <span className="diff-legend"><span className="diff-swatch added" />{latestLabel}</span>
         <span className="diff-summary">
           {added + removed === 0 ? 'No differences' : <><span className="diff-count removed">−{removed}</span><span className="diff-count added">+{added}</span></>}
         </span>
@@ -68,7 +97,13 @@ export function CompareDiff({ local, latest }: { local: ResourceDraft | undefine
       {added + removed === 0 ? (
         <p className="diff-empty">Your draft and the server version are identical. You can keep working safely.</p>
       ) : (
-        <div className="diff-body" role="table" aria-label="Changes between your draft and the server version">
+        <div
+          className="diff-body"
+          role="table"
+          aria-label={snapshotOnly
+            ? `Changes between ${localLabel.toLowerCase()} and ${latestLabel.toLowerCase()}`
+            : 'Changes between your draft and the server version'}
+        >
           {rows.map((row, index) => {
             if (row.type === 'gap') {
               return <div key={row.key} className="diff-row gap" role="row"><span role="cell">⋯ {row.hidden} unchanged line{row.hidden === 1 ? '' : 's'}</span></div>

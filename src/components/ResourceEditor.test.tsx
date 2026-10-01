@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -127,6 +127,73 @@ describe('what the runner tooltip says is reachable', () => {
     const { container } = renderEditor(requestDraft, { enabled: false, anyHost: false, allowedHosts: [] })
     const select = container.querySelector('.runner-select') as HTMLSelectElement
     expect(select.title).toContain('PROXY_ALLOWED_HOSTS')
+  })
+})
+
+describe('request body type selection', () => {
+  async function openBodyTab() {
+    const user = userEvent.setup()
+    await user.click(screen.getAllByRole('tab', { name: 'Body' })[0])
+    return user
+  }
+
+  it('keeps an empty selected body instead of clearing it and manages Content-Type', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderEditor(requestDraft, null, onChange)
+    await user.click(screen.getAllByRole('tab', { name: 'Body' })[0])
+    await user.selectOptions(screen.getByLabelText('Body type'), 'json')
+
+    const changed = onChange.mock.calls[0][0] as Extract<ResourceDraft, { kind: 'request' }>
+    expect(changed.resource.body).toEqual({ type: 'json', content: '' })
+    expect(changed.resource.headers).toEqual([
+      { key: 'Content-Type', value: 'application/json', description: '', enabled: true },
+    ])
+  })
+
+  it('sets the raw default media type and keeps the raw editor available', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderEditor(requestDraft, null, onChange)
+    await user.click(screen.getAllByRole('tab', { name: 'Body' })[0])
+    await user.selectOptions(screen.getByLabelText('Body type'), 'raw')
+
+    const changed = onChange.mock.calls[0][0] as Extract<ResourceDraft, { kind: 'request' }>
+    expect(changed.resource.body).toEqual({ type: 'raw', content: '' })
+    expect(changed.resource.headers[0]).toMatchObject({ key: 'Content-Type', value: 'text/plain', enabled: true })
+  })
+
+  it('edits URL-encoded duplicate fields in their original order', async () => {
+    const draft = {
+      ...requestDraft,
+      resource: { ...requestDraft.resource, body: { type: 'form-urlencoded', content: 'tag=one&tag=two' } },
+    } as unknown as ResourceDraft
+    const onChange = vi.fn()
+    renderEditor(draft, null, onChange)
+    await userEvent.setup().click(screen.getAllByRole('tab', { name: 'Body' })[0])
+
+    expect(screen.getByLabelText('URL-encoded key 1')).toHaveValue('tag')
+    expect(screen.getByLabelText('URL-encoded key 2')).toHaveValue('tag')
+    fireEvent.change(screen.getByLabelText('URL-encoded value 1'), { target: { value: 'changed' } })
+
+    const changed = onChange.mock.calls.at(-1)?.[0] as Extract<ResourceDraft, { kind: 'request' }>
+    expect(changed.resource.body?.content).toBe('tag=changed&tag=two')
+  })
+
+  it('shows invalid saved multipart content without replacing it', async () => {
+    const draft = {
+      ...requestDraft,
+      resource: { ...requestDraft.resource, body: { type: 'multipart', content: '{broken' } },
+    } as unknown as ResourceDraft
+    const onChange = vi.fn()
+    renderEditor(draft, null, onChange)
+    const user = await openBodyTab()
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Multipart fields must be valid JSON.')
+    expect(screen.getByLabelText('Multipart fields JSON')).toHaveValue('{broken')
+    expect(onChange).not.toHaveBeenCalled()
+    await user.type(screen.getByLabelText('Multipart fields JSON'), 'x')
+    expect(onChange).toHaveBeenCalled()
   })
 })
 

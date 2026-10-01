@@ -102,4 +102,21 @@ describe('API errors and save isolation', () => {
     expect(put).toHaveBeenCalledTimes(1)
     put.mockRestore()
   })
+
+  it('uses the collection and item version routes and sends body-less restore requests', async () => {
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { versions: [] } } as never)
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: {} } as never)
+
+    await workspaceApi.collectionVersions('collection-1')
+    await workspaceApi.itemVersions('collection-1', 'request-1')
+    await workspaceApi.restoreCollectionVersion('collection-1', 'version-1')
+    await workspaceApi.restoreItemVersion('collection-1', 'request-1', 'version-2')
+
+    expect(get).toHaveBeenNthCalledWith(1, '/collections/collection-1/versions')
+    expect(get).toHaveBeenNthCalledWith(2, '/collections/collection-1/items/request-1/versions')
+    expect(post).toHaveBeenNthCalledWith(1, '/collections/collection-1/versions/version-1/restore')
+    expect(post).toHaveBeenNthCalledWith(2, '/collections/collection-1/items/request-1/versions/version-2/restore')
+    get.mockRestore()
+    post.mockRestore()
+  })
 })

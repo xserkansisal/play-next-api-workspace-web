@@ -9,6 +9,7 @@ import { ResourceEditor } from '@/components/ResourceEditor'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { VariablesMenu } from '@/components/VariablesMenu'
+import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { describeApiError, workspaceApi, type BulkImportInput, type ProxySettings } from '@/lib/api'
@@ -181,6 +182,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [reconnectKey, setReconnectKey] = useState(0)
   const [remoteUpdate, setRemoteUpdate] = useState<RemoteUpdate | null>(null)
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
   const [sending, setSending] = useState<Record<string, boolean>>({})
   const [responses, setResponses] = useState<Record<string, RecordedResponse>>({})
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({})
@@ -538,6 +540,56 @@ function App({ user, onSignOut }: AppProps = {}) {
 
   function setLocalCollection(collection: CollectionResource) {
     setCollections((current) => current.map((entry) => entry.id === collection.id ? collection : entry))
+    const key = `collection:${collection.id}`
+    setDrafts((current) => {
+      const draft = current[key]
+      return draft?.kind === 'collection'
+        ? { ...current, [key]: { ...draft, resource: { ...draft.resource, items: collection.items } } }
+        : current
+    })
+    setBaselines((current) => {
+      const baseline = current[key]
+      return baseline?.kind === 'collection'
+        ? { ...current, [key]: { ...baseline, resource: { ...baseline.resource, items: collection.items } } }
+        : current
+    })
+  }
+
+  function applyRestoredVersion(resource: CollectionResource | WorkspaceItem) {
+    if (!activeDraft || activeDraft.kind === 'environment') return
+    let restored: ResourceDraft
+    if (activeDraft.kind === 'collection') {
+      if ('type' in resource || resource.id !== activeDraft.resource.id) {
+        throw new Error('The API returned a different resource while restoring collection history.')
+      }
+      restored = {
+        kind: 'collection',
+        resource: { ...activeDraft.resource, ...resource, items: activeDraft.resource.items },
+      }
+      setLocalCollection(restored.resource)
+    } else {
+      if (activeDraft.kind === 'folder') {
+        if (!('type' in resource) || resource.type !== 'folder' || resource.id !== activeDraft.resource.id) {
+          throw new Error('The API returned a different resource while restoring folder history.')
+        }
+        restored = { kind: 'folder', collectionId: activeDraft.collectionId, resource }
+      } else {
+        if (!('type' in resource) || resource.type !== 'request' || resource.id !== activeDraft.resource.id) {
+          throw new Error('The API returned a different resource while restoring request history.')
+        }
+        restored = { kind: 'request', collectionId: activeDraft.collectionId, resource }
+      }
+      const collection = collections.find(({ id }) => id === activeDraft.collectionId)
+      if (collection) {
+        setLocalCollection({ ...collection, items: replaceItemInTree(collection.items, resource) })
+      }
+    }
+    const key = draftKey(restored)
+    lastSavedRef.current[key] = jsonCopy(restored)
+    setDrafts((current) => ({ ...current, [key]: restored }))
+    setBaselines((current) => ({ ...current, [key]: jsonCopy(restored) }))
+    setRemoteUpdate(null)
+    setResourceError(null)
   }
 
   async function saveDraft() {
@@ -1211,6 +1263,9 @@ function App({ user, onSignOut }: AppProps = {}) {
                   error={resourceError}
                   onChange={updateDraft}
                   onSave={() => void saveDraft()}
+                  onShowVersionHistory={activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew)
+                    ? () => setVersionHistoryOpen(true)
+                    : undefined}
                   onDelete={() => void deleteResource(selected!)}
                   onSend={() => void sendActiveRequest()}
                   sending={activeSending}
@@ -1268,6 +1323,15 @@ function App({ user, onSignOut }: AppProps = {}) {
           onComplete={finishBulkImport}
           onPreview={previewBulkImport}
           onImport={importBulkItems}
+        />
+      )}
+
+      {versionHistoryOpen && activeDraft && activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew) && (
+        <VersionHistoryDialog
+          draft={activeDraft}
+          dirty={dirty}
+          onClose={() => setVersionHistoryOpen(false)}
+          onRestored={applyRestoredVersion}
         />
       )}
 

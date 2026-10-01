@@ -1,4 +1,5 @@
 export type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+export const MAX_REQUEST_BODY_LENGTH = 1_000_000
 
 export interface KeyValueEntry {
   key: string
@@ -8,7 +9,7 @@ export interface KeyValueEntry {
 }
 
 export interface RequestBody {
-  type: 'json'
+  type: 'json' | 'form-urlencoded' | 'multipart' | 'raw' | 'graphql'
   content: string
 }
 
@@ -61,6 +62,32 @@ export interface CollectionResource {
   updatedAt?: string
   createdBy?: string | null
   updatedBy?: string | null
+}
+
+export interface CollectionVersionSnapshot {
+  name: string
+  description: string
+}
+
+export type ItemVersionSnapshot =
+  | { type: 'folder'; name: string; description: string }
+  | {
+      type: 'request'
+      name: string
+      description: string
+      method: RequestMethod
+      url: string
+      queryParams: KeyValueEntry[]
+      headers: KeyValueEntry[]
+      body: RequestBody | null
+      auth: { type: 'none' }
+    }
+
+export interface ResourceVersion<TSnapshot> {
+  id: string
+  snapshot: TSnapshot
+  createdAt: string
+  createdBy: string | null
 }
 
 export interface EnvironmentVariable {

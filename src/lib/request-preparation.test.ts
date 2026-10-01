@@ -92,6 +92,109 @@ describe('prepareRequest', () => {
     if (outcome.ok) expect(outcome.request.headers).toContainEqual(['Content-Type', 'application/json'])
   })
 
+  it('preserves an explicitly selected empty JSON body and assigns its content type', () => {
+    const outcome = prepareRequest(baseRequest({
+      method: 'POST',
+      url: 'http://localhost:3000/x',
+      body: { type: 'json', content: '' },
+    }), {})
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      expect(outcome.request.body).toBe('')
+      expect(outcome.request.headers).toContainEqual(['Content-Type', 'application/json'])
+    }
+  })
+
+  it('URL-encodes resolved rows while preserving duplicate keys and row order', () => {
+    const outcome = prepareRequest(baseRequest({
+      method: 'POST',
+      url: 'http://localhost:3000/x',
+      headers: [{ key: 'Content-Type', value: 'text/plain', enabled: true, description: '' }],
+      body: { type: 'form-urlencoded', content: 'name={{name}}&tag=first&tag=second+value' },
+    }), { name: 'Sam Lee' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      expect(outcome.request.body).toBe('name=Sam+Lee&tag=first&tag=second+value')
+      expect(outcome.request.headers).toEqual([['Content-Type', 'application/x-www-form-urlencoded']])
+    }
+  })
+
+  it('builds multipart text from enabled fields and uses the same generated boundary in the header', () => {
+    const outcome = prepareRequest(baseRequest({
+      method: 'POST',
+      url: 'http://localhost:3000/x',
+      body: {
+        type: 'multipart',
+        content: JSON.stringify([
+          { key: 'description', value: 'Hello {{name}}', enabled: true },
+          { key: 'ignored', value: 'not sent', enabled: false },
+          { key: 'quoted"name', value: 'A sample', enabled: true },
+        ]),
+      },
+    }), { name: 'Sam' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      const contentType = outcome.request.headers.find(([key]) => key.toLowerCase() === 'content-type')?.[1]
+      const boundary = contentType?.match(/boundary=(.+)$/)?.[1]
+      expect(boundary).toBeTruthy()
+      expect(contentType).toBe(`multipart/form-data; boundary=${boundary}`)
+      expect(outcome.request.body).toContain(`--${boundary}\r\n`)
+      expect(outcome.request.body).toContain('name="description"\r\n\r\nHello Sam')
+      expect(outcome.request.body).toContain('name="quoted\\"name"')
+      expect(outcome.request.body).not.toContain('not sent')
+      expect(outcome.request.body).toContain(`--${boundary}--\r\n`)
+    }
+  })
+
+  it('reports malformed multipart content instead of sending or replacing it', () => {
+    const outcome = prepareRequest(baseRequest({
+      method: 'POST',
+      url: 'http://localhost:3000/x',
+      body: { type: 'multipart', content: '{bad json' },
+    }), {})
+    expect(outcome).toEqual({ ok: false, reason: 'invalid-body', message: 'Multipart fields must be valid JSON.' })
+  })
+
+  it('rejects body content above the persisted request limit', () => {
+    const outcome = prepareRequest(baseRequest({
+      method: 'POST',
+      url: 'http://localhost:3000/x',
+      body: { type: 'raw', content: 'x'.repeat(1_000_001) },
+    }), {})
+    expect(outcome).toEqual({
+      ok: false,
+      reason: 'invalid-body',
+      message: 'Request body content exceeds the 1,000,000 character limit.',
+    })
+  })
+
+  it('sends raw text verbatim and preserves a manually selected media type', () => {
+    const outcome = prepareRequest(baseRequest({
+      method: 'POST',
+      url: 'http://localhost:3000/x',
+      headers: [{ key: 'Content-Type', value: 'application/xml', enabled: true, description: '' }],
+      body: { type: 'raw', content: '<root>{{value}}</root>' },
+    }), { value: 'plain text' })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      expect(outcome.request.body).toBe('<root>plain text</root>')
+      expect(outcome.request.headers).toEqual([['Content-Type', 'application/xml']])
+    }
+  })
+
+  it('uses JSON envelope validation and content type for GraphQL bodies', () => {
+    const outcome = prepareRequest(baseRequest({
+      method: 'POST',
+      url: 'http://localhost:3000/graphql',
+      body: { type: 'graphql', content: '{"query":"query { status }","variables":{}}' },
+    }), {})
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) {
+      expect(outcome.request.body).toBe('{"query":"query { status }","variables":{}}')
+      expect(outcome.request.headers).toContainEqual(['Content-Type', 'application/json'])
+    }
+  })
+
   it('rejects a URL that is still not absolute once variables are resolved', () => {
     const resource = baseRequest({ url: 'not-a-url' })
     const outcome = prepareRequest(resource, {})

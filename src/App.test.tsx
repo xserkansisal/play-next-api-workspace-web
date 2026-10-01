@@ -145,6 +145,38 @@ describe('workspace live update flow', () => {
     expect(screen.getByText('+1')).toBeInTheDocument()
   })
 
+  it('restores a saved request version into the editor and refreshes its history', async () => {
+    const user = userEvent.setup()
+    const history = vi.spyOn(workspaceApi, 'itemVersions').mockResolvedValue([{
+      id: 'version-1',
+      snapshot: {
+        type: 'request',
+        name: request.name,
+        description: request.description,
+        method: request.method,
+        url: '/older-orders',
+        queryParams: request.queryParams,
+        headers: request.headers,
+        body: request.body,
+        auth: request.auth,
+      },
+      createdAt: '2026-10-01T12:00:00.000Z',
+      createdBy: 'ada@example.com',
+    }])
+    const restore = vi.spyOn(workspaceApi, 'restoreItemVersion').mockResolvedValue({ ...request, url: '/older-orders' })
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await user.click(screen.getByRole('button', { name: 'Version history' }))
+    expect(await screen.findByText(/ada@example\.com/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Restore selected version' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm restore' }))
+
+    await waitFor(() => expect(restore).toHaveBeenCalledWith(collection.id, request.id, 'version-1'))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/older-orders'))
+    await waitFor(() => expect(history).toHaveBeenCalledTimes(2))
+    expect(screen.getByText('● Saved')).toBeInTheDocument()
+  })
+
   it('refetches the workspace after a resync frame and exposes the recovery state', async () => {
     render(<App />)
     await screen.findByRole('button', { name: 'List orders' })

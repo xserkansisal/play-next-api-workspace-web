@@ -2,8 +2,11 @@ import axios, { isAxiosError } from 'axios'
 
 import type {
   CollectionResource,
+  CollectionVersionSnapshot,
   CreateItemInput,
   EnvironmentResource,
+  ItemVersionSnapshot,
+  ResourceVersion,
   RestoreCheck,
   RequestResource,
   TrashEntry,
@@ -142,6 +145,18 @@ export const workspaceApi = {
     })
     return data
   },
+  async collectionVersions(collectionId: string) {
+    const { data } = await apiClient.get<{ versions: ResourceVersion<CollectionVersionSnapshot>[] }>(
+      `/collections/${collectionId}/versions`,
+    )
+    return data.versions
+  },
+  async restoreCollectionVersion(collectionId: string, versionId: string) {
+    const { data } = await apiClient.post<CollectionResource>(
+      `/collections/${collectionId}/versions/${versionId}/restore`,
+    )
+    return data
+  },
   async deleteCollection(id: string) {
     await apiClient.delete(`/collections/${id}`)
   },
@@ -160,6 +175,18 @@ export const workspaceApi = {
   },
   async item(collectionId: string, itemId: string) {
     const { data } = await apiClient.get<WorkspaceItem>(`/collections/${collectionId}/items/${itemId}`)
+    return data
+  },
+  async itemVersions(collectionId: string, itemId: string) {
+    const { data } = await apiClient.get<{ versions: ResourceVersion<ItemVersionSnapshot>[] }>(
+      `/collections/${collectionId}/items/${itemId}/versions`,
+    )
+    return data.versions
+  },
+  async restoreItemVersion(collectionId: string, itemId: string, versionId: string) {
+    const { data } = await apiClient.post<WorkspaceItem>(
+      `/collections/${collectionId}/items/${itemId}/versions/${versionId}/restore`,
+    )
     return data
   },
   async saveFolder(collectionId: string, resource: Extract<WorkspaceItem, { type: 'folder' }>) {

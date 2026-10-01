@@ -1,5 +1,6 @@
-import type { RequestMethod, RequestResource } from '@/lib/workspace-types'
+import { MAX_REQUEST_BODY_LENGTH, type RequestMethod, type RequestResource } from '@/lib/workspace-types'
 import type { PreparedRequest } from '@/lib/request-runner'
+import { parseMultipartFields, parseUrlEncodedFields, serializeMultipart, serializeUrlEncodedFields } from '@/lib/request-body'
 
 const VARIABLE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g
 
@@ -142,24 +143,25 @@ export type PrepareOutcome =
   | { ok: true; request: PreparedRequest }
   | { ok: false; reason: 'missing-variables'; missing: string[] }
   | { ok: false; reason: 'invalid-json'; error: JsonParseError }
+  | { ok: false; reason: 'invalid-body'; message: string }
   | { ok: false; reason: 'invalid-url'; message: string }
 
 /**
- * Resolves environment variables, validates the (post-substitution) JSON
- * body, and builds the fetch-ready request the runner will send.
+ * Resolves environment variables, prepares the selected body format, and
+ * builds the fetch-ready request the runner will send.
  *
  * Decisions baked in here (see the Slice 4 report for rationale):
  * - `{{variables}}` are resolved in the URL, query params, headers, AND the
  *   JSON body — not just the URL/port, because bodies legitimately reference
  *   environment values too.
- * - JSON body validation happens AFTER substitution, not before: a body can
+ * - JSON and GraphQL body validation happens AFTER substitution, not before: a body can
  *   be invalid JSON before variables are resolved (that's expected and
  *   allowed while editing/saving) but must be valid once resolved, since
  *   that is the literal text that gets sent over the wire.
  * - Disabled query params/headers are dropped entirely, matching the
  *   editor's checkbox semantics.
  * - A body is only attached for methods that allow one; `fetch` rejects a
- *   body on GET/HEAD.
+ *   body on GET.
  */
 export function prepareRequest(resource: RequestResource, variables: Record<string, string>): PrepareOutcome {
   const missing: string[] = []
@@ -175,25 +177,72 @@ export function prepareRequest(resource: RequestResource, variables: Record<stri
   const resolvedParams = enabledParams.map((entry) => ({ key: substitute(entry.key), value: substitute(entry.value) }))
   const enabledHeaders = resource.headers.filter((entry) => entry.enabled && entry.key.trim())
   const resolvedHeaders = enabledHeaders.map((entry) => ({ key: substitute(entry.key), value: substitute(entry.value) }))
-  const resolvedBody = resource.body
-    ? (() => {
-        const result = substituteIntoJson(resource.body.content, variables)
+  let bodyContent: string | null = null
+  let contentType: string | null = null
+  let bodyError: string | null = null
+  let jsonError: JsonParseError | null = null
+
+  if (resource.method !== 'GET' && resource.body) {
+    const { type, content } = resource.body
+    if (content.length > MAX_REQUEST_BODY_LENGTH) {
+      bodyError = `Request body content exceeds the ${MAX_REQUEST_BODY_LENGTH.toLocaleString()} character limit.`
+    } else {
+      switch (type) {
+      case 'json':
+      case 'graphql': {
+        const result = substituteIntoJson(content, variables)
         missing.push(...result.missing)
-        return result.value
-      })()
-    : null
+        bodyContent = result.value
+        contentType = 'application/json'
+        if (bodyContent !== '') {
+          const parsed = parseJsonWithLocation(bodyContent)
+          if (!parsed.ok) jsonError = parsed.error
+        }
+        break
+      }
+      case 'form-urlencoded': {
+        const rows = parseUrlEncodedFields(content).map(({ key, value }) => ({
+          key: substitute(key),
+          value: substitute(value),
+        }))
+        bodyContent = serializeUrlEncodedFields(rows)
+        contentType = 'application/x-www-form-urlencoded'
+        break
+      }
+      case 'multipart': {
+        const parsed = parseMultipartFields(content)
+        if (!parsed.ok) {
+          bodyError = parsed.message
+          break
+        }
+        const fields = parsed.fields.map((field) => ({
+          key: substitute(field.key),
+          value: substitute(field.value),
+          enabled: field.enabled,
+        }))
+        const boundary = `----PlayNextBoundary${crypto.randomUUID().replace(/-/g, '')}`
+        const serialized = serializeMultipart(fields, boundary)
+        if (!serialized.ok) {
+          bodyError = serialized.message
+          break
+        }
+        bodyContent = serialized.content
+        contentType = `multipart/form-data; boundary=${boundary}`
+        break
+      }
+      case 'raw':
+        bodyContent = substitute(content)
+        contentType = 'text/plain'
+        break
+      }
+    }
+  }
 
   if (missing.length > 0) {
     return { ok: false, reason: 'missing-variables', missing: [...new Set(missing)].sort() }
   }
-
-  const trimmedBody = resolvedBody?.trim() ?? ''
-  if (trimmedBody) {
-    const parsed = parseJsonWithLocation(trimmedBody)
-    if (!parsed.ok) {
-      return { ok: false, reason: 'invalid-json', error: parsed.error }
-    }
-  }
+  if (jsonError) return { ok: false, reason: 'invalid-json', error: jsonError }
+  if (bodyError) return { ok: false, reason: 'invalid-body', message: bodyError }
 
   const finalUrl = appendQueryParams(url, resolvedParams)
   try {
@@ -204,10 +253,16 @@ export function prepareRequest(resource: RequestResource, variables: Record<stri
   }
 
   const headers: [string, string][] = resolvedHeaders.map(({ key, value }) => [key, value])
-  const allowsBody = resource.method !== 'GET'
-  const body = allowsBody && trimmedBody ? resolvedBody : null
-  if (body && !headers.some(([key]) => key.toLowerCase() === 'content-type')) {
-    headers.push(['Content-Type', 'application/json'])
+  if (bodyContent !== null && contentType !== null) {
+    const contentTypeHeaders = headers.filter(([key]) => key.toLowerCase() === 'content-type')
+    const managedType = resource.body?.type !== 'raw' || contentTypeHeaders.length === 0
+    if (managedType) {
+      if (contentTypeHeaders.length > 0) {
+        for (const header of contentTypeHeaders) header[1] = contentType
+      } else {
+        headers.push(['Content-Type', contentType])
+      }
+    }
   }
 
   return {
@@ -216,7 +271,7 @@ export function prepareRequest(resource: RequestResource, variables: Record<stri
       method: resource.method as RequestMethod,
       url: finalUrl,
       headers,
-      body,
+      body: bodyContent,
     },
   }
 }

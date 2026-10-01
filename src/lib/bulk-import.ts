@@ -1,9 +1,11 @@
 import type { ImportConflictPolicy } from '@/lib/api'
-import type { KeyValueEntry, RequestBody, RequestMethod, TreeNodeInput } from '@/lib/workspace-types'
+import { MAX_REQUEST_BODY_LENGTH, type KeyValueEntry, type RequestBody, type RequestMethod, type TreeNodeInput } from '@/lib/workspace-types'
 
 export const MAX_BULK_IMPORT_FILE_BYTES = 10 * 1024 * 1024
 export const MAX_BULK_IMPORT_NODES = 2_000
 export const MAX_BULK_IMPORT_DEPTH = 32
+
+const SUPPORTED_BODY_TYPES: readonly RequestBody['type'][] = ['json', 'form-urlencoded', 'multipart', 'raw', 'graphql']
 
 export interface ParsedBulkImport {
   items: TreeNodeInput[]
@@ -33,6 +35,10 @@ function requiredString(value: unknown, label: string, maxLength: number): strin
   if (typeof value !== 'string') throw new BulkImportFileError(`${label} must be text.`)
   if (value.length > maxLength) throw new BulkImportFileError(`${label} must be at most ${maxLength.toLocaleString()} characters.`)
   return value
+}
+
+function isRequestBodyType(value: unknown): value is RequestBody['type'] {
+  return SUPPORTED_BODY_TYPES.some((type) => type === value)
 }
 
 function importName(value: unknown, label: string): string {
@@ -119,10 +125,15 @@ function parseNodes(rawItems: unknown[], checkFolderNameConflicts = true): { ite
     const headers = raw.headers === undefined ? [] : parseRows(raw.headers, `${label} headers`)
     let body: RequestBody | null = null
     if (raw.body !== undefined && raw.body !== null) {
-      if (!isRecord(raw.body)) throw new BulkImportFileError(`${label} body must be null or a JSON body.`)
+      if (!isRecord(raw.body)) throw new BulkImportFileError(`${label} body must be null or a request body object.`)
       assertKeys(raw.body, ['type', 'content'], `${label} body`)
-      if (raw.body.type !== 'json') throw new BulkImportFileError(`${label} body type must be "json".`)
-      body = { type: 'json', content: requiredString(raw.body.content, `${label} body content`, 1_000_000) }
+      if (!isRequestBodyType(raw.body.type)) {
+        throw new BulkImportFileError(`${label} body type must be json, form-urlencoded, multipart, raw, or graphql.`)
+      }
+      body = {
+        type: raw.body.type,
+        content: requiredString(raw.body.content, `${label} body content`, MAX_REQUEST_BODY_LENGTH),
+      }
     }
     if (raw.auth !== undefined) {
       if (!isRecord(raw.auth)) throw new BulkImportFileError(`${label} auth must be { "type": "none" }.`)

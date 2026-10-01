@@ -89,6 +89,26 @@ describe('parseBulkImportFile', () => {
       items: [{ type: 'folder', name: 'Parent', items: [{ type: 'folder', name: 'Child' }, { type: 'folder', name: 'child' }] }],
     }))).toThrow('Sibling folders cannot share the name')
   })
+
+  it('preserves every supported body type and content verbatim', () => {
+    const bodies = [
+      { type: 'json', content: '{"name":"{{name}}"}' },
+      { type: 'form-urlencoded', content: 'tag=one&tag=two' },
+      { type: 'multipart', content: '[{"key":"fileName","value":"text only","enabled":true}]' },
+      { type: 'raw', content: '<note>hello</note>' },
+      { type: 'graphql', content: '{"query":"query { status }"}' },
+    ]
+    const parsed = parseBulkImportFile(JSON.stringify({
+      items: bodies.map((body, index) => ({ ...request(`Request ${index}`), body })),
+    }))
+    expect(parsed.items.map((item) => item.type === 'request' ? item.body : null)).toEqual(bodies)
+  })
+
+  it('rejects unsupported request body types', () => {
+    expect(() => parseBulkImportFile(JSON.stringify({
+      items: [{ ...request('Request'), body: { type: 'binary', content: 'bytes' } }],
+    }))).toThrow('body type must be json, form-urlencoded, multipart, raw, or graphql')
+  })
 })
 
 describe('bulk import limits', () => {
