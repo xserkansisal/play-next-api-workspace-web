@@ -25,6 +25,10 @@
   --destructive: oklch(0.55 0.22 27);
   --border: oklch(0.91 0.008 270);
   --ring: oklch(0.69 0.13 285);
+  --editor-bg: #fff;
+  --editor-gutter-bg: #fafafa;
+  --editor-gutter-border: #e5e7eb;
+  --editor-gutter-text: #9ca3af;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--foreground);
   background: #f6f7f9;
@@ -540,3 +544,344 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .cm-var-tooltip { max-width: 420px; padding: 6px 9px; font: 12px ui-monospace, monospace; white-space: pre-wrap; }
 .cm-var-tooltip.found { color: #4c1d95; }
 .cm-var-tooltip.missing { color: #b42318; }
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --background: oklch(0.18 0.012 270);
+  --foreground: oklch(0.91 0.008 270);
+  --muted: oklch(0.26 0.012 270);
+  --muted-foreground: oklch(0.7 0.015 270);
+  --border: oklch(0.34 0.012 270);
+  --editor-bg: #17191f;
+  --editor-gutter-bg: #1d2028;
+  --editor-gutter-border: #343741;
+  --editor-gutter-text: #8b91a0;
+  background: #111318;
+}
+
+:root[data-theme='dark'] body,
+:root[data-theme='dark'] .app-shell,
+:root[data-theme='dark'] .main-layout,
+:root[data-theme='dark'] .main-content,
+:root[data-theme='dark'] .workspace-content,
+:root[data-theme='dark'] .editor-layout,
+:root[data-theme='dark'] .editor-workarea,
+:root[data-theme='dark'] .editor-body,
+:root[data-theme='dark'] .response-body,
+:root[data-theme='dark'] .trash-view {
+  background: #111318;
+  color: #e2e4eb;
+}
+
+:root[data-theme='dark'] .topbar,
+:root[data-theme='dark'] .sidebar,
+:root[data-theme='dark'] .request-panel,
+:root[data-theme='dark'] .response-panel,
+:root[data-theme='dark'] .request-tab.active,
+:root[data-theme='dark'] .trash-list,
+:root[data-theme='dark'] .compare-panel,
+:root[data-theme='dark'] .restore-dialog,
+:root[data-theme='dark'] .sign-in-card,
+:root[data-theme='dark'] .runtime-vars-panel,
+:root[data-theme='dark'] .runtime-vars-move-menu {
+  background: #191b22;
+  color: #e2e4eb;
+}
+
+:root[data-theme='dark'] .topbar,
+:root[data-theme='dark'] .sidebar,
+:root[data-theme='dark'] .request-panel,
+:root[data-theme='dark'] .response-panel,
+:root[data-theme='dark'] .runtime-vars-panel,
+:root[data-theme='dark'] .runtime-vars-move-menu {
+  border-color: #343741;
+}
+
+:root[data-theme='dark'] .workspace-label,
+:root[data-theme='dark'] .env-picker select,
+:root[data-theme='dark'] .search input,
+:root[data-theme='dark'] .cell-input,
+:root[data-theme='dark'] .request-description input,
+:root[data-theme='dark'] .tree-row,
+:root[data-theme='dark'] .tree-row.folder,
+:root[data-theme='dark'] .tree-row.collection,
+:root[data-theme='dark'] .breadcrumbs strong,
+:root[data-theme='dark'] .resource-heading-copy h1,
+:root[data-theme='dark'] .resource-title-input,
+:root[data-theme='dark'] .response-heading strong,
+:root[data-theme='dark'] .response-empty strong,
+:root[data-theme='dark'] .empty-workspace h1,
+:root[data-theme='dark'] .empty-workspace h2,
+:root[data-theme='dark'] .trash-entry strong,
+:root[data-theme='dark'] .modal-heading h2,
+:root[data-theme='dark'] .sign-in-card h1,
+:root[data-theme='dark'] .runtime-vars-group > summary,
+:root[data-theme='dark'] .json-tree-bar button,
+:root[data-theme='dark'] .json-filter-input,
+:root[data-theme='dark'] .response-copy-raw {
+  color: #e2e4eb;
+}
+
+:root[data-theme='dark'] .sidebar-heading,
+:root[data-theme='dark'] .sidebar-link,
+:root[data-theme='dark'] .breadcrumbs,
+:root[data-theme='dark'] .request-tab,
+:root[data-theme='dark'] .resource-heading-copy p,
+:root[data-theme='dark'] .request-description,
+:root[data-theme='dark'] .editor-tab,
+:root[data-theme='dark'] .field-label,
+:root[data-theme='dark'] .body-toolbar,
+:root[data-theme='dark'] .extract-hint,
+:root[data-theme='dark'] .extract-sync,
+:root[data-theme='dark'] .response-meta,
+:root[data-theme='dark'] .response-empty,
+:root[data-theme='dark'] .response-json,
+:root[data-theme='dark'] .response-text,
+:root[data-theme='dark'] .response-headers td:first-child,
+:root[data-theme='dark'] .empty-workspace,
+:root[data-theme='dark'] .view-heading p,
+:root[data-theme='dark'] .trash-entry span,
+:root[data-theme='dark'] .modal-heading p,
+:root[data-theme='dark'] .conflict-list p,
+:root[data-theme='dark'] .no-conflicts,
+:root[data-theme='dark'] .account-email,
+:root[data-theme='dark'] .sign-in-card > p,
+:root[data-theme='dark'] .runtime-vars-value,
+:root[data-theme='dark'] .runtime-vars-empty,
+:root[data-theme='dark'] .runtime-vars-note,
+:root[data-theme='dark'] .json-key,
+:root[data-theme='dark'] .json-more,
+:root[data-theme='dark'] .response-copy-note {
+  color: #a9adba;
+}
+
+:root[data-theme='dark'] .env-picker,
+:root[data-theme='dark'] .request-panel,
+:root[data-theme='dark'] .response-panel,
+:root[data-theme='dark'] .restore-dialog,
+:root[data-theme='dark'] .sign-in-card,
+:root[data-theme='dark'] .trash-list,
+:root[data-theme='dark'] .compare-panel,
+:root[data-theme='dark'] .text-field,
+:root[data-theme='dark'] .method-select,
+:root[data-theme='dark'] .url-input,
+:root[data-theme='dark'] .runner-select,
+:root[data-theme='dark'] .response-retry,
+:root[data-theme='dark'] .cell-input:focus,
+:root[data-theme='dark'] .environment-shortcuts button,
+:root[data-theme='dark'] .json-tree-bar button,
+:root[data-theme='dark'] .view-toggle,
+:root[data-theme='dark'] .response-copy-raw,
+:root[data-theme='dark'] .json-filter-input {
+  background: #1d2028;
+  color: #e2e4eb;
+  border-color: #3a3e49;
+}
+
+:root[data-theme='dark'] .text-field,
+:root[data-theme='dark'] .method-select,
+:root[data-theme='dark'] .url-input,
+:root[data-theme='dark'] .runner-select,
+:root[data-theme='dark'] .json-filter-input,
+:root[data-theme='dark'] .runtime-vars-input {
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'] .sidebar-link:hover,
+:root[data-theme='dark'] .sidebar-tools button:hover:not(:disabled),
+:root[data-theme='dark'] .tree-row:not(.selected):hover,
+:root[data-theme='dark'] .runtime-vars-icon:hover:not(:disabled),
+:root[data-theme='dark'] .runtime-vars-handle:hover,
+:root[data-theme='dark'] .runtime-vars-group > summary:hover,
+:root[data-theme='dark'] .runtime-vars-move-menu button:hover:not(:disabled),
+:root[data-theme='dark'] .json-row:hover {
+  background-color: #292c36;
+}
+
+:root[data-theme='dark'] .tree-row.selected {
+  color: #c6baff;
+  background-color: #322b50;
+}
+
+:root[data-theme='dark'] .tree-row.collection {
+  background-color: rgba(145, 127, 255, .12);
+}
+
+:root[data-theme='dark'] .tree-row.drop-into:not(.dragging) {
+  background-color: rgba(145, 127, 255, .2);
+}
+
+:root[data-theme='dark'] .tree-row.environment.active-environment {
+  background-color: rgba(23, 140, 98, .16);
+}
+
+:root[data-theme='dark'] .tree-row.environment.active-environment:hover {
+  background-color: rgba(23, 140, 98, .24);
+}
+
+:root[data-theme='dark'] .tree-row.environment.active-environment.selected {
+  background-color: #1f4035;
+}
+
+:root[data-theme='dark'] .tree-row.environment.active-environment .tree-name,
+:root[data-theme='dark'] .environment-active-tag {
+  color: #83d6ae;
+}
+
+:root[data-theme='dark'] .tree-row {
+  background-image: repeating-linear-gradient(to right, #383c46 0 1px, transparent 1px 18px);
+}
+
+:root[data-theme='dark'] .param-row,
+:root[data-theme='dark'] .trash-entry,
+:root[data-theme='dark'] .response-headers td,
+:root[data-theme='dark'] .json-tree-bar {
+  border-color: #30333d;
+}
+
+:root[data-theme='dark'] .param-head,
+:root[data-theme='dark'] .response-headers td:first-child,
+:root[data-theme='dark'] .runtime-vars-table th {
+  color: #9298a6;
+}
+
+:root[data-theme='dark'] .json-editor,
+:root[data-theme='dark'] .json-editor .cm-editor {
+  background: var(--editor-bg);
+  color: var(--foreground);
+}
+
+:root[data-theme='dark'] .json-editor .cm-activeLine,
+:root[data-theme='dark'] .json-editor .cm-activeLineGutter {
+  background: #232630;
+}
+
+:root[data-theme='dark'] .json-row-match {
+  background: #3a321e;
+}
+
+:root[data-theme='dark'] .json-row-match:hover {
+  background: #494027;
+}
+
+:root[data-theme='dark'] .response-status.ok,
+:root[data-theme='dark'] .method-get {
+  color: #73d9a6;
+  background: #173b2d;
+}
+
+:root[data-theme='dark'] .response-status.error,
+:root[data-theme='dark'] .method-delete {
+  color: #ff9690;
+  background: #472523;
+}
+
+:root[data-theme='dark'] .method-post {
+  color: #ffc477;
+  background: #45351f;
+}
+
+:root[data-theme='dark'] .method-put {
+  color: #9cb8ff;
+  background: #222f4a;
+}
+
+:root[data-theme='dark'] .method-patch {
+  color: #c6a4ff;
+  background: #35264d;
+}
+
+:root[data-theme='dark'] .diff-toolbar,
+:root[data-theme='dark'] .diff-row.gap,
+:root[data-theme='dark'] .runner-select {
+  background: #20232c;
+  color: #b5bac6;
+}
+
+:root[data-theme='dark'] .diff-row.removed {
+  background: #452725;
+}
+
+:root[data-theme='dark'] .diff-row.added {
+  background: #1c3a2d;
+}
+
+:root[data-theme='dark'] .connection-notice,
+:root[data-theme='dark'] .sent-via-server,
+:root[data-theme='dark'] .runtime-vars-notice {
+  color: #f3ca82;
+  background: #3b301d;
+}
+
+:root[data-theme='dark'] .global-error {
+  color: #ffaaa4;
+  background: #442422;
+}
+
+:root[data-theme='dark'] .update-notice {
+  color: #c8bfff;
+  background: #29243e;
+  border-color: #464064;
+}
+
+:root[data-theme='dark'] .top-actions > [data-slot="button"]:disabled {
+  color: #777d8a;
+  background: #22252d;
+}
+
+:root[data-theme='dark'] .diff-row.removed .diff-sign,
+:root[data-theme='dark'] .diff-row.removed .diff-text {
+  color: #ffaaa4;
+}
+
+:root[data-theme='dark'] .diff-row.added .diff-sign,
+:root[data-theme='dark'] .diff-row.added .diff-text {
+  color: #8cdeb6;
+}
+
+:root[data-theme='dark'] .sign-in-screen {
+  background: #111318;
+}
+
+:root[data-theme='dark'] .theme-toggle {
+  border-color: #3a3e49;
+  color: #e2e4eb;
+  background: #1d2028;
+}
+
+.theme-toggle {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #596070;
+  background: #fff;
+}
+
+.theme-toggle:hover {
+  background: #f0eff9;
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.sign-in-card {
+  position: relative;
+}
+
+.sign-in-card .theme-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}

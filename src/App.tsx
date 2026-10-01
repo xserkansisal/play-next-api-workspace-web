@@ -5,6 +5,7 @@ import { CompareDiff } from '@/components/CompareDiff'
 import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { VariablesMenu } from '@/components/VariablesMenu'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
@@ -985,6 +986,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
+          <ThemeToggle />
           <label className="env-picker">
             <span className="env-dot" />
             <select aria-label="Environment" value={selectedEnvironmentId} onChange={(event) => setSelectedEnvironmentId(event.target.value)}>

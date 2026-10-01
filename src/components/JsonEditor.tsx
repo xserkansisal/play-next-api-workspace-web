@@ -84,9 +84,9 @@ export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEd
             if (update.docChanged) onChangeRef.current(update.state.doc.toString())
           }),
           EditorView.theme({
-            '&': { minHeight: '220px', fontSize: '13px', backgroundColor: '#fff' },
+            '&': { minHeight: '220px', fontSize: '13px', color: 'var(--foreground)', backgroundColor: 'var(--editor-bg)' },
             '.cm-content': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
-            '.cm-gutters': { backgroundColor: '#fafafa', borderRight: '1px solid #e5e7eb', color: '#9ca3af' },
+            '.cm-gutters': { backgroundColor: 'var(--editor-gutter-bg)', borderRight: '1px solid var(--editor-gutter-border)', color: 'var(--editor-gutter-text)' },
             '&.cm-focused': { outline: '2px solid #c4b5fd', outlineOffset: '1px' },
           }),
         ],

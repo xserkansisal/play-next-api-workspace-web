@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { authApi, describeAuthError } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
 
@@ -96,6 +97,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
     return (
       <div className="sign-in-screen">
         <form className="sign-in-card" onSubmit={(event) => void submitEmail(event)}>
+          <ThemeToggle />
           <img className="sign-in-logo" src="/assets/play-next-logo.png" alt="Play Next" />
           <h1>Sign in to Play Next API Workspace</h1>
           <p>Enter your work email. We'll send a 6-digit sign-in code.</p>
@@ -121,6 +123,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
   return (
     <div className="sign-in-screen">
       <form className="sign-in-card" onSubmit={(event) => void submitCode(event)}>
+        <ThemeToggle />
         <img className="sign-in-logo" src="/assets/play-next-logo.png" alt="Play Next" />
         <h1>Enter your code</h1>
         <p>We sent a 6-digit code to <strong>{step.email}</strong>. It expires 15 minutes after it was sent.</p>
