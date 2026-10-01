@@ -7,13 +7,15 @@ import { methodLabel, sortByName, sortTreeItems } from '@/lib/workspace-ui'
 import { resourceKey, type CollectionResource, type EnvironmentResource, type OpenResource, type WorkspaceItem } from '@/lib/workspace-types'
 import { NestedPresenceAvatars, PresenceAvatars } from '@/components/PresenceAvatars'
 import { nestedPresenceByResource, type NestedPresence, type PresenceUser } from '@/lib/presence'
+import type { VariableDefinition, VariableOrigin, VariableResolution } from '@/lib/variable-scopes'
 
 /**
- * The two sidebar sections fold like any other node, so their state rides along in the same stored
+ * The sidebar sections fold like any other node, so their state rides along in the same stored
  * collapsed set. The ids are namespaced to keep them from ever colliding with a resource id.
  */
 export const COLLECTIONS_SECTION = 'section:collections'
 export const ENVIRONMENTS_SECTION = 'section:environments'
+export const VARIABLES_SECTION = 'section:variables'
 
 interface WorkspaceTreeProps {
   collections: CollectionResource[]
@@ -36,6 +38,13 @@ interface WorkspaceTreeProps {
    * editing without being the one whose variables actually resolve.
    */
   activeEnvironmentId: string
+  onActivateEnvironment: (environmentId: string) => void
+  resolvedVariables: Record<string, VariableResolution>
+  variablesByScope: Record<VariableOrigin, VariableDefinition[]>
+  variableFilter: string
+  onVariableFilterChange: (value: string) => void
+  onOpenVariableScope: (origin: VariableResolution['origin']) => void
+  selectedVariableScope?: VariableResolution['origin']
   onCreateEnvironment: () => void
   /** Width in pixels; owned by the caller so it can be persisted and applied to the layout. */
   width: number
@@ -353,7 +362,7 @@ function containsMatch(item: WorkspaceItem, filter: string): boolean {
     (item.type === 'folder' && item.items.some((child) => containsMatch(child, filter)))
 }
 
-/** A foldable sidebar section header, so Collections and Environments behave the same way. */
+/** A foldable sidebar section header shared by Collections, Environments, and Variables. */
 function SectionHeader({ label, count, expanded, onToggle, children }: {
   label: string
   count: number
@@ -393,13 +402,20 @@ export function WorkspaceTree({
   collapsed,
   environments,
   activeEnvironmentId,
+  onActivateEnvironment,
+  resolvedVariables,
+  variablesByScope,
+  variableFilter,
+  onVariableFilterChange,
+  onOpenVariableScope,
+  selectedVariableScope,
   onCreateEnvironment,
   width,
   onResize,
   onMove,
   presenceByResource,
 }: WorkspaceTreeProps) {
-  const [search, setSearch] = useState('')
+  const search = variableFilter
   const nestedPresence = useMemo(
     () => nestedPresenceByResource(collections, presenceByResource ?? {}),
     [collections, presenceByResource],
@@ -454,7 +470,7 @@ export function WorkspaceTree({
   // skips pruning. Appending the sections unconditionally would defeat that guard and wipe the
   // user's collapsed folders during the first render, before the collections arrive.
   const knownIds = useMemo(
-    () => expandableIds.length === 0 ? expandableIds : [...expandableIds, COLLECTIONS_SECTION, ENVIRONMENTS_SECTION],
+    () => expandableIds.length === 0 ? expandableIds : [...expandableIds, COLLECTIONS_SECTION, ENVIRONMENTS_SECTION, VARIABLES_SECTION],
     [expandableIds],
   )
   useEffect(() => {
@@ -476,7 +492,7 @@ export function WorkspaceTree({
 
   const sortedEnvironments = useMemo(() => sortByName(environments), [environments])
   const visibleEnvironments = filter
-    ? sortedEnvironments.filter((entry) => entry.name.toLowerCase().includes(filter))
+    ? sortedEnvironments.filter((environment) => environment.name.toLowerCase().includes(filter))
     : sortedEnvironments
 
   // Kept in state rather than read during render, so a window resize actually repaints the sidebar.
@@ -490,6 +506,7 @@ export function WorkspaceTree({
 
   const collectionsOpen = !collapsedIds.has(COLLECTIONS_SECTION)
   const environmentsOpen = !collapsedIds.has(ENVIRONMENTS_SECTION)
+  const variablesOpen = !collapsedIds.has(VARIABLES_SECTION)
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -513,6 +530,10 @@ export function WorkspaceTree({
         className={`sidebar ${collapsed ? 'collapsed' : ''}`}
         style={collapsed ? undefined : { flexBasis: `${appliedWidth}px`, width: `${appliedWidth}px`, minWidth: `${appliedWidth}px` }}
       >
+        <label className="search">
+          <SearchIcon />
+          <input aria-label="Search collections and environments and variables" placeholder="Search collections, environments, and variables" value={search} onChange={(event) => onVariableFilterChange(event.target.value)} />
+        </label>
         <SectionHeader label="Collections" count={sorted.length} expanded={collectionsOpen} onToggle={() => toggle(COLLECTIONS_SECTION)}>
           <button
             title={bulkDisabled ? 'Clear the search to expand all' : 'Expand all folders'}
@@ -531,10 +552,6 @@ export function WorkspaceTree({
           <button title="New folder" aria-label="New folder" onClick={onCreateFolder}><NewFolderIcon /></button>
           <button title="New collection" aria-label="New collection" onClick={onCreateCollection}><NewCollectionIcon /></button>
         </SectionHeader>
-        <label className="search">
-          <SearchIcon />
-          <input aria-label="Search collections" placeholder="Search collections and environments" value={search} onChange={(event) => setSearch(event.target.value)} />
-        </label>
         {collectionsOpen && (
           <nav
             className="tree"
@@ -571,17 +588,35 @@ export function WorkspaceTree({
             <button title="New environment" aria-label="New environment" onClick={onCreateEnvironment}><PlusIcon /></button>
           </SectionHeader>
           {environmentsOpen && (
+            <>
             <nav className="tree environments-tree" aria-label="Environments">
+              <div className="tree-row environment no-environment">
+                <span className="tree-environment-mark" aria-hidden="true">○</span>
+                <span className="tree-name">No environment</span>
+                <button
+                  className={`environment-activate ${activeEnvironmentId ? '' : 'active'}`}
+                  aria-label={activeEnvironmentId ? 'Use no environment' : 'No environment is active'}
+                  aria-pressed={!activeEnvironmentId}
+                  disabled={!activeEnvironmentId}
+                  onClick={() => onActivateEnvironment('')}
+                >{activeEnvironmentId ? 'Use' : 'Active'}</button>
+              </div>
               {visibleEnvironments.map((environment) => {
                 const isSelected = selected?.kind === 'environment' && selected.environmentId === environment.id
                 const isActive = environment.id === activeEnvironmentId
                 return (
                   <div key={environment.id} className={`tree-row environment ${isSelected ? 'selected' : ''} ${isActive ? 'active-environment' : ''}`}>
                     <span className="tree-environment-mark" aria-hidden="true">◉</span>
-                    <button className="tree-name" title={isActive ? `${environment.name} (active)` : environment.name} onClick={() => onSelect({ kind: 'environment', environmentId: environment.id })}>
+                    <button className="tree-name" title={environment.name} onClick={() => onSelect({ kind: 'environment', environmentId: environment.id })}>
                       {environment.name}
                     </button>
-                    {isActive && <span className="environment-active-tag">Active</span>}
+                    <button
+                      className={`environment-activate ${isActive ? 'active' : ''}`}
+                      aria-label={isActive ? `${environment.name} is active` : `Use ${environment.name}`}
+                      aria-pressed={isActive}
+                      disabled={isActive}
+                      onClick={() => onActivateEnvironment(environment.id)}
+                    >{isActive ? 'Active' : 'Use'}</button>
                     <button
                       className="tree-clone"
                       title={`Duplicate ${environment.name}`}
@@ -600,6 +635,58 @@ export function WorkspaceTree({
               })}
               {environments.length === 0 && <p className="empty-tree">No environments yet.</p>}
               {environments.length > 0 && visibleEnvironments.length === 0 && <p className="empty-tree">No matching environments.</p>}
+            </nav>
+            </>
+          )}
+        </div>
+        <div className="sidebar-section variables-section">
+          <SectionHeader
+            label="Variables"
+            count={Object.keys(resolvedVariables).filter((name) =>
+              !filter || name.toLowerCase().includes(filter) || resolvedVariables[name]!.value.toLowerCase().includes(filter)).length}
+            expanded={variablesOpen}
+            onToggle={() => toggle(VARIABLES_SECTION)}
+          />
+          {variablesOpen && (
+            <nav className="sidebar-variable-scopes" aria-label="Variable scopes">
+              {([
+                { origin: 'user', label: 'Only me' },
+                { origin: 'environment', label: 'Environments' },
+                { origin: 'global', label: 'Everyone' },
+              ] as const).map(({ origin, label }) => {
+                const matchingVariables = new Map(variablesByScope[origin]
+                  .filter(({ key, value }) =>
+                    (!filter || key.toLowerCase().includes(filter) || value.toLowerCase().includes(filter)))
+                  .map((variable) => [variable.key, variable]))
+                const activeCount = [...matchingVariables.keys()].filter((name) => resolvedVariables[name]?.origin === origin).length
+                const count = matchingVariables.size
+                return (
+                  <button
+                    key={origin}
+                    className={`sidebar-variable-scope${selectedVariableScope === origin ? ' active' : ''}`}
+                    aria-label={`Open ${label} variables`}
+                    title={`${count} defined, ${activeCount} usable in requests`}
+                    aria-current={selectedVariableScope === origin ? 'page' : undefined}
+                    onClick={() => onOpenVariableScope(origin)}
+                  >
+                    <span className="sidebar-variable-scope-label">
+                      <svg className={`sidebar-variable-icon scope-${origin}`} viewBox="0 0 20 20" aria-hidden="true">
+                        {origin === 'user' ? (
+                          <><circle cx="10" cy="6.4" r="3" /><path d="M4.2 17c.3-3.2 2.4-5.1 5.8-5.1s5.5 1.9 5.8 5.1" /></>
+                        ) : origin === 'environment' ? (
+                          <><path d="M3 5.2 10 2l7 3.2-7 3.2z" /><path d="M3 5.2v8.3l7 3.3 7-3.3V5.2M10 8.4v8.4" /></>
+                        ) : (
+                          <><circle cx="10" cy="10" r="7.2" /><path d="M2.9 10h14.2M10 2.8c2 2 3 4.4 3 7.2s-1 5.2-3 7.2c-2-2-3-4.4-3-7.2s1-5.2 3-7.2" /></>
+                        )}
+                      </svg>
+                      <span>{label}</span>
+                    </span>
+                    <span className="sidebar-variable-count" aria-label={`${count} defined, ${activeCount} usable`}>
+                      {count} <span>({activeCount})</span>
+                    </span>
+                  </button>
+                )
+              })}
             </nav>
           )}
         </div>

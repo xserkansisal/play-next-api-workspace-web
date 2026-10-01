@@ -447,6 +447,10 @@ describe('which scope a {{name}} resolves from', () => {
     vi.unstubAllGlobals()
   })
 
+  async function openVariableScope(user: ReturnType<typeof userEvent.setup>, scope: string) {
+    await user.click(await screen.findByRole('button', { name: `Open ${scope} variables` }))
+  }
+
   async function sendAndReadUrl(variables: { scope: 'user' | 'global'; key: string; value: string }[]) {
     vi.spyOn(workspaceApi, 'variables').mockResolvedValue(variables)
     const run = vi.spyOn(browserFetchRunner, 'run').mockResolvedValue({
@@ -487,9 +491,11 @@ describe('which scope a {{name}} resolves from', () => {
     ])
     render(<App />)
     await screen.findByRole('button', { name: 'List orders' })
+    const user = userEvent.setup()
+    await openVariableScope(user, 'Only me')
 
-    expect(await screen.findByText(/overrides the selected environment and global variables/)).toBeTruthy()
-    expect(screen.getByText(/defined more than once: target/)).toBeTruthy()
+    expect(await screen.findByRole('cell', { name: 'Overrides Environments, Everyone' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Only me' })).toBeInTheDocument()
   })
 
   it('edits one of my variables from the Variables menu, renaming it on the server', async () => {
@@ -498,7 +504,7 @@ describe('which scope a {{name}} resolves from', () => {
     const deleteVariable = vi.spyOn(workspaceApi, 'deleteVariable').mockResolvedValue()
     const user = userEvent.setup()
     render(<App />)
-    await user.click(await screen.findByText('Variables'))
+    await user.click(await screen.findByRole('button', { name: 'Open Only me variables' }))
     await user.click(await screen.findByRole('button', { name: 'Edit token' }))
     await user.clear(screen.getByRole('textbox', { name: 'Key for token' }))
     await user.type(screen.getByRole('textbox', { name: 'Key for token' }), 'authToken')
@@ -518,11 +524,44 @@ describe('which scope a {{name}} resolves from', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     render(<App />)
-    await user.click(await screen.findByText('Variables'))
+    await user.click(screen.getByRole('button', { name: 'Open Environments variables' }))
     await user.click(await screen.findByRole('button', { name: 'Remove target' }))
 
     await waitFor(() => expect(save).toHaveBeenCalled())
     expect(save.mock.calls[0]![0].variables).toEqual([{ key: 'other', value: 'x', enabled: true }])
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove target' })).toBeNull())
+  })
+
+  it('opens a blank environment editor and creates the environment only when saved', async () => {
+    const created = { id: 'environment-1', name: 'Development', variables: [] }
+    const create = vi.spyOn(workspaceApi, 'createEnvironment').mockResolvedValue(created)
+    const prompt = vi.spyOn(window, 'prompt')
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(screen.queryByRole('combobox', { name: 'Environment' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'New environment' }))
+
+    expect(await screen.findByRole('textbox', { name: 'Environment name' })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: 'Move to Trash' })).not.toBeInTheDocument()
+    expect(create).not.toHaveBeenCalled()
+    expect(prompt).not.toHaveBeenCalled()
+
+    await user.type(screen.getByRole('textbox', { name: 'Environment name' }), 'Development')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(create).toHaveBeenCalledWith({ name: 'Development', variables: [] }))
+    expect(await screen.findByRole('button', { name: 'Development' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use Development' })).toBeEnabled()
+  })
+
+  it('opens the selected variable scope in the main detail area', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open Only me variables' }))
+
+    expect(await screen.findByRole('heading', { name: 'Only me' })).toBeInTheDocument()
   })
 })

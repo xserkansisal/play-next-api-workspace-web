@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -31,28 +32,44 @@ beforeEach(() => {
 })
 
 function renderTree(props: Partial<React.ComponentProps<typeof WorkspaceTree>> = {}) {
-  return render(
-    <WorkspaceTree
-      collections={collections}
-      selected={null}
-      onSelect={vi.fn()}
-      onCreateCollection={vi.fn()}
-      onCreateFolder={vi.fn()}
-      onCreateRequest={vi.fn()}
-      onDelete={vi.fn()}
-      onClone={vi.fn()}
-      cloningId={null}
-      onShowTrash={vi.fn()}
-      onShowHistory={vi.fn()}
-      collapsed={false}
-      environments={[]}
-      onCreateEnvironment={vi.fn()}
-      activeEnvironmentId=""
-      width={260}
-      onResize={vi.fn()}
-      {...props}
-    />,
-  )
+  const treeProps: React.ComponentProps<typeof WorkspaceTree> = {
+    collections,
+    selected: null,
+    onSelect: vi.fn(),
+    onCreateCollection: vi.fn(),
+    onCreateFolder: vi.fn(),
+    onCreateRequest: vi.fn(),
+    onDelete: vi.fn(),
+    onClone: vi.fn(),
+    cloningId: null,
+    onShowTrash: vi.fn(),
+    onShowHistory: vi.fn(),
+    collapsed: false,
+    environments: [],
+    onActivateEnvironment: vi.fn(),
+    resolvedVariables: {},
+    variablesByScope: { user: [], environment: [], global: [] },
+    variableFilter: '',
+    onVariableFilterChange: vi.fn(),
+    onOpenVariableScope: vi.fn(),
+    onCreateEnvironment: vi.fn(),
+    activeEnvironmentId: '',
+    width: 260,
+    onResize: vi.fn(),
+    ...props,
+  }
+  function StatefulTree() {
+    const [variableFilter, setVariableFilter] = useState(treeProps.variableFilter)
+    return <WorkspaceTree
+      {...treeProps}
+      variableFilter={variableFilter}
+      onVariableFilterChange={(value) => {
+        setVariableFilter(value)
+        treeProps.onVariableFilterChange(value)
+      }}
+    />
+  }
+  return render(<StatefulTree />)
 }
 
 describe('WorkspaceTree expand/collapse all', () => {
@@ -148,7 +165,7 @@ describe('WorkspaceTree expand/collapse all', () => {
   it('disables both while a search is active, because search already reveals matches', async () => {
     const user = userEvent.setup()
     renderTree()
-    await user.type(screen.getByLabelText('Search collections'), 'Deep')
+    await user.type(screen.getByLabelText('Search collections and environments and variables'), 'Deep')
 
     expect(screen.getByLabelText<HTMLButtonElement>('Expand all').disabled).toBe(true)
     expect(screen.getByLabelText<HTMLButtonElement>('Collapse all').disabled).toBe(true)
@@ -180,6 +197,12 @@ describe('WorkspaceTree expand/collapse all', () => {
         onShowHistory={vi.fn()}
         collapsed={false}
         environments={[]}
+        onActivateEnvironment={vi.fn()}
+        resolvedVariables={{}}
+        variablesByScope={{ user: [], environment: [], global: [] }}
+        variableFilter=""
+        onVariableFilterChange={vi.fn()}
+        onOpenVariableScope={vi.fn()}
         onCreateEnvironment={vi.fn()}
         activeEnvironmentId=""
         width={260}
@@ -241,6 +264,36 @@ describe('environments in the sidebar tree', () => {
     expect(onSelect).toHaveBeenCalledWith({ kind: 'environment', environmentId: 'e1' })
   })
 
+  it('does not activate an environment when its name is opened', async () => {
+    const user = userEvent.setup()
+    const onActivateEnvironment = vi.fn()
+    renderTree({ environments, onActivateEnvironment })
+
+    await user.click(screen.getByTitle('localhost-develop'))
+
+    expect(onActivateEnvironment).not.toHaveBeenCalled()
+  })
+
+  it('activates an environment only from its adjacent selection button', async () => {
+    const user = userEvent.setup()
+    const onActivateEnvironment = vi.fn()
+    renderTree({ environments, onActivateEnvironment })
+
+    await user.click(screen.getByRole('button', { name: 'Use staging' }))
+
+    expect(onActivateEnvironment).toHaveBeenCalledWith('e2')
+  })
+
+  it('keeps the no-environment option available in the tree', async () => {
+    const user = userEvent.setup()
+    const onActivateEnvironment = vi.fn()
+    renderTree({ environments, activeEnvironmentId: 'e1', onActivateEnvironment })
+
+    await user.click(screen.getByRole('button', { name: 'Use no environment' }))
+
+    expect(onActivateEnvironment).toHaveBeenCalledWith('')
+  })
+
   it('marks the open environment as selected', () => {
     renderTree({ environments, selected: { kind: 'environment', environmentId: 'e2' } })
     const row = screen.getByTitle('staging').closest('.tree-row')
@@ -261,15 +314,26 @@ describe('environments in the sidebar tree', () => {
     expect(screen.getByText('No environments yet.')).toBeTruthy()
   })
 
-  it('filters environments by the same search as collections', async () => {
+  it('filters environments using the shared search and reports unmatched collections', async () => {
     const user = userEvent.setup()
     renderTree({ environments })
 
-    await user.type(screen.getByLabelText('Search collections'), 'stag')
+    await user.type(screen.getByLabelText('Search collections and environments and variables'), 'stag')
     expect(screen.queryByTitle('localhost-develop')).toBeNull()
     expect(screen.getByTitle('staging')).toBeTruthy()
-    // The collections side reports its own emptiness rather than looking broken.
     expect(screen.getByText('No matching collections.')).toBeTruthy()
+  })
+
+  it('filters environments out when the shared search matches only a collection', async () => {
+    const user = userEvent.setup()
+    renderTree({ environments })
+
+    await user.type(screen.getByLabelText('Search collections and environments and variables'), 'Payments')
+
+    expect(screen.getByTitle('Payments')).toBeTruthy()
+    expect(screen.queryByTitle('localhost-develop')).toBeNull()
+    expect(screen.queryByTitle('staging')).toBeNull()
+    expect(screen.getByText('No matching environments.')).toBeTruthy()
   })
 })
 
@@ -296,6 +360,55 @@ describe('foldable sidebar sections', () => {
     expect(screen.getByTitle('staging')).toBeTruthy()
   })
 
+  it('keeps Variables as a sibling section and folds it independently', async () => {
+    const user = userEvent.setup()
+    const { container } = renderTree({
+      environments,
+      resolvedVariables: { token: { value: 'secret', origin: 'user', shadowed: [] } },
+    })
+
+    const variablesSection = container.querySelector('.variables-section')
+    const environmentsSection = container.querySelector('.environments-section')
+    expect(variablesSection).toBeTruthy()
+    expect(variablesSection?.parentElement).toBe(environmentsSection?.parentElement)
+    expect(environmentsSection?.contains(variablesSection)).toBe(false)
+    expect(screen.getByRole('button', { name: 'Open Only me variables' })).toBeTruthy()
+
+    await user.click(screen.getByLabelText('Collapse Environments'))
+    expect(screen.queryByTitle('staging')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open Only me variables' })).toBeTruthy()
+
+    await user.click(screen.getByLabelText('Collapse Variables'))
+    expect(screen.queryByRole('button', { name: 'Open Only me variables' })).toBeNull()
+    expect(screen.getByLabelText('Expand Variables')).toBeTruthy()
+    expect(screen.getByLabelText('Expand Environments')).toBeTruthy()
+  })
+
+  it('shows defined and request-usable counts for each scope', () => {
+    const { container } = renderTree({
+      resolvedVariables: {
+        shared: { value: 'personal', origin: 'user', shadowed: ['global'] },
+        one: { value: '1', origin: 'global', shadowed: [] },
+        two: { value: '2', origin: 'global', shadowed: [] },
+        three: { value: '3', origin: 'global', shadowed: [] },
+      },
+      variablesByScope: {
+        user: [{ key: 'shared', value: 'personal' }],
+        environment: [],
+        global: [
+          { key: 'shared', value: 'default' },
+          { key: 'one', value: '1' },
+          { key: 'two', value: '2' },
+          { key: 'three', value: '3' },
+        ],
+      },
+    })
+
+    expect(container.querySelectorAll('.sidebar-variable-icon')).toHaveLength(3)
+    expect(container.querySelector('.sidebar-variable-scope[aria-label="Open Everyone variables"] .sidebar-variable-count')?.textContent?.replace(/\s/g, '')).toBe('4(3)')
+    expect(screen.getByRole('button', { name: 'Open Everyone variables' })).toHaveAttribute('title', '4 defined, 3 usable in requests')
+  })
+
   it('remembers a folded section across a remount, like any other collapsed node', async () => {
     const user = userEvent.setup()
     const { unmount } = renderTree({ environments })
@@ -313,11 +426,13 @@ describe('foldable sidebar sections', () => {
     // dropped if it were not registered as known.
     await user.click(screen.getByLabelText('Collapse Environments'))
     await user.click(screen.getByLabelText('Collapse Collections'))
+    await user.click(screen.getByLabelText('Collapse Variables'))
     unmount()
 
     renderTree({ environments })
     expect(screen.getByLabelText('Expand Environments')).toBeTruthy()
     expect(screen.getByLabelText('Expand Collections')).toBeTruthy()
+    expect(screen.getByLabelText('Expand Variables')).toBeTruthy()
   })
 
   it('shows a count so a folded section still says how much is inside', () => {
@@ -387,7 +502,7 @@ describe('ordering inside a collection', () => {
   }]
 
   function names(container: HTMLElement) {
-    return [...container.querySelectorAll('.tree-row:not(.collection) .tree-name')].map((n) => n.textContent?.trim())
+    return [...container.querySelectorAll('.tree-row:not(.collection):not(.environment) .tree-name')].map((n) => n.textContent?.trim())
   }
 
   it('groups folders above requests, each alphabetical, so structure stays scannable', () => {
@@ -420,18 +535,19 @@ describe('the active environment', () => {
     expect(rowFor('staging')?.className).toContain('selected')
   })
 
-  it('labels the active row, so the state survives being read without colour', () => {
+  it('labels the active row and disables its selection button', () => {
     renderTree({ environments, activeEnvironmentId: 'e2' })
 
-    const tag = screen.getByText('Active')
-    expect(tag.closest('.tree-row')).toBe(rowFor('staging'))
-    expect(screen.getByTitle('staging (active)')).toBeTruthy()
+    const activeButton = screen.getByRole('button', { name: 'staging is active' })
+    expect(activeButton.closest('.tree-row')).toBe(rowFor('staging'))
+    expect(activeButton).toBeDisabled()
   })
 
-  it('marks nothing when no environment is selected', () => {
+  it('marks no environment active when none is selected', () => {
     const { container } = renderTree({ environments, activeEnvironmentId: '' })
     expect(container.querySelectorAll('.active-environment').length).toBe(0)
-    expect(screen.queryByText('Active')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'localhost-develop is active' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'No environment is active' })).toBeDisabled()
   })
 })
 
@@ -446,7 +562,7 @@ describe('collection indent guides', () => {
     expect(depthOf('Charges')).toBe('1')
     expect(depthOf('Nested')).toBe('2')
     expect(depthOf('Deep request')).toBe('3')
-    expect(container.querySelectorAll('.tree-row').length).toBe(4)
+    expect(container.querySelectorAll('.tree-row:not(.environment)').length).toBe(4)
   })
 })
 

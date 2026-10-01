@@ -184,7 +184,7 @@ export type ResourceDraft =
   | { kind: 'collection'; resource: CollectionResource }
   | { kind: 'folder'; collectionId: string; resource: FolderResource }
   | { kind: 'request'; collectionId: string; parentId?: string; resource: RequestResource; isNew?: boolean }
-  | { kind: 'environment'; resource: EnvironmentResource }
+  | { kind: 'environment'; resource: EnvironmentResource; isNew?: boolean }
 
 export function resourceKey(resource: OpenResource): string {
   return resource.kind === 'collection'

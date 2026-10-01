@@ -168,7 +168,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               )}
               <SaveState dirty={dirty} />
               {onShowVersionHistory && <Button variant="outline" size="sm" onClick={onShowVersionHistory}>Version history</Button>}
-              <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>
+              {!(draft.kind === 'environment' && draft.isNew) && <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>}
               <Button size="sm" onClick={onSave} disabled={!dirty || saving || bodyTooLong}>{saving ? 'Saving…' : 'Save'}</Button>
             </div>
           </header>
@@ -232,7 +232,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               </div>
             </>
           ) : draft.kind === 'environment' ? (
-            <EnvironmentEditor draft={draft.resource} onChange={(resource) => onChange({ kind: 'environment', resource })} />
+            <EnvironmentEditor draft={draft.resource} onChange={(resource) => onChange({ ...draft, resource })} />
           ) : (
             <div className="resource-form">
               <label className="field-label">Name<input className="text-field" value={name} onChange={(event) => updateName(event.target.value)} /></label>

@@ -37,6 +37,12 @@ export interface EnvironmentVariableLike {
   enabled: boolean
 }
 
+export interface VariableDefinition {
+  key: string
+  value: string
+  enabled?: boolean
+}
+
 export interface VariableResolution {
   value: string
   /** The layer the value actually came from. */

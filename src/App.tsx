@@ -8,8 +8,8 @@ import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserProfileMenu } from '@/components/UserProfileMenu'
-import { VariablesMenu } from '@/components/VariablesMenu'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
+import { VariablesMenu } from '@/components/VariablesMenu'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { describeApiError, workspaceApi, type BulkImportInput, type ProxySettings } from '@/lib/api'
@@ -28,7 +28,7 @@ import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
 import { loadVariableOrder } from '@/lib/variable-order-storage'
-import { resolveVariables, toVariableMap } from '@/lib/variable-scopes'
+import { resolveVariables, toVariableMap, type VariableOrigin } from '@/lib/variable-scopes'
 import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
 import { extractFromResponse } from '@/lib/response-extraction'
 import { applySyncRules } from '@/lib/sync-rules'
@@ -52,7 +52,7 @@ import type {
 import { applyMove, type MoveSource, type MoveTarget } from '@/lib/tree-move'
 import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName } from '@/lib/workspace-ui'
 
-type View = 'workspace' | 'environments' | 'trash' | 'history'
+type View = 'workspace' | 'environments' | 'variables' | 'trash' | 'history'
 
 interface RemoteUpdate {
   event: ChangeEvent | null
@@ -166,6 +166,8 @@ function App({ user, onSignOut }: AppProps = {}) {
     void loadVariableOrder(userId)
   }, [userId])
   const [view, setView] = useState<View>('workspace')
+  const [variableScope, setVariableScope] = useState<'user' | 'environment' | 'global'>('user')
+  const [variableFilter, setVariableFilter] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [selected, setSelected] = useState<OpenResource | null>(null)
@@ -355,7 +357,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const currentKey = selected ? resourceKey(selected) : ''
   const activeDraft = currentKey ? drafts[currentKey] : undefined
   const activeBaseline = currentKey ? baselines[currentKey] : undefined
-  const dirty = !!activeDraft && (activeDraft.kind === 'request' && activeDraft.isNew
+  const dirty = !!activeDraft && ((activeDraft.kind === 'request' || activeDraft.kind === 'environment') && activeDraft.isNew
     ? true
     : !activeBaseline || isDraftDirty(activeDraft, activeBaseline))
   const activeSending = currentKey ? sending[currentKey] ?? false : false
@@ -442,6 +444,11 @@ function App({ user, onSignOut }: AppProps = {}) {
     () => resolveVariables(scopedVariables, selectedEnvironment?.variables ?? []),
     [scopedVariables, selectedEnvironment],
   )
+  const variablesByScope = useMemo(() => ({
+    user: scopedVariables.filter(({ scope }) => scope === 'user').map(({ key, value }) => ({ key, value })),
+    environment: selectedEnvironment?.variables ?? [],
+    global: scopedVariables.filter(({ scope }) => scope === 'global').map(({ key, value }) => ({ key, value })),
+  }) satisfies Record<VariableOrigin, { key: string; value: string; enabled?: boolean }[]>, [scopedVariables, selectedEnvironment])
   const activeCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId : null
   // Export follows the current selection: an environment when one is open, otherwise the
   // collection the selection belongs to.
@@ -469,7 +476,6 @@ function App({ user, onSignOut }: AppProps = {}) {
     setSelected(resource)
     setResourceError(null)
     setView(resource.kind === 'environment' ? 'environments' : 'workspace')
-    if (resource.kind === 'environment') setSelectedEnvironmentId(resource.environmentId)
     if (resource.kind === 'request' && !requestTabs.some((tab) => resourceKey(tab) === key)) {
       setRequestTabs((tabs) => [...tabs, resource])
     }
@@ -675,9 +681,32 @@ function App({ user, onSignOut }: AppProps = {}) {
           setSelected(nextResource)
         }
       } else {
-        const resource = await workspaceApi.saveEnvironment(activeDraft.resource)
-        setEnvironments((current) => sortByName(current.map((entry) => entry.id === resource.id ? resource : entry)))
+        const resource = activeDraft.isNew
+          ? await workspaceApi.createEnvironment({
+              name: activeDraft.resource.name,
+              variables: activeDraft.resource.variables,
+            })
+          : await workspaceApi.saveEnvironment(activeDraft.resource)
+        setEnvironments((current) => sortByName(activeDraft.isNew
+          ? [...current, resource]
+          : current.map((entry) => entry.id === resource.id ? resource : entry)))
         saved = { kind: 'environment', resource }
+        if (activeDraft.isNew) {
+          const oldKey = draftKey(activeDraft)
+          const nextResource: OpenResource = { kind: 'environment', environmentId: resource.id }
+          const nextKey = resourceKey(nextResource)
+          setDrafts((current) => {
+            const next = { ...current, [nextKey]: saved }
+            delete next[oldKey]
+            return next
+          })
+          setBaselines((current) => {
+            const next = { ...current, [nextKey]: jsonCopy(saved) }
+            delete next[oldKey]
+            return next
+          })
+          setSelected(nextResource)
+        }
       }
       const savedKey = draftKey(saved)
       lastSavedRef.current[savedKey] = jsonCopy(saved)
@@ -893,22 +922,16 @@ function App({ user, onSignOut }: AppProps = {}) {
     setResourceError(null)
   }
 
-  async function createEnvironment() {
-    const name = window.prompt('Environment name')
-    if (!name?.trim()) return
-    try {
-      const resource = await workspaceApi.createEnvironment({ name: name.trim(), variables: [] })
-      setEnvironments((current) => sortByName([...current, resource]))
-      setSelectedEnvironmentId(resource.id)
-      const draft: ResourceDraft = { kind: 'environment', resource }
-      const key = draftKey(draft)
-      setDrafts((current) => ({ ...current, [key]: draft }))
-      setBaselines((current) => ({ ...current, [key]: jsonCopy(draft) }))
-      setSelected({ kind: 'environment', environmentId: resource.id })
-      setView('environments')
-    } catch (error) {
-      setLoadingError(describeApiError(error))
+  function createEnvironment() {
+    const draft: ResourceDraft = {
+      kind: 'environment',
+      resource: { id: `draft-${crypto.randomUUID()}`, name: '', variables: [] },
+      isNew: true,
     }
+    seedDraft(draft)
+    setSelected({ kind: 'environment', environmentId: draft.resource.id })
+    setView('environments')
+    setResourceError(null)
   }
 
   /**
@@ -1158,21 +1181,6 @@ function App({ user, onSignOut }: AppProps = {}) {
           <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
-          <label className="env-picker">
-            <span className="env-dot" />
-            <select aria-label="Environment" value={selectedEnvironmentId} onChange={(event) => setSelectedEnvironmentId(event.target.value)}>
-              <option value="">No environment</option>
-              {sortByName(environments).map((environment) => <option value={environment.id} key={environment.id}>{environment.name}</option>)}
-            </select>
-          </label>
-          <VariablesMenu
-            resolved={resolvedVariables}
-            hasEnvironment={!!selectedEnvironment}
-            environmentId={selectedEnvironment?.id ?? null}
-            onEditEnvironmentVariable={(oldKey, newKey, value) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value))}
-            onAddEnvironmentVariable={(key, value) => mutateSelectedEnvironmentVariables((variables) => addEnvironmentVariable(variables, key, value))}
-            onRemoveEnvironmentVariable={(name) => mutateSelectedEnvironmentVariables((variables) => removeEnvironmentVariable(variables, name))}
-          />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
@@ -1208,6 +1216,13 @@ function App({ user, onSignOut }: AppProps = {}) {
           collapsed={sidebarCollapsed}
           environments={environments}
           activeEnvironmentId={selectedEnvironmentId}
+          onActivateEnvironment={setSelectedEnvironmentId}
+          resolvedVariables={resolvedVariables}
+          variablesByScope={variablesByScope}
+          variableFilter={variableFilter}
+          onVariableFilterChange={setVariableFilter}
+          selectedVariableScope={view === 'variables' ? variableScope : undefined}
+          onOpenVariableScope={(origin) => { setVariableScope(origin); setView('variables') }}
           onCreateEnvironment={() => void createEnvironment()}
           width={sidebarWidth}
           onResize={(next) => setSidebarWidth(clampSidebarWidth(next))}
@@ -1218,6 +1233,19 @@ function App({ user, onSignOut }: AppProps = {}) {
             <TrashView entries={trash} onRestore={(entry) => void beginRestore(entry)} />
           ) : view === 'history' ? (
             <HistoryView entries={history} onClear={() => { clearHistory(); setHistory([]) }} />
+          ) : view === 'variables' ? (
+            <VariablesMenu
+              resolved={resolvedVariables}
+              variablesByScope={variablesByScope}
+              hasEnvironment={!!selectedEnvironment}
+              environmentId={selectedEnvironment?.id ?? null}
+              filter={variableFilter}
+              selectedOrigin={variableScope}
+              standalone
+              onEditEnvironmentVariable={(oldKey, newKey, value) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value))}
+              onAddEnvironmentVariable={(key, value) => mutateSelectedEnvironmentVariables((variables) => addEnvironmentVariable(variables, key, value))}
+              onRemoveEnvironmentVariable={(name) => mutateSelectedEnvironmentVariables((variables) => removeEnvironmentVariable(variables, name))}
+            />
           ) : view === 'environments' && selected?.kind !== 'environment' ? (
             <div className="empty-workspace environment-welcome">
               <span className="response-symbol">◉</span>
