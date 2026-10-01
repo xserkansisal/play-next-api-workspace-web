@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Poi
 
 import { fitSidebarWidth } from '@/lib/sidebar-width-storage'
 import { loadCollapsedIds, pruneCollapsedIds, saveCollapsedIds } from '@/lib/tree-expansion-storage'
-import { methodLabel, sortByName } from '@/lib/workspace-ui'
+import { methodLabel, sortByName, sortTreeItems } from '@/lib/workspace-ui'
 import type { CollectionResource, EnvironmentResource, OpenResource, WorkspaceItem } from '@/lib/workspace-types'
 
 /**
@@ -117,7 +117,7 @@ function TreeItem({
         <button className="tree-clone" title={`Duplicate ${item.name}`} aria-label={`Duplicate ${item.name}`} disabled={cloningId === item.id} onClick={() => onClone(resource)}>⧉</button>
         <button className="tree-delete" title={`Move ${item.name} to Trash`} aria-label={`Move ${item.name} to Trash`} onClick={() => onDelete(resource)}>×</button>
       </div>
-      {item.type === 'folder' && (expanded || !!filter) && sortByName(item.items).map((child) => (
+      {item.type === 'folder' && (expanded || !!filter) && sortTreeItems(item.items).map((child) => (
         <TreeItem
           key={child.id}
           collectionId={collectionId}
@@ -405,7 +405,7 @@ function CollectionTree({
         <button className="tree-clone" title={`Duplicate ${collection.name}`} aria-label={`Duplicate ${collection.name}`} disabled={cloningId === collection.id} onClick={() => onClone({ kind: 'collection', collectionId: collection.id })}>⧉</button>
         <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>
       </div>
-      {(expanded || !!filter) && sortByName(children).map((item) => (
+      {(expanded || !!filter) && sortTreeItems(children).map((item) => (
         <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} />
       ))}
       {collection.id === selectedCollectionId && expanded && !filter && collection.items.length === 0 && (

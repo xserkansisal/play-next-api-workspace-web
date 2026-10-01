@@ -29,6 +29,18 @@ export function sortByName<T extends { name: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
 }
 
+/**
+ * Sidebar ordering for the contents of a collection or folder: folders first, then requests, each
+ * group alphabetical. Grouping by type keeps the structure of a collection scannable, instead of
+ * interleaving containers and leaves in one flat alphabetical run.
+ */
+export function sortTreeItems(items: WorkspaceItem[]): WorkspaceItem[] {
+  return [...items].sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  })
+}
+
 // Matches the API's case-insensitive comparison key exactly (name.normalize("NFC").toLowerCase()):
 // plain, locale-independent lowercasing, not localeCompare/toLocaleLowerCase. Turkish "İ"/"ı" are
 // intentionally NOT folded to "i" here, since the server does not fold them either.

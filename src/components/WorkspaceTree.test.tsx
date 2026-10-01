@@ -319,6 +319,39 @@ describe('request method badges', () => {
   })
 })
 
+describe('ordering inside a collection', () => {
+  const mixed: CollectionResource[] = [{
+    id: 'c1',
+    name: 'Payments',
+    description: '',
+    items: [
+      request('r1', 'zebra request'),
+      folder('f1', 'Zebra folder'),
+      request('r2', 'alpha request'),
+      folder('f2', 'Alpha folder', [request('r3', 'inner zebra'), folder('f3', 'Inner folder')]),
+    ],
+  }]
+
+  function names(container: HTMLElement) {
+    return [...container.querySelectorAll('.tree-row:not(.collection) .tree-name')].map((n) => n.textContent?.trim())
+  }
+
+  it('groups folders above requests, each alphabetical, so structure stays scannable', () => {
+    const { container } = renderTree({ collections: mixed })
+    expect(names(container)).toEqual([
+      'Alpha folder', 'Inner folder', 'inner zebra',
+      'Zebra folder',
+      'alpha request', 'zebra request',
+    ])
+  })
+
+  it('applies the same grouping inside nested folders, not just at the collection root', () => {
+    const { container } = renderTree({ collections: mixed })
+    const all = names(container)
+    expect(all.indexOf('Inner folder')).toBeLessThan(all.indexOf('inner zebra'))
+  })
+})
+
 describe('the active environment', () => {
   function rowFor(name: string) {
     return screen.getByTitle(new RegExp(`^${name}`)).closest('.tree-row')

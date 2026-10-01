@@ -919,8 +919,7 @@ function App({ user, onSignOut }: AppProps = {}) {
         <div className="brand">
           <button className="sidebar-toggle" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}>☰</button>
           <img className="brand-logo" src="/assets/play-next-logo.png" alt="Play Next" />
-          <span>Play Next API Workspace</span>
-          <span className="workspace-label">Engineering</span>
+          <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
           <label className="env-picker">
