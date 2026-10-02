@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore 
 
 import { describeApiError } from '@/lib/api'
 import { extractFromResponse, suggestPaths } from '@/lib/response-extraction'
-import { saveScopedVariable } from '@/lib/scoped-variables'
+import { getScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
 import { findSyncRule, getSyncRules, removeSyncRule, ruleScope, setSyncRule, subscribeSyncRules } from '@/lib/sync-rules'
 import { validateVariableName, VARIABLE_SCOPES, type VariableScope } from '@/lib/variable-scopes'
 import type { ExecutionSuccess, RecordedResponse } from '@/lib/request-runner'
@@ -46,6 +46,10 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
   const scopeId = useId()
 
   const rules = useSyncExternalStore(subscribeSyncRules, getSyncRules)
+  const existing = useSyncExternalStore(subscribeScopedVariables, getScopedVariables)
+  const nameListId = useId()
+  const existingNames = useMemo(() => [...new Set(existing.map((entry) => entry.key))], [existing])
+  const matching = existing.filter((entry) => entry.key === name.trim())
   // The rule shown is the one for the variable just saved: sync is offered as a follow-up to a
   // successful save, so there is always a concrete variable to talk about.
   const activeRule = saved && requestKey ? rules.find((rule) => rule.requestKey === requestKey && rule.name === saved) ?? null : null
@@ -140,10 +144,32 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
 
   return (
     <div className="extract-bar extract-open">
-      <div className="extract-fields">
+      <form
+        className="extract-fields"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
         <label>
           <span>Variable name</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="token" aria-label="Variable name" />
+          <input
+            value={name}
+            onChange={(event) => {
+              const value = event.target.value
+              setName(value)
+              // Picking an existing name from the list keeps its scope, so the save overwrites it.
+              const match = existing.filter((entry) => entry.key === value.trim())
+              if (match.length > 0 && !match.some((entry) => entry.scope === scope)) setScope(match[0].scope)
+            }}
+            placeholder="token"
+            aria-label="Variable name"
+            autoComplete="off"
+            list={nameListId}
+          />
+          <datalist id={nameListId}>
+            {existingNames.map((entry) => <option key={entry} value={entry} />)}
+          </datalist>
         </label>
         <label>
           <span>Value path</span>
@@ -153,6 +179,8 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
             placeholder="data.token"
             aria-label="Value path"
             list={listId}
+            aria-describedby="extract-path-hint"
+            autoComplete="off"
           />
           <datalist id={listId}>
             {suggestions.map((entry) => <option key={entry} value={entry} />)}
@@ -165,25 +193,31 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
             aria-label="Variable scope"
             value={scope}
             onChange={(event) => setScope(event.target.value as VariableScope)}
+            aria-describedby="extract-scope-hint"
           >
             {VARIABLE_SCOPES.map((entry) => (
               <option key={entry} value={entry}>{entry === 'user' ? 'Only me' : 'Everyone'}</option>
             ))}
           </select>
         </label>
-        <button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : 'Save variable'}</button>
-        <button className="link-button" onClick={() => { setOpen(false); setError(null) }}>Close</button>
-      </div>
-      <p className="extract-hint">
+        <div className="extract-actions">
+          <button className="extract-save" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save variable'}</button>
+          <button type="button" className="extract-close" onClick={() => { setOpen(false); setError(null) }}>Close</button>
+        </div>
+      </form>
+      <p className="extract-hint" id="extract-path-hint">
         Read a field from the JSON body (<code>data.token</code>, <code>items[0].id</code>), a header
         (<code>header:location</code>) or <code>status</code>. A whole object or array is stored as JSON, so use it
         unquoted: <code>{'{"state": {{name}}}'}</code>.
       </p>
-      <p className="extract-hint">
+      <p className="extract-hint" id="extract-scope-hint">
         {scope === 'user'
           ? 'Saved to your account: it follows you to other tabs and machines, and no teammate can see it. It wins over an environment variable of the same name.'
           : 'Saved for everyone signed in. An environment variable of the same name still wins over it, matching how Postman resolves globals.'}
       </p>
+      {matching.some((entry) => entry.scope === scope) && (
+        <p className="extract-hint">{`{{${name.trim()}}} already exists and will be overwritten.`}</p>
+      )}
       {preview && preview.ok && <p className="extract-preview">Current value: <code>{preview.value}</code></p>}
       {preview && !preview.ok && <p className="extract-error" role="alert">{preview.error}</p>}
       {error && <p className="extract-error" role="alert">{error}</p>}

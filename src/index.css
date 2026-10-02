@@ -86,7 +86,7 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .env-picker-footer { padding: 8px 12px; border-top: 1px solid #f0f1f4; color: #9297a2; font-size: 10px; }
 .runtime-vars-count { margin-left: 6px; padding: 1px 6px; border-radius: 10px; font-size: 11px; line-height: 1.35; }
 .main-layout { display: flex; min-height: 0; flex: 1; }
-.sidebar { width: 252px; flex: 0 0 252px; min-width: 215px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid var(--border); }
+.sidebar { container: sidebar / inline-size; width: 252px; flex: 0 0 252px; min-width: 215px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid var(--border); }
 .sidebar-heading { height: 54px; flex: 0 0 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 18px; color: #7d8391; font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .sidebar-tools { display: flex; gap: 3px; }
 .sidebar-tools button, .tree-chevron, .tree-delete, .tree-clone, .row-remove { display: grid; place-items: center; border: 0; background: transparent; color: #6b7180; }
@@ -481,17 +481,29 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .sign-in-actions > * { flex: 1; }
 .link-button { align-self: center; margin-top: 4px; border: 0; color: #6d5ce8; background: transparent; font-size: 12px; text-decoration: underline; }
 
-.extract-bar { display: flex; flex-direction: column; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+.extract-bar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
 .extract-bar .link-button { align-self: flex-start; margin-top: 0; }
-.extract-open { padding-bottom: 10px; }
-.extract-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
-.extract-fields label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
-.extract-fields input { min-width: 160px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
-.extract-hint { margin: 0; color: #6b7280; font-size: 12px; }
+.extract-open { padding-bottom: 12px; }
+.extract-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); align-items: end; gap: 10px; }
+.extract-fields label { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #4b5260; font-size: 12px; font-weight: 550; }
+.extract-fields input, .extract-fields select { width: 100%; min-width: 0; height: 36px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--foreground); background: var(--background); font-size: 13px; font-weight: 400; }
+.extract-fields input::placeholder { color: #9298a4; }
+.extract-fields input:focus-visible, .extract-fields select:focus-visible, .extract-save:focus-visible { outline: 2px solid #8b7cf0; outline-offset: 2px; }
+.extract-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+.extract-save { min-height: 36px; padding: 0 14px; border: 1px solid #5c4bd6; border-radius: 6px; color: #fff; background: #6d5ce8; font-size: 13px; font-weight: 550; }
+.extract-save:hover:not(:disabled) { background: #5d4bd3; }
+.extract-save:disabled { opacity: .65; }
+.extract-close { min-height: 36px; padding: 0 14px; border: 1px solid var(--border); border-radius: 6px; color: #4b5260; background: transparent; font-size: 13px; font-weight: 500; }
+.extract-close:hover { background: rgba(109, 92, 232, 0.08); color: #3f35a8; }
+.extract-close:focus-visible { outline: 2px solid #8b7cf0; outline-offset: 2px; }
+.extract-hint { margin: 0; color: #6b7280; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
 .extract-hint code, .extract-preview code { padding: 0 3px; border-radius: 3px; background: rgba(109, 92, 232, 0.1); }
 .extract-preview { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
 .extract-error { margin: 0; color: #b42318; font-size: 12px; }
 .extract-saved { color: #067647; font-size: 12px; }
+.response-panel > .extract-synced, .response-panel > .extract-error { margin: 8px 12px 0; padding: 8px 10px; border-radius: 6px; line-height: 1.45; }
+.response-panel > .extract-synced { background: #effaf4; }
+.response-panel > .extract-error { background: #fff1f0; }
 
 .runtime-vars { position: relative; }
 .runtime-vars > summary { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; cursor: pointer; list-style: none; }
@@ -622,9 +634,10 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .extract-sync input { margin: 0; cursor: pointer; }
 .extract-synced { color: #0f766e; font-size: 12px; }
 .sent-via-server { margin: 0 0 8px; padding: 8px 11px; border: 1px solid #fde8c7; border-radius: 6px; color: #8a5a10; background: #fffaf0; font-size: 12px; line-height: 1.5; }
-.extract-bar-row { display: flex; align-items: center; gap: 12px; }
+.extract-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .extract-sync-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
-.extract-sync-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border: 1px solid #ccfbf1; border-radius: 999px; background: #f0fdfa; font-size: 11px; }
+.extract-sync-chip { display: inline-flex; max-width: 100%; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid #ccfbf1; border-radius: 999px; background: #f0fdfa; font-size: 11px; }
+.extract-sync-chip code, .extract-sync-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .extract-sync-path { color: #6b7280; }
 .extract-sync-scope { padding: 0 4px; border-radius: 4px; background: rgba(109, 92, 232, 0.12); font-size: 11px; }
 
@@ -682,6 +695,18 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .sidebar-section-toggle:hover { color: #5b6170; }
 .tree-chevron-mark { width: 13px; font-size: 13px; line-height: 1; flex: none; }
 .sidebar-section-count { color: #9aa0ab; font-weight: 600; }
+.sidebar-section-toggle > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-tools { flex: none; }
+/* The header's title and six tool buttons need roughly 340px. Below that they used to collide, so
+   the tools drop to their own row under the title instead of overlapping it. */
+@container sidebar (max-width: 340px) {
+  .sidebar:not(.collapsed) .sidebar-heading,
+  .sidebar:not(.collapsed) .environments-section .sidebar-heading,
+  .sidebar:not(.collapsed) .variables-section .sidebar-heading { height: auto; flex: none; flex-wrap: wrap; align-content: center; gap: 2px 8px; padding: 10px 12px 6px 14px; }
+  .sidebar:not(.collapsed) .sidebar-section-toggle { flex: 1 0 100%; min-height: 24px; }
+  .sidebar:not(.collapsed) .sidebar-tools { width: 100%; flex-wrap: wrap; justify-content: flex-start; gap: 2px; margin-left: -4px; }
+  .sidebar:not(.collapsed) .sidebar-tools button { width: 28px; height: 28px; }
+}
 /* Bounded rather than flex:1, so the environments list cannot take half the sidebar from the
    collections tree, which is the one that needs the room. */
 .sidebar-section.environments-section { display: flex; flex-direction: column; min-height: 0; flex: 0 1 auto; border-top: 1px solid var(--border); }
@@ -1000,6 +1025,7 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .search input,
 :root[data-theme='dark'] .cell-input,
 :root[data-theme='dark'] .request-description input,
+:root[data-theme='dark'] .extract-fields label,
 :root[data-theme='dark'] .tree-row,
 :root[data-theme='dark'] .tree-row.folder,
 :root[data-theme='dark'] .tree-row.collection,
@@ -1132,6 +1158,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .method-select,
 :root[data-theme='dark'] .url-input,
 :root[data-theme='dark'] .runner-select,
+:root[data-theme='dark'] .extract-fields input,
+:root[data-theme='dark'] .extract-fields select,
 :root[data-theme='dark'] .response-retry,
 :root[data-theme='dark'] .cell-input:focus,
 :root[data-theme='dark'] .environment-shortcuts button,
@@ -1148,6 +1176,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .method-select,
 :root[data-theme='dark'] .url-input,
 :root[data-theme='dark'] .runner-select,
+:root[data-theme='dark'] .extract-fields input,
+:root[data-theme='dark'] .extract-fields select,
 :root[data-theme='dark'] .env-picker-search input,
 :root[data-theme='dark'] .env-picker-trigger,
 :root[data-theme='dark'] .json-filter-input,
@@ -1482,6 +1512,34 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 
 :root[data-theme='dark'] .extract-synced {
   color: #83d6ae;
+}
+
+:root[data-theme='dark'] .response-panel > .extract-synced {
+  background: #183b30;
+}
+
+:root[data-theme='dark'] .response-panel > .extract-error {
+  background: #3d2425;
+}
+
+:root[data-theme='dark'] .extract-save {
+  border-color: #7b6aeb;
+  color: #fff;
+  background: #6857df;
+}
+
+:root[data-theme='dark'] .extract-close {
+  border-color: #3a3e49;
+  color: #c4c7d0;
+}
+
+:root[data-theme='dark'] .extract-close:hover {
+  color: #e2e4eb;
+  background: rgba(167, 139, 250, .16);
+}
+
+:root[data-theme='dark'] .extract-save:hover:not(:disabled) {
+  background: #7869e8;
 }
 
 :root[data-theme='dark'] .extract-sync-chip {

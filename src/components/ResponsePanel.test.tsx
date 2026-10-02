@@ -51,6 +51,18 @@ describe('ResponsePanel value extraction', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Saved as {{token}}')
   })
 
+  it('saves the variable when Enter is pressed in the value path field', async () => {
+    const user = userEvent.setup()
+    render(<ResponsePanel sending={false} response={recorded('{"token":"abc123"}')} />)
+
+    await user.click(screen.getByRole('button', { name: 'Save a value as a variable' }))
+    await user.type(screen.getByLabelText('Variable name'), 'token')
+    await user.type(screen.getByLabelText('Value path'), 'token{Enter}')
+
+    await waitFor(() => expect(stored()).toEqual({ token: { scope: 'user', value: 'abc123' } }))
+    expect(screen.getByRole('status')).toHaveTextContent('Saved as {{token}}')
+  })
+
   it('shows why a path does not resolve and stores nothing', async () => {
     const user = userEvent.setup()
     render(<ResponsePanel sending={false} response={recorded('{"data":{"other":1}}')} />)
