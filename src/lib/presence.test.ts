@@ -8,14 +8,18 @@ describe('workspace presence', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('maps only collections, folders, and requests to live locations', () => {
-    expect(presenceLocation({ kind: 'collection', collectionId: 'c1' })).toEqual({
-      kind: 'collection',
-      collectionId: 'c1',
-    })
-    expect(presenceLocation({ kind: 'folder', collectionId: 'c1', itemId: 'f1' })).toEqual({
+    const c = '123e4567-e89b-42d3-a456-426614174000'
+    const f = '123e4567-e89b-42d3-a456-426614174001'
+    expect(presenceLocation({ kind: 'collection', collectionId: c })).toEqual({ kind: 'collection', collectionId: c })
+    expect(presenceLocation({ kind: 'folder', collectionId: c, itemId: f })).toEqual({
       kind: 'folder',
-      collectionId: 'c1',
-      itemId: 'f1',
+      collectionId: c,
+      itemId: f,
+    })
+    // An unsaved draft has no server id yet, so it falls back to its collection.
+    expect(presenceLocation({ kind: 'request', collectionId: c, itemId: `draft-${f}` })).toEqual({
+      kind: 'collection',
+      collectionId: c,
     })
     expect(presenceLocation({ kind: 'environment', environmentId: 'e1' })).toBeNull()
     expect(presenceResourceKey({ kind: 'request', collectionId: 'c1', itemId: 'r1' })).toBe('request:c1:r1')

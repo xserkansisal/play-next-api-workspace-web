@@ -18,9 +18,14 @@ export interface PresenceSnapshot {
   users: PresenceUser[]
 }
 
+const isSavedId = (id: string) => id !== '' && !id.startsWith('draft-')
+
+/** Never-saved drafts carry a client-side `draft-…` id, which the server rejects with 400. */
 export function presenceLocation(resource: OpenResource | null): PresenceLocation | null {
   if (!resource || resource.kind === 'environment') return null
+  if (!isSavedId(resource.collectionId)) return null
   if (resource.kind === 'collection') return { kind: 'collection', collectionId: resource.collectionId }
+  if (!isSavedId(resource.itemId)) return { kind: 'collection', collectionId: resource.collectionId }
   return { kind: resource.kind, collectionId: resource.collectionId, itemId: resource.itemId }
 }
 
