@@ -26,7 +26,10 @@ after a conflict check. Folders and requests can be dragged to a new parent with
 collections; the API moves the entire subtree atomically and publishes live change events. See
 [`docs/tree-drag-and-drop-backend.md`](docs/tree-drag-and-drop-backend.md) for the endpoint contract.
 Request drafts are saved independently, with explicit unsaved indicators and live-change review
-controls that preserve local edits rather than silently merging or replacing them. The request body
+controls that preserve local edits rather than silently merging or replacing them. **Discard changes**
+reverts an open item to its last saved version (a never-saved request or environment is closed instead),
+`Ctrl/⌘+S` saves, and closing a request tab with unsaved edits offers Save and close, Discard changes,
+or Cancel. The request body
 is edited with JSON highlighting while remaining text, so `{{variables}}` stay editable.
 
 Users sign in with an emailed code. The workspace shows who is viewing a resource and receives

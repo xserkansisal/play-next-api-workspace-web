@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent } from 'react'
 
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { describeApiError } from '@/lib/api'
 import { addScopedVariable, removeScopedVariable, updateScopedVariable } from '@/lib/scoped-variables'
 import {
@@ -58,6 +59,8 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   const [dragging, setDragging] = useState<DragState | null>(null)
   const [dropHint, setDropHint] = useState<DropHint | null>(null)
   const [announcement, setAnnouncement] = useState('')
+  const [pendingRemoval, setPendingRemoval] = useState<{ name: string; origin: VariableOrigin } | null>(null)
+  const cancelRemoval = useCallback(() => setPendingRemoval(null), [])
   const panelRef = useRef<HTMLDivElement>(null)
   const query = filter.trim().toLowerCase()
   const filteredByGroup = Object.fromEntries(SCOPE_GROUPS.map(({ origin }) => {
@@ -191,8 +194,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   }
 
   async function remove(name: string, origin: VariableOrigin) {
-    const where = origin === 'environment' ? 'the selected environment (shared with your team)' : origin === 'global' ? 'global variables (shared with everyone)' : 'your variables'
-    if (!window.confirm(`Delete "${name}" from ${where}?`)) return
+    setPendingRemoval(null)
     await run(() => origin === 'environment' ? onRemoveEnvironmentVariable(name) : removeScopedVariable(origin, name))
     if (editing?.name === name && editing.origin === origin) setEditing(null)
   }
@@ -509,7 +511,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                             <button type="button" className="runtime-vars-icon" aria-label={`Edit ${name}`} title="Edit" disabled={busy} onClick={() => startEdit(name, origin)}>
                               <svg {...icon}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                             </button>
-                            <button type="button" className="runtime-vars-icon runtime-vars-icon-danger" aria-label={`Remove ${name}`} title="Delete" disabled={busy} onClick={() => void remove(name, origin)}>
+                            <button type="button" className="runtime-vars-icon runtime-vars-icon-danger" aria-label={`Remove ${name}`} title="Delete" disabled={busy} onClick={() => setPendingRemoval({ name, origin })}>
                               <svg {...icon}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
                             </button>
                             <span className="runtime-vars-move">
@@ -556,6 +558,16 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
           </p>
         )}
       </div>
+      {pendingRemoval && (
+        <ConfirmDialog
+          title={`Delete “${pendingRemoval.name}”?`}
+          message={`It will be removed from ${pendingRemoval.origin === 'environment' ? 'the selected environment (shared with your team)' : pendingRemoval.origin === 'global' ? 'global variables (shared with everyone)' : 'your variables'}. This cannot be undone.`}
+          confirmLabel="Delete"
+          destructive
+          onConfirm={() => void remove(pendingRemoval.name, pendingRemoval.origin)}
+          onCancel={cancelRemoval}
+        />
+      )}
     </details>
   )
 }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -292,6 +292,149 @@ describe('workspace live update flow', () => {
       nameOverrides: { [removed.id]: 'Development (restored)' },
     }))
   })
+
+  async function confirmDiscard(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }))
+    const dialog = screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })
+    await user.click(within(dialog).getByRole('button', { name: 'Discard changes' }))
+  }
+
+  it('discards unsaved edits back to the last saved version', async () => {
+    const confirm = vi.spyOn(window, 'confirm')
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull()
+    const url = screen.getByRole('textbox', { name: 'Request URL' })
+    await user.clear(url)
+    await user.type(url, '/local-draft')
+    expect(screen.getByText('● Unsaved changes')).toBeInTheDocument()
+
+    await confirmDiscard(user)
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/orders')
+    expect(screen.getByText('● Saved')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull()
+  })
+
+  it('keeps the edits when the discard is cancelled', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    const url = screen.getByRole('textbox', { name: 'Request URL' })
+    await user.type(url, '/more')
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(url).toHaveValue('/orders/more')
+    await user.click(screen.getByRole('button', { name: 'Discard changes' }))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(url).toHaveValue('/orders/more')
+  })
+
+  it('closes a never-saved request when its changes are discarded', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('button', { name: 'List orders' })
+    await user.click(screen.getAllByRole('button', { name: 'New request' })[0]!)
+    expect(await screen.findByRole('textbox', { name: 'Request name' })).toHaveValue('New request')
+
+    await confirmDiscard(user)
+
+    expect(screen.queryByRole('textbox', { name: 'Request name' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close New request' })).toBeNull()
+  })
+
+  it('moves a request to Trash only after it is confirmed in the dialog', async () => {
+    const confirm = vi.spyOn(window, 'confirm')
+    const remove = vi.spyOn(workspaceApi, 'deleteItem').mockResolvedValue(undefined as never)
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+
+    await user.click(screen.getByRole('button', { name: 'Move to Trash' }))
+    await user.click(within(screen.getByRole('alertdialog', { name: 'Move “List orders” to Trash?' })).getByRole('button', { name: 'Cancel' }))
+    expect(remove).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Move to Trash' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Move to Trash' }))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith(collection.id, request.id))
+    expect(confirm).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('saves with Ctrl+S', async () => {
+    const save = vi.spyOn(workspaceApi, 'saveRequest').mockImplementation(async (_collectionId, resource) => resource)
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/x')
+    await user.keyboard('{Control>}s{/Control}')
+    await waitFor(() => expect(save).toHaveBeenCalledWith(collection.id, expect.objectContaining({ url: '/orders/x' })))
+    expect(await screen.findByText('● Saved')).toBeInTheDocument()
+  })
+})
+
+describe('closing a request tab with unsaved changes', () => {
+  beforeEach(() => {
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.spyOn(workspaceApi, 'collections').mockResolvedValue([collection])
+    vi.spyOn(workspaceApi, 'collection').mockResolvedValue(collection)
+    vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  async function openEditedTab() {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/x')
+    await user.click(screen.getByRole('button', { name: 'Close List orders' }))
+    expect(screen.getByRole('dialog', { name: 'Save changes to “List orders”?' })).toBeInTheDocument()
+    return user
+  }
+
+  it('keeps the tab open on Cancel', async () => {
+    const user = await openEditedTab()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/orders/x')
+  })
+
+  it('closes without saving on Discard changes', async () => {
+    const save = vi.spyOn(workspaceApi, 'saveRequest')
+    const user = await openEditedTab()
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Discard changes' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close List orders' })).toBeNull()
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  it('saves and then closes on Save and close', async () => {
+    const save = vi.spyOn(workspaceApi, 'saveRequest').mockImplementation(async (_collectionId, resource) => resource)
+    const user = await openEditedTab()
+    await user.click(screen.getByRole('button', { name: 'Save and close' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Close List orders' })).toBeNull())
+    expect(save).toHaveBeenCalledWith(collection.id, expect.objectContaining({ url: '/orders/x' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('keeps the tab and shows the error when saving fails', async () => {
+    vi.spyOn(workspaceApi, 'saveRequest').mockRejectedValue(new Error('Server unavailable'))
+    const user = await openEditedTab()
+    await user.click(screen.getByRole('button', { name: 'Save and close' }))
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent('Server unavailable')
+    expect(screen.getByRole('button', { name: 'Close List orders' })).toBeInTheDocument()
+  })
 })
 
 describe('duplicating from the workspace', () => {
@@ -543,11 +686,12 @@ describe('which scope a {{name}} resolves from', () => {
     const latest = { ...environment, variables: [...environment.variables, { key: 'other', value: 'x', enabled: true }] }
     vi.spyOn(workspaceApi, 'environment').mockResolvedValue(latest as never)
     const save = vi.spyOn(workspaceApi, 'saveEnvironment').mockImplementation(async (resource) => resource)
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const user = userEvent.setup()
     render(<App />)
     await user.click(screen.getByRole('button', { name: 'Open Environments variables' }))
     await user.click(await screen.findByRole('button', { name: 'Remove target' }))
+    expect(save).not.toHaveBeenCalled()
+    await user.click(within(screen.getByRole('alertdialog', { name: 'Delete “target”?' })).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(save).toHaveBeenCalled())
     expect(save.mock.calls[0]![0].variables).toEqual([{ key: 'other', value: 'x', enabled: true }])

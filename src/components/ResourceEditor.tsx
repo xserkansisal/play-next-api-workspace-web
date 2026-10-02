@@ -27,6 +27,8 @@ interface ResourceEditorProps {
   error: string | null
   onChange: (draft: ResourceDraft) => void
   onSave: () => void
+  /** Reverts the draft to its last saved copy; offered only while there are unsaved changes. */
+  onDiscard?: () => void
   onShowVersionHistory?: () => void
   onDelete: () => void
   onSend: () => void
@@ -77,7 +79,7 @@ function suggestedContentType(type: RequestBody['type']): string {
   }
 }
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onShowVersionHistory, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const isRequest = draft.kind === 'request'
@@ -89,6 +91,18 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
   useEffect(() => {
     setTab('Params')
   }, [draft.kind, draft.resource.id])
+
+  const canSave = dirty && !saving && !bodyTooLong
+  useEffect(() => {
+    function saveOnShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 's') return
+      // Always suppress the browser's "Save page" dialog while an editor is open.
+      event.preventDefault()
+      if (canSave) onSave()
+    }
+    document.addEventListener('keydown', saveOnShortcut)
+    return () => document.removeEventListener('keydown', saveOnShortcut)
+  }, [canSave, onSave])
 
   function updateName(value: string) {
     onChange({ ...draft, resource: { ...draft.resource, name: value } } as ResourceDraft)
@@ -169,7 +183,8 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               <SaveState dirty={dirty} />
               {onShowVersionHistory && <Button variant="outline" size="sm" onClick={onShowVersionHistory}>Version history</Button>}
               {!(draft.kind === 'environment' && draft.isNew) && <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>}
-              <Button size="sm" onClick={onSave} disabled={!dirty || saving || bodyTooLong}>{saving ? 'Saving…' : 'Save'}</Button>
+              {dirty && onDiscard && <Button variant="outline" size="sm" onClick={onDiscard} disabled={saving}>Discard changes</Button>}
+              <Button size="sm" onClick={onSave} disabled={!canSave} title="Save (Ctrl/⌘+S)">{saving ? 'Saving…' : 'Save'}</Button>
             </div>
           </header>
           {draft.kind === 'request' ? (

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { BulkImportDialog } from '@/components/BulkImportDialog'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { CompareDiff } from '@/components/CompareDiff'
 import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
@@ -101,6 +102,21 @@ function matchesKnownServerState(known: ResourceDraft, latest: ResourceDraft): b
   return !isDraftDirty(known.resource, latest.resource)
 }
 
+/** A never-saved draft always counts as unsaved; otherwise it is unsaved when it differs from the last saved copy. */
+function hasUnsavedChanges(draft: ResourceDraft, baseline: ResourceDraft | undefined): boolean {
+  if ((draft.kind === 'request' || draft.kind === 'environment') && draft.isNew) return true
+  return !baseline || isDraftDirty(draft, baseline)
+}
+
+type SaveOutcome = { key: string } | { error: string }
+
+interface ClosePrompt {
+  tab: OpenResource
+  title: string
+  saving: boolean
+  error: string | null
+}
+
 function jsonCopy<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
@@ -186,6 +202,9 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [remoteUpdate, setRemoteUpdate] = useState<RemoteUpdate | null>(null)
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
+  const [closePrompt, setClosePrompt] = useState<ClosePrompt | null>(null)
+  const [discardPromptOpen, setDiscardPromptOpen] = useState(false)
+  const [trashPrompt, setTrashPrompt] = useState<{ resource: OpenResource; name: string } | null>(null)
   const [sending, setSending] = useState<Record<string, boolean>>({})
   const [responses, setResponses] = useState<Record<string, RecordedResponse>>({})
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({})
@@ -357,9 +376,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const currentKey = selected ? resourceKey(selected) : ''
   const activeDraft = currentKey ? drafts[currentKey] : undefined
   const activeBaseline = currentKey ? baselines[currentKey] : undefined
-  const dirty = !!activeDraft && ((activeDraft.kind === 'request' || activeDraft.kind === 'environment') && activeDraft.isNew
-    ? true
-    : !activeBaseline || isDraftDirty(activeDraft, activeBaseline))
+  const dirty = !!activeDraft && hasUnsavedChanges(activeDraft, activeBaseline)
   const activeSending = currentKey ? sending[currentKey] ?? false : false
   const activeResponse = currentKey ? responses[currentKey] ?? null : null
   const activeSendError = currentKey ? sendErrors[currentKey] ?? null : null
@@ -484,6 +501,64 @@ function App({ user, onSignOut }: AppProps = {}) {
   function updateDraft(next: ResourceDraft) {
     const key = draftKey(next)
     setDrafts((current) => ({ ...current, [key]: next }))
+    setResourceError(null)
+  }
+
+  /** Drops an open request tab together with its draft, without asking. */
+  function removeTab(tab: OpenResource, alsoKey?: string) {
+    const keys = new Set([resourceKey(tab), ...(alsoKey ? [alsoKey] : [])])
+    const remaining = requestTabs.filter((entry) => !keys.has(resourceKey(entry)))
+    setRequestTabs((tabs) => tabs.filter((entry) => !keys.has(resourceKey(entry))))
+    setDrafts((current) => omitKeys(current, [...keys]))
+    setBaselines((current) => omitKeys(current, [...keys]))
+    setSelected((current) => current && keys.has(resourceKey(current)) ? remaining[remaining.length - 1] ?? null : current)
+  }
+
+  function requestCloseTab(tab: OpenResource) {
+    const key = resourceKey(tab)
+    const draft = drafts[key]
+    if (draft && hasUnsavedChanges(draft, baselines[key])) {
+      const title = draft.kind === 'request' ? draft.resource.name || 'New request' : 'Request'
+      setClosePrompt({ tab, title, saving: false, error: null })
+      return
+    }
+    removeTab(tab)
+  }
+
+  async function saveAndCloseTab() {
+    if (!closePrompt) return
+    const draft = drafts[resourceKey(closePrompt.tab)]
+    setClosePrompt((current) => current && { ...current, saving: true, error: null })
+    const outcome = await saveDraft(draft)
+    if (outcome && 'error' in outcome) {
+      setClosePrompt((current) => current && { ...current, saving: false, error: outcome.error })
+      return
+    }
+    removeTab(closePrompt.tab, outcome?.key)
+    setClosePrompt(null)
+  }
+
+  const closeDiscardPrompt = useCallback(() => setDiscardPromptOpen(false), [])
+  const closeTrashPrompt = useCallback(() => setTrashPrompt(null), [])
+
+  /**
+   * Throws away the active draft's local edits and returns it to the last saved copy. A draft that
+   * was never saved has nothing to return to, so it is closed instead.
+   */
+  function discardDraft() {
+    setDiscardPromptOpen(false)
+    if (!activeDraft || !selected || !dirty) return
+    const key = draftKey(activeDraft)
+    const isNew = (activeDraft.kind === 'request' || activeDraft.kind === 'environment') && activeDraft.isNew
+    if (isNew && activeDraft.kind === 'request') {
+      removeTab(selected)
+    } else if (isNew) {
+      setDrafts((current) => omitKeys(current, [key]))
+      setBaselines((current) => omitKeys(current, [key]))
+      setSelected(null)
+    } else if (activeBaseline) {
+      setDrafts((current) => ({ ...current, [key]: jsonCopy(activeBaseline) }))
+    }
     setResourceError(null)
   }
 
@@ -612,60 +687,64 @@ function App({ user, onSignOut }: AppProps = {}) {
     setResourceError(null)
   }
 
-  async function saveDraft() {
-    if (!activeDraft || !dirty) return
+  /** Saves any open draft, not only the active one, so a tab can be saved while it is being closed. */
+  async function saveDraft(target: ResourceDraft | undefined = activeDraft): Promise<SaveOutcome | null> {
+    if (!target) return null
+    const targetKey = draftKey(target)
+    if (!hasUnsavedChanges(target, baselines[targetKey])) return null
+    const isActive = targetKey === currentKey
     setSaving(true)
-    setResourceError(null)
+    if (isActive) setResourceError(null)
     let settle: () => void = () => {}
     const done = new Promise<void>((resolve) => { settle = resolve })
     pendingSaveRef.current = Promise.all([pendingSaveRef.current, done]).then(() => undefined)
     try {
       let saved: ResourceDraft
-      if (activeDraft.kind === 'collection') {
-        const resource = await workspaceApi.saveCollection(activeDraft.resource)
-        const next = { ...activeDraft, resource: { ...activeDraft.resource, ...resource, items: activeDraft.resource.items } }
+      if (target.kind === 'collection') {
+        const resource = await workspaceApi.saveCollection(target.resource)
+        const next = { ...target, resource: { ...target.resource, ...resource, items: target.resource.items } }
         setLocalCollection(next.resource)
         saved = next
-      } else if (activeDraft.kind === 'folder') {
-        const resource = await workspaceApi.saveFolder(activeDraft.collectionId, activeDraft.resource)
+      } else if (target.kind === 'folder') {
+        const resource = await workspaceApi.saveFolder(target.collectionId, target.resource)
         if (resource.type !== 'folder') throw new Error('The API returned a non-folder resource while saving a folder.')
-        const collection = collections.find(({ id }) => id === activeDraft.collectionId)
+        const collection = collections.find(({ id }) => id === target.collectionId)
         if (collection) setLocalCollection({ ...collection, items: replaceItemInTree(collection.items, resource) })
-        saved = { ...activeDraft, resource }
-      } else if (activeDraft.kind === 'request') {
+        saved = { ...target, resource }
+      } else if (target.kind === 'request') {
         let resource: RequestResource
-        if (activeDraft.isNew) {
+        if (target.isNew) {
           const input: CreateItemInput = {
             type: 'request',
-            name: activeDraft.resource.name,
-            description: activeDraft.resource.description,
-            ...(activeDraft.parentId ? { parentId: activeDraft.parentId } : {}),
-            method: activeDraft.resource.method,
-            url: activeDraft.resource.url,
-            queryParams: activeDraft.resource.queryParams,
-            headers: activeDraft.resource.headers,
-            body: activeDraft.resource.body,
-            auth: activeDraft.resource.auth,
+            name: target.resource.name,
+            description: target.resource.description,
+            ...(target.parentId ? { parentId: target.parentId } : {}),
+            method: target.resource.method,
+            url: target.resource.url,
+            queryParams: target.resource.queryParams,
+            headers: target.resource.headers,
+            body: target.resource.body,
+            auth: target.resource.auth,
           }
-          const created = await workspaceApi.createItem(activeDraft.collectionId, input)
+          const created = await workspaceApi.createItem(target.collectionId, input)
           if (created.type !== 'request') throw new Error('The API returned a non-request resource while creating a request.')
           resource = created
         } else {
-          resource = await workspaceApi.saveRequest(activeDraft.collectionId, activeDraft.resource)
+          resource = await workspaceApi.saveRequest(target.collectionId, target.resource)
         }
-        const collection = collections.find(({ id }) => id === activeDraft.collectionId)
+        const collection = collections.find(({ id }) => id === target.collectionId)
         if (collection) {
-          const treeItems = activeDraft.isNew
-            ? activeDraft.parentId
-              ? addToFolder(collection.items, activeDraft.parentId, resource)
+          const treeItems = target.isNew
+            ? target.parentId
+              ? addToFolder(collection.items, target.parentId, resource)
               : [...collection.items, resource]
             : replaceItemInTree(collection.items, resource)
           setLocalCollection({ ...collection, items: treeItems })
         }
-        saved = { kind: 'request', collectionId: activeDraft.collectionId, resource }
-        if (activeDraft.isNew) {
-          const oldKey = draftKey(activeDraft)
-          const nextResource: OpenResource = { kind: 'request', collectionId: activeDraft.collectionId, itemId: resource.id }
+        saved = { kind: 'request', collectionId: target.collectionId, resource }
+        if (target.isNew) {
+          const oldKey = draftKey(target)
+          const nextResource: OpenResource = { kind: 'request', collectionId: target.collectionId, itemId: resource.id }
           const nextKey = resourceKey(nextResource)
           setDrafts((current) => {
             const next = { ...current, [nextKey]: saved }
@@ -678,21 +757,21 @@ function App({ user, onSignOut }: AppProps = {}) {
             return next
           })
           setRequestTabs((tabs) => tabs.map((tab) => resourceKey(tab) === oldKey ? nextResource : tab))
-          setSelected(nextResource)
+          setSelected((current) => current && resourceKey(current) === oldKey ? nextResource : current)
         }
       } else {
-        const resource = activeDraft.isNew
+        const resource = target.isNew
           ? await workspaceApi.createEnvironment({
-              name: activeDraft.resource.name,
-              variables: activeDraft.resource.variables,
+              name: target.resource.name,
+              variables: target.resource.variables,
             })
-          : await workspaceApi.saveEnvironment(activeDraft.resource)
-        setEnvironments((current) => sortByName(activeDraft.isNew
+          : await workspaceApi.saveEnvironment(target.resource)
+        setEnvironments((current) => sortByName(target.isNew
           ? [...current, resource]
           : current.map((entry) => entry.id === resource.id ? resource : entry)))
         saved = { kind: 'environment', resource }
-        if (activeDraft.isNew) {
-          const oldKey = draftKey(activeDraft)
+        if (target.isNew) {
+          const oldKey = draftKey(target)
           const nextResource: OpenResource = { kind: 'environment', environmentId: resource.id }
           const nextKey = resourceKey(nextResource)
           setDrafts((current) => {
@@ -705,15 +784,18 @@ function App({ user, onSignOut }: AppProps = {}) {
             delete next[oldKey]
             return next
           })
-          setSelected(nextResource)
+          setSelected((current) => current && resourceKey(current) === oldKey ? nextResource : current)
         }
       }
       const savedKey = draftKey(saved)
       lastSavedRef.current[savedKey] = jsonCopy(saved)
       setDrafts((current) => ({ ...current, [savedKey]: saved }))
       setBaselines((current) => ({ ...current, [savedKey]: jsonCopy(saved) }))
+      return { key: savedKey }
     } catch (error) {
-      setResourceError(describeApiError(error))
+      const message = describeApiError(error)
+      if (isActive) setResourceError(message)
+      return { error: message }
     } finally {
       setSaving(false)
       settle()
@@ -1022,13 +1104,18 @@ function App({ user, onSignOut }: AppProps = {}) {
     setBaselines((current) => ({ ...current, [key]: jsonCopy(draft) }))
   }
 
-  async function deleteResource(resource: OpenResource) {
+  /** Asks first; the item is only moved once the user confirms in the dialog. */
+  function deleteResource(resource: OpenResource) {
     const name = resource.kind === 'environment'
       ? environments.find(({ id }) => id === resource.environmentId)?.name
       : resource.kind === 'collection'
         ? collections.find(({ id }) => id === resource.collectionId)?.name
         : collections.map((collection) => findItem(collection, resource.itemId)?.name).find(Boolean)
-    if (!window.confirm(`Move “${name ?? 'this item'}” to Trash?`)) return
+    setTrashPrompt({ resource, name: name ?? 'this item' })
+  }
+
+  async function moveToTrash(resource: OpenResource) {
+    setTrashPrompt(null)
     const removedIds = resource.kind === 'collection'
       ? collections.find(({ id }) => id === resource.collectionId)?.items.flatMap(collectItemIds) ?? []
       : resource.kind === 'environment'
@@ -1220,7 +1307,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           onCreateCollection={() => void createCollection()}
           onCreateFolder={() => void createFolder()}
           onCreateRequest={createRequest}
-          onDelete={(resource) => void deleteResource(resource)}
+          onDelete={deleteResource}
           onClone={(resource) => void cloneResource(resource)}
           onMove={(source, target) => void moveItem(source, target)}
           cloningId={cloningId}
@@ -1276,8 +1363,8 @@ function App({ user, onSignOut }: AppProps = {}) {
                     const title = d?.kind === 'request' ? d.resource.name || 'New request' : 'Request'
                     return (
                       <div className={`request-tab ${selected && resourceKey(selected) === resourceKey(tab) ? 'active' : ''}`} key={resourceKey(tab)}>
-                        <button className="tab-activate" onClick={() => openResource(tab)}><span className="method-mini">{d?.kind === 'request' ? d.resource.method : 'GET'}</span>{title}{d && baselines[resourceKey(tab)] && isDraftDirty(d, baselines[resourceKey(tab)]) && <span className="tab-dirty">●</span>}</button>
-                        <button className="tab-close" aria-label={`Close ${title}`} onClick={() => closeTab(tab, requestTabs, drafts, baselines, setRequestTabs, setSelected, setDrafts, setBaselines)}>×</button>
+                        <button className="tab-activate" onClick={() => openResource(tab)}><span className="method-mini">{d?.kind === 'request' ? d.resource.method : 'GET'}</span>{title}{d && hasUnsavedChanges(d, baselines[resourceKey(tab)]) && <span className="tab-dirty">●</span>}</button>
+                        <button className="tab-close" aria-label={`Close ${title}`} onClick={() => requestCloseTab(tab)}>×</button>
                       </div>
                     )
                   })}
@@ -1317,10 +1404,11 @@ function App({ user, onSignOut }: AppProps = {}) {
                   error={resourceError}
                   onChange={updateDraft}
                   onSave={() => void saveDraft()}
+                  onDiscard={() => setDiscardPromptOpen(true)}
                   onShowVersionHistory={activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew)
                     ? () => setVersionHistoryOpen(true)
                     : undefined}
-                  onDelete={() => void deleteResource(selected!)}
+                  onDelete={() => deleteResource(selected!)}
                   onSend={() => void sendActiveRequest()}
                   sending={activeSending}
                   sendError={activeSendError}
@@ -1390,6 +1478,46 @@ function App({ user, onSignOut }: AppProps = {}) {
         />
       )}
 
+      {discardPromptOpen && activeDraft && dirty && (
+        <ConfirmDialog
+          title="Discard unsaved changes?"
+          message={(activeDraft.kind === 'request' || activeDraft.kind === 'environment') && activeDraft.isNew
+            ? 'This item has never been saved, so it will be closed and your edits will be lost. This cannot be undone.'
+            : 'Your edits will be lost and this item will return to its last saved version. This cannot be undone.'}
+          confirmLabel="Discard changes"
+          destructive
+          onConfirm={discardDraft}
+          onCancel={closeDiscardPrompt}
+        />
+      )}
+
+      {trashPrompt && (
+        <ConfirmDialog
+          title={`Move “${trashPrompt.name}” to Trash?`}
+          message={trashPrompt.resource.kind === 'collection' || trashPrompt.resource.kind === 'folder'
+            ? 'Everything inside it moves to Trash too. You can restore it from Trash later.'
+            : 'You can restore it from Trash later.'}
+          confirmLabel="Move to Trash"
+          destructive
+          onConfirm={() => void moveToTrash(trashPrompt.resource)}
+          onCancel={closeTrashPrompt}
+        />
+      )}
+
+      {closePrompt && (
+        <div className="modal-backdrop">
+          <section className="restore-dialog" role="dialog" aria-modal="true" aria-labelledby="close-tab-title">
+            <header className="modal-heading"><div><h2 id="close-tab-title">Save changes to “{closePrompt.title}”?</h2><p>This request has unsaved changes. They will be lost if you close it without saving.</p></div><button aria-label="Close" disabled={closePrompt.saving} onClick={() => setClosePrompt(null)}>×</button></header>
+            {closePrompt.error && <p className="inline-error" role="alert">{closePrompt.error}</p>}
+            <footer className="modal-actions">
+              <Button variant="outline" disabled={closePrompt.saving} onClick={() => setClosePrompt(null)}>Cancel</Button>
+              <Button variant="outline" disabled={closePrompt.saving} onClick={() => { removeTab(closePrompt.tab); setClosePrompt(null) }}>Discard changes</Button>
+              <Button disabled={closePrompt.saving} onClick={() => void saveAndCloseTab()}>{closePrompt.saving ? 'Saving…' : 'Save and close'}</Button>
+            </footer>
+          </section>
+        </div>
+      )}
+
       {restoreState && (
         <div className="modal-backdrop">
           <section className="restore-dialog" role="dialog" aria-modal="true" aria-labelledby="restore-title">
@@ -1417,37 +1545,6 @@ function App({ user, onSignOut }: AppProps = {}) {
       )}
     </main>
   )
-}
-
-function closeTab(
-  tab: OpenResource,
-  tabs: OpenResource[],
-  drafts: Record<string, ResourceDraft>,
-  baselines: Record<string, ResourceDraft>,
-  setTabs: Dispatch<SetStateAction<OpenResource[]>>,
-  setSelected: Dispatch<SetStateAction<OpenResource | null>>,
-  setDrafts: Dispatch<SetStateAction<Record<string, ResourceDraft>>>,
-  setBaselines: Dispatch<SetStateAction<Record<string, ResourceDraft>>>,
-) {
-  const key = resourceKey(tab)
-  const draft = drafts[key]
-  const baseline = baselines[key]
-  if (draft && (draft.kind === 'request' && draft.isNew || !baseline || isDraftDirty(draft, baseline))) {
-    if (!window.confirm('This request has unsaved changes. Close it and discard the local draft?')) return
-  }
-  const remaining = tabs.filter((entry) => resourceKey(entry) !== key)
-  setTabs(remaining)
-  setDrafts((current) => {
-    const next = { ...current }
-    delete next[key]
-    return next
-  })
-  setBaselines((current) => {
-    const next = { ...current }
-    delete next[key]
-    return next
-  })
-  setSelected((current) => current && resourceKey(current) === key ? remaining[remaining.length - 1] ?? null : current)
 }
 
 function TrashView({ entries, onRestore }: { entries: TrashEntry[]; onRestore: (entry: TrashEntry) => void }) {
