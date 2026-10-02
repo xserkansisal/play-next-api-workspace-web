@@ -507,6 +507,11 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .runtime-vars-move-menu button { padding: 5px 8px; border-radius: 4px; font-size: 12px; text-align: left; cursor: pointer; }
 .runtime-vars-move-menu button:hover:not(:disabled) { background: rgba(109, 92, 232, 0.08); }
 .runtime-vars-move-menu button:disabled { color: #c4c8cf; cursor: default; }
+.tab-context-menu { position: fixed; z-index: 40; display: flex; flex-direction: column; min-width: 210px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--background, #fff); box-shadow: 0 8px 24px rgba(16, 24, 40, 0.14); }
+.tab-context-menu button { padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.tab-context-menu button:hover:not(:disabled), .tab-context-menu button:focus-visible { background: rgba(109, 92, 232, 0.08); outline: none; }
+.tab-context-menu button:disabled { color: #c4c8cf; cursor: default; }
+.tab-context-menu hr { margin: 4px 0; border: 0; border-top: 1px solid var(--border); }
 .runtime-vars-add { margin-left: auto; }
 .runtime-vars-add:disabled { color: #d1d5db; cursor: not-allowed; }
 .runtime-vars-group-empty { margin: 2px 0 4px 18px; color: #747b88; font-size: 12px; }
@@ -844,7 +849,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .bulk-import-result-list,
 :root[data-theme='dark'] .sign-in-card,
 :root[data-theme='dark'] .runtime-vars-panel,
-:root[data-theme='dark'] .runtime-vars-move-menu {
+:root[data-theme='dark'] .runtime-vars-move-menu,
+:root[data-theme='dark'] .tab-context-menu {
   background: #191b22;
   color: #e2e4eb;
 }
@@ -914,7 +920,9 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .request-panel,
 :root[data-theme='dark'] .response-panel,
 :root[data-theme='dark'] .runtime-vars-panel,
-:root[data-theme='dark'] .runtime-vars-move-menu {
+:root[data-theme='dark'] .runtime-vars-move-menu,
+:root[data-theme='dark'] .tab-context-menu,
+:root[data-theme='dark'] .tab-context-menu hr {
   border-color: #343741;
 }
 
@@ -1151,6 +1159,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .runtime-vars-handle:hover,
 :root[data-theme='dark'] .runtime-vars-group > summary:hover,
 :root[data-theme='dark'] .runtime-vars-move-menu button:hover:not(:disabled),
+:root[data-theme='dark'] .tab-context-menu button:hover:not(:disabled),
+:root[data-theme='dark'] .tab-context-menu button:focus-visible,
 :root[data-theme='dark'] .json-row:hover {
   background-color: #292c36;
 }

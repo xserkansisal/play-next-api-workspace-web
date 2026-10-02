@@ -203,7 +203,9 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
   const [closePrompt, setClosePrompt] = useState<ClosePrompt | null>(null)
-  const [discardPromptOpen, setDiscardPromptOpen] = useState(false)
+  /** The drafts awaiting confirmation before their local edits are thrown away. */
+  const [discardPrompt, setDiscardPrompt] = useState<{ keys: string[] } | null>(null)
+  const [tabMenu, setTabMenu] = useState<{ tab: OpenResource; x: number; y: number } | null>(null)
   const [trashPrompt, setTrashPrompt] = useState<{ resource: OpenResource; name: string } | null>(null)
   const [sending, setSending] = useState<Record<string, boolean>>({})
   const [responses, setResponses] = useState<Record<string, RecordedResponse>>({})
@@ -504,14 +506,18 @@ function App({ user, onSignOut }: AppProps = {}) {
     setResourceError(null)
   }
 
-  /** Drops an open request tab together with its draft, without asking. */
-  function removeTab(tab: OpenResource, alsoKey?: string) {
-    const keys = new Set([resourceKey(tab), ...(alsoKey ? [alsoKey] : [])])
+  /** Drops open request tabs together with their drafts, without asking. */
+  function removeTabs(tabKeys: string[]) {
+    const keys = new Set(tabKeys)
     const remaining = requestTabs.filter((entry) => !keys.has(resourceKey(entry)))
     setRequestTabs((tabs) => tabs.filter((entry) => !keys.has(resourceKey(entry))))
     setDrafts((current) => omitKeys(current, [...keys]))
     setBaselines((current) => omitKeys(current, [...keys]))
     setSelected((current) => current && keys.has(resourceKey(current)) ? remaining[remaining.length - 1] ?? null : current)
+  }
+
+  function removeTab(tab: OpenResource, alsoKey?: string) {
+    removeTabs([resourceKey(tab), ...(alsoKey ? [alsoKey] : [])])
   }
 
   function requestCloseTab(tab: OpenResource) {
@@ -538,29 +544,77 @@ function App({ user, onSignOut }: AppProps = {}) {
     setClosePrompt(null)
   }
 
-  const closeDiscardPrompt = useCallback(() => setDiscardPromptOpen(false), [])
+  const closeDiscardPrompt = useCallback(() => setDiscardPrompt(null), [])
   const closeTrashPrompt = useCallback(() => setTrashPrompt(null), [])
 
-  /**
-   * Throws away the active draft's local edits and returns it to the last saved copy. A draft that
-   * was never saved has nothing to return to, so it is closed instead.
-   */
-  function discardDraft() {
-    setDiscardPromptOpen(false)
-    if (!activeDraft || !selected || !dirty) return
-    const key = draftKey(activeDraft)
-    const isNew = (activeDraft.kind === 'request' || activeDraft.kind === 'environment') && activeDraft.isNew
-    if (isNew && activeDraft.kind === 'request') {
-      removeTab(selected)
-    } else if (isNew) {
-      setDrafts((current) => omitKeys(current, [key]))
-      setBaselines((current) => omitKeys(current, [key]))
-      setSelected(null)
-    } else if (activeBaseline) {
-      setDrafts((current) => ({ ...current, [key]: jsonCopy(activeBaseline) }))
-    }
-    setResourceError(null)
+  function isUnsaved(key: string): boolean {
+    const draft = drafts[key]
+    return !!draft && hasUnsavedChanges(draft, baselines[key])
   }
+
+  const unsavedTabKeys = requestTabs.map(resourceKey).filter(isUnsaved)
+  const hasAnyUnsaved = Object.keys(drafts).some(isUnsaved)
+
+  function promptDiscard(keys: string[]) {
+    const unsaved = keys.filter(isUnsaved)
+    if (unsaved.length > 0) setDiscardPrompt({ keys: unsaved })
+  }
+
+  /**
+   * Throws away the local edits of the given drafts and returns each to its last saved copy. A
+   * draft that was never saved has nothing to return to, so it is closed instead.
+   */
+  function discardDrafts(keys: string[]) {
+    setDiscardPrompt(null)
+    const reverted: Record<string, ResourceDraft> = {}
+    const closedTabs: string[] = []
+    const dropped: string[] = []
+    for (const key of keys) {
+      const draft = drafts[key]
+      if (!draft || !hasUnsavedChanges(draft, baselines[key])) continue
+      const isNew = (draft.kind === 'request' || draft.kind === 'environment') && draft.isNew
+      if (isNew && draft.kind === 'request') closedTabs.push(key)
+      else if (isNew) dropped.push(key)
+      else if (baselines[key]) reverted[key] = jsonCopy(baselines[key])
+    }
+    if (closedTabs.length > 0) removeTabs(closedTabs)
+    if (dropped.length > 0) {
+      setDrafts((current) => omitKeys(current, dropped))
+      setBaselines((current) => omitKeys(current, dropped))
+      setSelected((current) => current && dropped.includes(resourceKey(current)) ? null : current)
+    }
+    if (Object.keys(reverted).length > 0) setDrafts((current) => ({ ...current, ...reverted }))
+    if (keys.includes(currentKey)) setResourceError(null)
+  }
+
+  // The browser's own "Leave site?" prompt is the only thing that can stop a tab close or reload.
+  useEffect(() => {
+    if (!hasAnyUnsaved) return
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeUnload)
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
+  }, [hasAnyUnsaved])
+
+  const tabMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!tabMenu) return
+    tabMenuRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+    const close = () => setTabMenu(null)
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', closeOnEscape)
+    window.addEventListener('blur', close)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('blur', close)
+      window.removeEventListener('resize', close)
+    }
+  }, [tabMenu])
 
   async function sendActiveRequest(overrideRunnerId?: RunnerId) {
     if (!activeDraft || activeDraft.kind !== 'request') return
@@ -1362,7 +1416,17 @@ function App({ user, onSignOut }: AppProps = {}) {
                     const d = drafts[resourceKey(tab)]
                     const title = d?.kind === 'request' ? d.resource.name || 'New request' : 'Request'
                     return (
-                      <div className={`request-tab ${selected && resourceKey(selected) === resourceKey(tab) ? 'active' : ''}`} key={resourceKey(tab)}>
+                      <div
+                        className={`request-tab ${selected && resourceKey(selected) === resourceKey(tab) ? 'active' : ''}`}
+                        key={resourceKey(tab)}
+                        onContextMenu={(event) => {
+                          event.preventDefault()
+                          const rect = event.currentTarget.getBoundingClientRect()
+                          // A keyboard-opened menu (Shift+F10 / Menu key) reports 0,0; anchor it under the tab instead.
+                          const fromKeyboard = event.clientX === 0 && event.clientY === 0
+                          setTabMenu({ tab, x: fromKeyboard ? rect.left : event.clientX, y: fromKeyboard ? rect.bottom : event.clientY })
+                        }}
+                      >
                         <button className="tab-activate" onClick={() => openResource(tab)}><span className="method-mini">{d?.kind === 'request' ? d.resource.method : 'GET'}</span>{title}{d && hasUnsavedChanges(d, baselines[resourceKey(tab)]) && <span className="tab-dirty">●</span>}</button>
                         <button className="tab-close" aria-label={`Close ${title}`} onClick={() => requestCloseTab(tab)}>×</button>
                       </div>
@@ -1404,7 +1468,7 @@ function App({ user, onSignOut }: AppProps = {}) {
                   error={resourceError}
                   onChange={updateDraft}
                   onSave={() => void saveDraft()}
-                  onDiscard={() => setDiscardPromptOpen(true)}
+                  onDiscard={() => promptDiscard([currentKey])}
                   onShowVersionHistory={activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew)
                     ? () => setVersionHistoryOpen(true)
                     : undefined}
@@ -1478,18 +1542,52 @@ function App({ user, onSignOut }: AppProps = {}) {
         />
       )}
 
-      {discardPromptOpen && activeDraft && dirty && (
-        <ConfirmDialog
-          title="Discard unsaved changes?"
-          message={(activeDraft.kind === 'request' || activeDraft.kind === 'environment') && activeDraft.isNew
-            ? 'This item has never been saved, so it will be closed and your edits will be lost. This cannot be undone.'
-            : 'Your edits will be lost and this item will return to its last saved version. This cannot be undone.'}
-          confirmLabel="Discard changes"
-          destructive
-          onConfirm={discardDraft}
-          onCancel={closeDiscardPrompt}
-        />
-      )}
+      {discardPrompt && (() => {
+        const keys = discardPrompt.keys
+        const single = keys.length === 1 ? drafts[keys[0]!] : undefined
+        const singleIsNew = !!single && (single.kind === 'request' || single.kind === 'environment') && single.isNew
+        return (
+          <ConfirmDialog
+            title={keys.length === 1 ? 'Discard unsaved changes?' : `Discard unsaved changes in ${keys.length} tabs?`}
+            message={keys.length > 1
+              ? 'Each tab returns to its last saved version; requests that were never saved are closed. This cannot be undone.'
+              : singleIsNew
+                ? 'This item has never been saved, so it will be closed and your edits will be lost. This cannot be undone.'
+                : 'Your edits will be lost and this item will return to its last saved version. This cannot be undone.'}
+            confirmLabel="Discard changes"
+            destructive
+            onConfirm={() => discardDrafts(keys)}
+            onCancel={closeDiscardPrompt}
+          />
+        )
+      })()}
+
+      {tabMenu && (() => {
+        const key = resourceKey(tabMenu.tab)
+        const run = (action: () => void) => () => { setTabMenu(null); action() }
+        return (
+          <div
+            className="tab-context-menu"
+            role="menu"
+            aria-label="Tab actions"
+            style={{ left: Math.min(tabMenu.x, window.innerWidth - 230), top: Math.min(tabMenu.y, window.innerHeight - 130) }}
+            ref={tabMenuRef}
+            onMouseDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+              event.preventDefault()
+              const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
+              const index = items.indexOf(document.activeElement as HTMLButtonElement)
+              items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
+            }}
+          >
+            <button role="menuitem" disabled={!isUnsaved(key)} onClick={run(() => promptDiscard([key]))}>Discard changes</button>
+            <button role="menuitem" disabled={unsavedTabKeys.length === 0} onClick={run(() => promptDiscard(unsavedTabKeys))}>Discard changes in all tabs</button>
+            <hr />
+            <button role="menuitem" onClick={run(() => requestCloseTab(tabMenu.tab))}>Close tab</button>
+          </div>
+        )
+      })()}
 
       {trashPrompt && (
         <ConfirmDialog

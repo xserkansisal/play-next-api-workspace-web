@@ -437,6 +437,101 @@ describe('closing a request tab with unsaved changes', () => {
   })
 })
 
+describe('discarding from the tab menu, the keyboard and before leaving', () => {
+  const second: RequestResource = { ...request, id: 'request-2', name: 'Create order', method: 'POST', url: '/orders/new' }
+  const twoRequests: CollectionResource = { ...collection, items: [request, second] }
+
+  beforeEach(() => {
+    vi.stubGlobal('EventSource', MockEventSource)
+    vi.spyOn(workspaceApi, 'collections').mockResolvedValue([twoRequests])
+    vi.spyOn(workspaceApi, 'collection').mockResolvedValue(twoRequests)
+    vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  async function editBoth() {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/a')
+    await user.click(screen.getByRole('button', { name: 'Create order' }))
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/b')
+    return user
+  }
+
+  function tabFor(name: string) {
+    return screen.getByRole('button', { name: `Close ${name}` }).closest('.request-tab') as HTMLElement
+  }
+
+  it('discards one tab from its context menu, leaving the other tab untouched', async () => {
+    const user = await editBoth()
+    await user.pointer({ keys: '[MouseRight]', target: tabFor('List orders') })
+    const menu = screen.getByRole('menu', { name: 'Tab actions' })
+    await user.click(within(menu).getByRole('menuitem', { name: 'Discard changes' }))
+    await user.click(within(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).getByRole('button', { name: 'Discard changes' }))
+
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/orders/new/b')
+    expect(tabFor('Create order').querySelector('.tab-dirty')).not.toBeNull()
+    expect(tabFor('List orders').querySelector('.tab-dirty')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'List orders' }))
+    expect(screen.getAllByRole('textbox', { name: 'Request URL' }).at(-1)).toHaveValue('/orders')
+  })
+
+  it('discards every tab at once from the context menu', async () => {
+    const user = await editBoth()
+    await user.pointer({ keys: '[MouseRight]', target: tabFor('Create order') })
+    await user.click(screen.getByRole('menuitem', { name: 'Discard changes in all tabs' }))
+    await user.click(within(screen.getByRole('alertdialog', { name: 'Discard unsaved changes in 2 tabs?' })).getByRole('button', { name: 'Discard changes' }))
+
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/orders/new')
+    expect(document.querySelectorAll('.tab-dirty')).toHaveLength(0)
+  })
+
+  it('disables discard items when nothing is unsaved and closes the menu on Escape', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await user.pointer({ keys: '[MouseRight]', target: tabFor('List orders') })
+    expect(screen.getByRole('menuitem', { name: 'Discard changes' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Discard changes in all tabs' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Close tab' })).toHaveFocus()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('opens the discard confirmation with Ctrl+Shift+Backspace', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/a')
+    await user.keyboard('{Control>}{Shift>}{Backspace}{/Shift}{/Control}')
+    // The shortcut only asks; it never discards on its own.
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/orders/a')
+  })
+
+  it('asks the browser to confirm leaving only while something is unsaved', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'List orders' }))
+    const leave = () => {
+      const event = new Event('beforeunload', { cancelable: true })
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    expect(leave()).toBe(false)
+    await user.type(screen.getByRole('textbox', { name: 'Request URL' }), '/a')
+    expect(leave()).toBe(true)
+  })
+})
+
 describe('duplicating from the workspace', () => {
   beforeEach(() => {
     vi.stubGlobal('EventSource', MockEventSource)

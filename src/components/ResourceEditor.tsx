@@ -12,6 +12,7 @@ import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import { parseMultipartFields, parseUrlEncodedFields, serializeUrlEncodedFields, type MultipartField } from '@/lib/request-body'
 import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type RequestAuth, type RequestBody, type RequestMethod, type ResourceAuth, type ResourceDraft } from '@/lib/workspace-types'
 import type { PresenceUser } from '@/lib/presence'
+import { DISCARD_SHORTCUT, matchesShortcut, SAVE_SHORTCUT, shortcutLabel } from '@/lib/shortcuts'
 
 const NO_VARIABLES: VariableLookup = {}
 
@@ -93,16 +94,23 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
   }, [draft.kind, draft.resource.id])
 
   const canSave = dirty && !saving && !bodyTooLong
+  const canDiscard = dirty && !saving && !!onDiscard
   useEffect(() => {
-    function saveOnShortcut(event: KeyboardEvent) {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 's') return
-      // Always suppress the browser's "Save page" dialog while an editor is open.
-      event.preventDefault()
-      if (canSave) onSave()
+    function handleShortcut(event: KeyboardEvent) {
+      // A dialog already open owns the keyboard; don't act on the editor underneath it.
+      if (document.querySelector('[aria-modal="true"]')) return
+      if (matchesShortcut(event, SAVE_SHORTCUT)) {
+        // Always suppress the browser's "Save page" dialog while an editor is open.
+        event.preventDefault()
+        if (canSave) onSave()
+      } else if (matchesShortcut(event, DISCARD_SHORTCUT) && canDiscard) {
+        event.preventDefault()
+        onDiscard?.()
+      }
     }
-    document.addEventListener('keydown', saveOnShortcut)
-    return () => document.removeEventListener('keydown', saveOnShortcut)
-  }, [canSave, onSave])
+    document.addEventListener('keydown', handleShortcut)
+    return () => document.removeEventListener('keydown', handleShortcut)
+  }, [canSave, canDiscard, onSave, onDiscard])
 
   function updateName(value: string) {
     onChange({ ...draft, resource: { ...draft.resource, name: value } } as ResourceDraft)
@@ -183,8 +191,8 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               <SaveState dirty={dirty} />
               {onShowVersionHistory && <Button variant="outline" size="sm" onClick={onShowVersionHistory}>Version history</Button>}
               {!(draft.kind === 'environment' && draft.isNew) && <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>}
-              {dirty && onDiscard && <Button variant="outline" size="sm" onClick={onDiscard} disabled={saving}>Discard changes</Button>}
-              <Button size="sm" onClick={onSave} disabled={!canSave} title="Save (Ctrl/⌘+S)">{saving ? 'Saving…' : 'Save'}</Button>
+              {dirty && onDiscard && <Button variant="outline" size="sm" onClick={onDiscard} disabled={saving} title={`Discard changes (${shortcutLabel(DISCARD_SHORTCUT)})`}>Discard changes</Button>}
+              <Button size="sm" onClick={onSave} disabled={!canSave} title={`Save (${shortcutLabel(SAVE_SHORTCUT)})`}>{saving ? 'Saving…' : 'Save'}</Button>
             </div>
           </header>
           {draft.kind === 'request' ? (
