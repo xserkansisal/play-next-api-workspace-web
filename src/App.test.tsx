@@ -77,6 +77,28 @@ describe('workspace live update flow', () => {
     expect(container.querySelector('.account-menu > .theme-toggle')).toBe(container.querySelector('.account-menu')?.lastElementChild)
   })
 
+  it('lets the active environment be changed from the top bar', async () => {
+    vi.mocked(workspaceApi.environments).mockResolvedValue([
+      { id: 'staging', name: 'Staging', variables: [] },
+      { id: 'development', name: 'Development', variables: [] },
+    ])
+    const user = userEvent.setup()
+    render(<App />)
+
+    const picker = await screen.findByRole('combobox', { name: 'Environment' })
+    expect(picker).toHaveValue('staging')
+    expect([...picker.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      'No environment',
+      'Development',
+      'Staging',
+    ])
+
+    await user.selectOptions(picker, 'development')
+    expect(picker).toHaveValue('development')
+    await user.selectOptions(picker, '')
+    expect(picker).toHaveValue('')
+  })
+
   it('keeps unsaved input unchanged until the user explicitly loads the reviewed server version', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -539,7 +561,7 @@ describe('which scope a {{name}} resolves from', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    expect(screen.queryByRole('combobox', { name: 'Environment' })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Environment' })).toHaveValue('')
     await user.click(await screen.findByRole('button', { name: 'New environment' }))
 
     expect(await screen.findByRole('textbox', { name: 'Environment name' })).toHaveValue('')

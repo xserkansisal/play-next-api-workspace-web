@@ -1181,6 +1181,19 @@ function App({ user, onSignOut }: AppProps = {}) {
           <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
+          <label className="env-picker">
+            <span className={`env-dot ${selectedEnvironment ? 'active' : ''}`} aria-hidden="true" />
+            <select
+              aria-label="Environment"
+              value={selectedEnvironmentId}
+              onChange={(event) => setSelectedEnvironmentId(event.target.value)}
+            >
+              <option value="">No environment</option>
+              {sortByName(environments).map((environment) => (
+                <option value={environment.id} key={environment.id}>{environment.name}</option>
+              ))}
+            </select>
+          </label>
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
