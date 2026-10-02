@@ -89,6 +89,6 @@ export function previewValue(name: string, value: string): string {
 
 export function originLabel(origin: VariableOrigin): string {
   if (origin === 'user') return 'Your variables'
-  if (origin === 'global') return 'Global'
+  if (origin === 'global') return 'Team'
   return 'Environment'
 }

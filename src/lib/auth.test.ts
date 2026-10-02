@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { apiClient } from '@/lib/api'
 import { authApi, authEvents, describeAuthError, nameFromEmail, onUnauthenticated } from '@/lib/auth'
+import { getActiveTeamId, setActiveTeamId, teamContextEvents } from '@/lib/teams'
 
 function authErrorResponse(status: number, code: string, message: string) {
   const config = { headers: new AxiosHeaders() }
@@ -18,10 +19,67 @@ function authErrorResponse(status: number, code: string, message: string) {
 describe('authApi', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    setActiveTeamId(null)
   })
 
   it('includes credentials on API requests so the browser sends the session cookie', () => {
     expect(apiClient.defaults.withCredentials).toBe(true)
+  })
+
+  it('adds the active team header to API requests', async () => {
+    setActiveTeamId('team-1')
+    const adapter = vi.fn(async (config) => ({
+      config,
+      data: {},
+      headers: new AxiosHeaders(),
+      status: 200,
+      statusText: 'OK',
+    }))
+
+    await apiClient.get('/teams', { adapter })
+
+    expect(adapter.mock.calls[0]?.[0].headers.get('X-Team-Id')).toBe('team-1')
+    expect(getActiveTeamId()).toBe('team-1')
+  })
+
+  it('announces team-context errors from API responses to the app shell', async () => {
+    const listener = vi.fn()
+    teamContextEvents.addEventListener('team-context-error', listener)
+    setActiveTeamId('team-1')
+    const headers = new AxiosHeaders({ 'X-Team-Id': 'team-1' })
+    const config = { headers, url: '/collections' }
+    const failure = new AxiosError('Not found', '404', config, null, {
+      status: 404,
+      statusText: 'Not Found',
+      data: { error: { code: 'TEAM_NOT_FOUND', message: 'Team not found' } },
+      headers: {},
+      config,
+    })
+
+    await expect(apiClient.get('/collections', { adapter: () => Promise.reject(failure) })).rejects.toBe(failure)
+
+    expect(listener).toHaveBeenCalledOnce()
+    expect((listener.mock.calls[0]?.[0] as CustomEvent<{ code: string }>).detail.code).toBe('TEAM_NOT_FOUND')
+    teamContextEvents.removeEventListener('team-context-error', listener)
+  })
+
+  it('does not treat an admin target 404 as loss of the selected workspace team', async () => {
+    const listener = vi.fn()
+    teamContextEvents.addEventListener('team-context-error', listener)
+    setActiveTeamId('team-1')
+    const config = { headers: new AxiosHeaders({ 'X-Team-Id': 'team-1' }), url: '/admin/teams/missing' }
+    const failure = new AxiosError('Not found', '404', config, null, {
+      status: 404,
+      statusText: 'Not Found',
+      data: { error: { code: 'TEAM_NOT_FOUND', message: 'Team not found' } },
+      headers: {},
+      config,
+    })
+
+    await expect(apiClient.get('/admin/teams/missing', { adapter: () => Promise.reject(failure) })).rejects.toBe(failure)
+
+    expect(listener).not.toHaveBeenCalled()
+    teamContextEvents.removeEventListener('team-context-error', listener)
   })
 
   it('posts email to dev-login and returns the signed-in user', async () => {

@@ -15,6 +15,7 @@ import type {
 } from '@/lib/workspace-types'
 import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
 import type { VariableOrderPreferences } from '@/lib/variable-order'
+import { getActiveTeamId, notifyTeamContextError } from '@/lib/teams'
 
 const apiOrigin = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
@@ -27,6 +28,28 @@ export const apiClient = axios.create({
   // request without knowing or handling the cookie name itself.
   withCredentials: true,
 })
+
+apiClient.interceptors.request.use((config) => {
+  const teamId = getActiveTeamId()
+  if (teamId) config.headers.set('X-Team-Id', teamId)
+  else config.headers.delete('X-Team-Id')
+  return config
+})
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error: unknown) => {
+    if (isAxiosError<{ error?: { code?: string } }>(error)) {
+      const code = error.response?.data?.error?.code
+      const hasTeamContext = !!error.config?.headers?.get('X-Team-Id')
+      const teamScopedRoute = /^\/(?:collections|environments|variables|trash|presence)(?:\/|$)/.test(error.config?.url ?? '')
+      if (hasTeamContext && teamScopedRoute && (code === 'TEAM_NOT_FOUND' || code === 'TEAM_MEMBERSHIP_REQUIRED')) {
+        notifyTeamContextError(code)
+      }
+    }
+    return Promise.reject(error)
+  },
+)
 
 export async function checkHealth() {
   const { data } = await apiClient.get<unknown>('/health', { baseURL: apiOrigin })

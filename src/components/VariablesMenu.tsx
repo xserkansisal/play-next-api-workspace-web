@@ -20,7 +20,7 @@ import { describeOrigin, shadowedNames, validateVariableName, VARIABLE_PRECEDENC
 const SCOPE_GROUPS: { origin: VariableOrigin; label: string }[] = [
   { origin: 'user', label: 'Only me' },
   { origin: 'environment', label: 'Environments' },
-  { origin: 'global', label: 'Everyone' },
+  { origin: 'global', label: 'Team' },
 ]
 
 const MOVE_OPTIONS: { target: 'top' | 'up' | 'down' | 'bottom'; label: string }[] = [
@@ -332,7 +332,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
             <aside className="variables-guidance" aria-label="Variable usage information">
               <div className="variables-guidance-item">
                 <span className="variables-info-icon" aria-hidden="true">i</span>
-                <span><strong>Precedence:</strong> Only me → Environments → Everyone. Higher-priority scopes override matching keys.</span>
+                <span><strong>Precedence:</strong> Only me → Environments → Team. Higher-priority scopes override matching keys.</span>
               </div>
               {visibleNameCount > 0 && (
                 <div className="variables-guidance-item">
@@ -565,14 +565,14 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
         )}
         {!standalone && (
           <p className="runtime-vars-note">
-            {`Order of preference: your own variables, then ${hasEnvironment ? 'the selected environment' : 'the selected environment (none selected)'}, then global ones. Yours are private to your account; global ones are shared with everyone signed in.`}
+            {`Order of preference: your own variables, then ${hasEnvironment ? 'the selected environment' : 'the selected environment (none selected)'}, then team variables. Yours are private to your account; team variables are shared with everyone in this team.`}
           </p>
         )}
       </div>
       {pendingRemoval && (
         <ConfirmDialog
           title={`Delete “${pendingRemoval.name}”?`}
-          message={`It will be removed from ${pendingRemoval.origin === 'environment' ? 'the selected environment (shared with your team)' : pendingRemoval.origin === 'global' ? 'global variables (shared with everyone)' : 'your variables'}. This cannot be undone.`}
+          message={`It will be removed from ${pendingRemoval.origin === 'environment' ? 'the selected environment (shared with your team)' : pendingRemoval.origin === 'global' ? 'team variables (shared with everyone in this team)' : 'your variables'}. This cannot be undone.`}
           confirmLabel="Delete"
           destructive
           onConfirm={() => void remove(pendingRemoval.name, pendingRemoval.origin)}

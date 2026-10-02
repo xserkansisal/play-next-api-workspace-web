@@ -84,7 +84,7 @@ describe('shadowedNames', () => {
 describe('describeOrigin', () => {
   it('names each layer in words a user can act on', () => {
     expect(describeOrigin('user')).toBe('your variables')
-    expect(describeOrigin('global')).toBe('global variables')
+    expect(describeOrigin('global')).toBe('team variables')
     expect(describeOrigin('environment')).toBe('the selected environment')
   })
 })

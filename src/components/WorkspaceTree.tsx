@@ -652,7 +652,7 @@ export function WorkspaceTree({
               {([
                 { origin: 'user', label: 'Only me' },
                 { origin: 'environment', label: 'Environments' },
-                { origin: 'global', label: 'Everyone' },
+                { origin: 'global', label: 'Team' },
               ] as const).map(({ origin, label }) => {
                 const matchingVariables = new Map(variablesByScope[origin]
                   .filter(({ key, value }) =>

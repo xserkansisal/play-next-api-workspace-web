@@ -196,7 +196,7 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
             aria-describedby="extract-scope-hint"
           >
             {VARIABLE_SCOPES.map((entry) => (
-              <option key={entry} value={entry}>{entry === 'user' ? 'Only me' : 'Everyone'}</option>
+              <option key={entry} value={entry}>{entry === 'user' ? 'Only me' : 'Team'}</option>
             ))}
           </select>
         </label>
@@ -213,7 +213,7 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
       <p className="extract-hint" id="extract-scope-hint">
         {scope === 'user'
           ? 'Saved to your account: it follows you to other tabs and machines, and no teammate can see it. It wins over an environment variable of the same name.'
-          : 'Saved for everyone signed in. An environment variable of the same name still wins over it, matching how Postman resolves globals.'}
+          : 'Saved for everyone in this team. An environment variable of the same name still wins over it, matching how Postman resolves globals.'}
       </p>
       {matching.some((entry) => entry.scope === scope) && (
         <p className="extract-hint">{`{{${name.trim()}}} already exists and will be overwritten.`}</p>
@@ -237,7 +237,7 @@ function ExtractToVariable({ response, requestKey }: { response: ExecutionSucces
           )}
           {activeRule && (
             <p className="extract-hint">
-              {`Re-read from "${activeRule.path}" into ${ruleScope(activeRule) === 'user' ? 'your' : 'the global'} variables each time this request is sent, so a value the server advances stays current. Only this request's responses update it.`}
+              {`Re-read from "${activeRule.path}" into ${ruleScope(activeRule) === 'user' ? 'your' : 'team'} variables each time this request is sent, so a value the server advances stays current. Only this request's responses update it.`}
             </p>
           )}
         </div>

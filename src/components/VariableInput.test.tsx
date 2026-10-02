@@ -82,7 +82,7 @@ describe('VariableInput autocomplete', () => {
       options: [
         { origin: 'user', label: 'Only me' },
         { origin: 'environment', label: 'Development' },
-        { origin: 'global', label: 'Everyone' },
+        { origin: 'global', label: 'Team' },
       ],
       onCreate,
     }
@@ -95,7 +95,7 @@ describe('VariableInput autocomplete', () => {
     expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
       expect.stringContaining('Create “newToken” in Only me'),
       expect.stringContaining('Create “newToken” in Development'),
-      expect.stringContaining('Create “newToken” in Everyone'),
+      expect.stringContaining('Create “newToken” in Team'),
     ])
     await user.click(screen.getByRole('option', { name: /Create “newToken” in Development/ }))
     expect(onCreate).toHaveBeenCalledWith('newToken', 'environment')
@@ -108,7 +108,7 @@ describe('VariableInput autocomplete', () => {
     const creation: VariableCreationContextValue = {
       options: [
         { origin: 'user', label: 'Only me' },
-        { origin: 'global', label: 'Everyone' },
+        { origin: 'global', label: 'Team' },
       ],
       onCreate,
     }

@@ -77,6 +77,42 @@ describe('workspace live update flow', () => {
     expect(container.querySelector('.account-menu > .theme-toggle')).toBe(container.querySelector('.account-menu')?.lastElementChild)
   })
 
+  it('shows the team switcher for multiple teams and scopes the live stream to the active team', async () => {
+    const onTeamChange = vi.fn()
+    render(
+      <App
+        activeTeamId="team-1"
+        teams={[
+          { id: 'team-1', name: 'Game Studio', description: '', role: 'member' },
+          { id: 'team-2', name: 'Mobile Gaming', description: '', role: 'owner' },
+        ]}
+        onTeamChange={onTeamChange}
+      />,
+    )
+
+    const picker = await screen.findByRole('combobox', { name: 'Team' })
+    expect(picker).toHaveValue('team-1')
+    expect(picker.closest('.brand')).not.toBeNull()
+    expect(MockEventSource.current.url).toContain('?teamId=team-1')
+    await userEvent.selectOptions(picker, 'team-2')
+    expect(onTeamChange).toHaveBeenCalledWith('team-2')
+  })
+
+  it('shows the active team name when the user belongs to only one team', async () => {
+    render(
+      <App
+        activeTeamId="team-1"
+        teams={[{ id: 'team-1', name: 'Game Studio', description: '', role: 'member' }]}
+      />,
+    )
+
+    const picker = await screen.findByRole('combobox', { name: 'Team' })
+    expect(picker).toHaveValue('team-1')
+    expect(picker).toBeEnabled()
+    expect(picker).toHaveTextContent('Game Studio')
+    expect(within(picker).getAllByRole('option')).toHaveLength(1)
+  })
+
   it('lets the active environment be changed from the top bar', async () => {
     vi.mocked(workspaceApi.environments).mockResolvedValue([
       { id: 'staging', name: 'Staging', variables: [] },
@@ -786,7 +822,7 @@ describe('which scope a {{name}} resolves from', () => {
     const user = userEvent.setup()
     await openVariableScope(user, 'Only me')
 
-    expect(await screen.findByRole('cell', { name: 'Overrides Environments, Everyone' })).toBeTruthy()
+    expect(await screen.findByRole('cell', { name: 'Overrides Environments, Team' })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Only me' })).toBeInTheDocument()
   })
 
@@ -879,8 +915,8 @@ describe('which scope a {{name}} resolves from', () => {
     expect(exportButton).toHaveAttribute('title', 'Export Only me variables as Play Next JSON')
     await user.click(exportButton)
 
-    await user.click(screen.getByRole('button', { name: 'Open Everyone variables' }))
-    expect(exportButton).toHaveAttribute('title', 'Export Everyone variables as Play Next JSON')
+    await user.click(screen.getByRole('button', { name: 'Open Team variables' }))
+    expect(exportButton).toHaveAttribute('title', 'Export Team variables as Play Next JSON')
     await user.click(exportButton)
 
     expect(downloadedFiles).toEqual([

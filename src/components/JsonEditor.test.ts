@@ -40,7 +40,7 @@ describe('variableCompletionSource', () => {
       options: [
         { origin: 'user', label: 'Only me' },
         { origin: 'environment', label: 'Development' },
-        { origin: 'global', label: 'Everyone' },
+        { origin: 'global', label: 'Team' },
       ],
       onCreate,
     }
@@ -48,7 +48,7 @@ describe('variableCompletionSource', () => {
     expect(result!.options.map((option) => option.displayLabel)).toEqual([
       'Create newToken in Only me',
       'Create newToken in Development',
-      'Create newToken in Everyone',
+      'Create newToken in Team',
     ])
     const option = result!.options[1] as Completion & { apply: (view: EditorView, completion: Completion, from: number, to: number) => void }
     const view = new EditorView({ state })

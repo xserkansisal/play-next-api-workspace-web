@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { workspaceApi } from '@/lib/api'
+import { setActiveTeamId } from '@/lib/teams'
+import type { ScopedVariable } from '@/lib/variable-scopes'
 import {
   getScopedVariables,
   loadScopedVariables,
@@ -22,6 +24,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  setActiveTeamId(null)
 })
 
 describe('saveScopedVariable', () => {
@@ -80,6 +83,22 @@ describe('migrateLegacyRuntimeVariables', () => {
     expect(workspaceApi.setVariable).toHaveBeenCalledWith('user', 'token', 'abc')
     expect(workspaceApi.setVariable).toHaveBeenCalledWith('user', 'mathState', '{"spin":1}')
     expect(window.sessionStorage.getItem(LEGACY_KEY)).toBeNull()
+  })
+
+  describe('team-scoped variable cache', () => {
+    it('ignores an in-flight response after the active team changes and the cache is cleared', async () => {
+      let resolveVariables: ((variables: ScopedVariable[]) => void) | undefined
+      vi.mocked(workspaceApi.variables).mockImplementation(() => new Promise((resolve) => { resolveVariables = resolve }))
+      setActiveTeamId('team-a')
+      const loading = loadScopedVariables()
+
+      setActiveTeamId('team-b')
+      resetScopedVariables()
+      resolveVariables?.([{ scope: 'global', key: 'secret', value: 'team-a-only' }])
+      await loading
+
+      expect(getScopedVariables()).toEqual([])
+    })
   })
 
   it('never overwrites a value already saved at user scope, which is the newer one', async () => {

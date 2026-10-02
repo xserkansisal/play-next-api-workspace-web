@@ -13,6 +13,7 @@
 //   already are. Anything genuinely secret is no safer here than it is there.
 
 import { describeApiError, workspaceApi } from '@/lib/api'
+import { getActiveTeamId } from '@/lib/teams'
 import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
 
 const LEGACY_STORAGE_KEY = 'play-next-api-workspace.runtime-variables.v1'
@@ -20,6 +21,7 @@ const LEGACY_STORAGE_KEY = 'play-next-api-workspace.runtime-variables.v1'
 const EMPTY: readonly ScopedVariable[] = Object.freeze([])
 
 let cache: readonly ScopedVariable[] = EMPTY
+let cacheGeneration = 0
 const listeners = new Set<() => void>()
 
 function publish(next: readonly ScopedVariable[]) {
@@ -40,7 +42,11 @@ export function subscribeScopedVariables(listener: () => void): () => void {
 }
 
 export async function loadScopedVariables(): Promise<void> {
-  publish(await workspaceApi.variables())
+  const teamId = getActiveTeamId()
+  const generation = cacheGeneration
+  const variables = await workspaceApi.variables()
+  if (generation !== cacheGeneration || teamId !== getActiveTeamId()) return
+  publish(variables)
   await migrateLegacyRuntimeVariables()
 }
 
@@ -153,6 +159,7 @@ export async function migrateLegacyRuntimeVariables(): Promise<void> {
 
 /** Test-only: drops the snapshot so a fresh load starts from nothing. */
 export function resetScopedVariables(): void {
+  cacheGeneration += 1
   cache = EMPTY
   for (const listener of listeners) listener()
 }

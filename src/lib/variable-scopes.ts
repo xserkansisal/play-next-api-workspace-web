@@ -59,7 +59,7 @@ export interface VariableResolution {
 
 export function describeOrigin(origin: VariableOrigin): string {
   if (origin === 'user') return 'your variables'
-  if (origin === 'global') return 'global variables'
+  if (origin === 'global') return 'team variables'
   return 'the selected environment'
 }
 

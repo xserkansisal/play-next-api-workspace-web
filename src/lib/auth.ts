@@ -1,6 +1,7 @@
 import { isAxiosError } from 'axios'
 
 import { apiClient } from '@/lib/api'
+import type { Team } from '@/lib/teams'
 
 export interface AuthUser {
   id: string
@@ -9,6 +10,7 @@ export interface AuthUser {
   lastName?: string | null
   avatarUrl?: string | null
   avatarColor?: string | null
+  systemRole?: 'user' | 'admin'
 }
 
 export interface UserName {
@@ -138,5 +140,12 @@ export const authApi = {
   /** POST /api/v1/auth/sign-out. Revokes the session server-side and expires the cookie. Safe to call even if already signed out. */
   async signOut(): Promise<void> {
     await apiClient.post('/auth/sign-out')
+  },
+}
+
+export const teamsApi = {
+  async list(): Promise<Team[]> {
+    const { data } = await apiClient.get<{ teams: Team[] }>('/teams')
+    return data.teams
   },
 }

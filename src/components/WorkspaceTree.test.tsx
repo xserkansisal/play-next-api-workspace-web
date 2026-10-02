@@ -405,8 +405,8 @@ describe('foldable sidebar sections', () => {
     })
 
     expect(container.querySelectorAll('.sidebar-variable-icon')).toHaveLength(3)
-    expect(container.querySelector('.sidebar-variable-scope[aria-label="Open Everyone variables"] .sidebar-variable-count')?.textContent?.replace(/\s/g, '')).toBe('4(3)')
-    expect(screen.getByRole('button', { name: 'Open Everyone variables' })).toHaveAttribute('title', '4 defined, 3 usable in requests')
+    expect(container.querySelector('.sidebar-variable-scope[aria-label="Open Team variables"] .sidebar-variable-count')?.textContent?.replace(/\s/g, '')).toBe('4(3)')
+    expect(screen.getByRole('button', { name: 'Open Team variables' })).toHaveAttribute('title', '4 defined, 3 usable in requests')
   })
 
   it('remembers a folded section across a remount, like any other collapsed node', async () => {

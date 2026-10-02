@@ -165,7 +165,7 @@ function SuggestionPopup({ id, query, suggestions, active, hasVariables, creatio
         <>
           <div className="var-suggest-empty" role="status">
             {query.trim()
-              ? <><strong>{`{{${query.trim()}}}`}</strong>{' '}is not defined in the selected environment, your variables or global variables.</>
+              ? <><strong>{`{{${query.trim()}}}`}</strong>{' '}is not defined in the selected environment, your variables or team variables.</>
               : hasVariables ? 'No matching variables.' : 'No variables defined yet. Add them from the Variables menu or an environment.'}
           </div>
           {creationOptions.length > 0 && (

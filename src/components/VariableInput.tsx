@@ -8,7 +8,7 @@ export type VariableLookup = Record<string, VariableResolution>
 
 export function describeVariable(name: string, variables: VariableLookup): string {
   const entry = variables[name]
-  if (!entry) return `{{${name}}} is not defined in the selected environment, your variables or global variables.`
+  if (!entry) return `{{${name}}} is not defined in the selected environment, your variables or team variables.`
   return `{{${name}}} = ${entry.value === '' ? '(empty)' : entry.value}  ·  from ${describeOrigin(entry.origin)}`
 }
 

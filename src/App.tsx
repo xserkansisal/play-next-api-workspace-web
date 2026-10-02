@@ -16,7 +16,7 @@ import { VariableCreationContext } from '@/components/VariableAutocomplete'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { describeApiError, workspaceApi, type BulkImportInput, type ProxySettings } from '@/lib/api'
-import { authApi } from '@/lib/auth'
+import { authApi, teamsApi } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
 import { parsePresenceSnapshot, presenceApi, presenceLocation, presenceResourceKey } from '@/lib/presence'
 import type { PresenceUser } from '@/lib/presence'
@@ -32,6 +32,8 @@ import type { RecordedResponse } from '@/lib/request-runner'
 import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
 import { exportScopedVariables } from '@/lib/scoped-variable-export'
 import { loadVariableOrder } from '@/lib/variable-order-storage'
+import { notifyTeamContextError } from '@/lib/teams'
+import type { Team } from '@/lib/teams'
 import { resolveVariables, toVariableMap, validateVariableName, type VariableOrigin } from '@/lib/variable-scopes'
 import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
 import { extractFromResponse } from '@/lib/response-extraction'
@@ -165,10 +167,15 @@ function restoredName(name: string): string {
 
 interface AppProps {
   user?: AuthUser
+  teams?: Team[]
+  activeTeamId?: string | null
+  teamAccessNotice?: string
+  onTeamChange?: (teamId: string) => void
+  onOpenAdmin?: () => void
   onSignOut?: () => void
 }
 
-function App({ user, onSignOut }: AppProps = {}) {
+function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamChange, onOpenAdmin, onSignOut }: AppProps = {}) {
   const [collections, setCollections] = useState<CollectionResource[]>([])
   const [environments, setEnvironments] = useState<EnvironmentResource[]>([])
   const [trash, setTrash] = useState<TrashEntry[]>([])
@@ -296,7 +303,11 @@ function App({ user, onSignOut }: AppProps = {}) {
     // which is exactly why auth uses a cookie - but the cookie is only sent
     // automatically for same-origin requests, so cross-origin dev use (Vite
     // on :5173 hitting the API on :3000) needs withCredentials explicitly.
-    const source = new EventSource(`${apiBase}/api/v1/events${resumeFrom ? `?lastEventId=${encodeURIComponent(resumeFrom)}` : ''}`, { withCredentials: true })
+    const params = new URLSearchParams()
+    if (activeTeamId) params.set('teamId', activeTeamId)
+    if (resumeFrom) params.set('lastEventId', resumeFrom)
+    const query = params.size ? `?${params.toString()}` : ''
+    const source = new EventSource(`${apiBase}/api/v1/events${query}`, { withCredentials: true })
     let closed = false
     source.onopen = () => {
       setConnected(true)
@@ -373,12 +384,23 @@ function App({ user, onSignOut }: AppProps = {}) {
       // AuthGate shows its session-expired overlay; any other outcome
       // leaves the existing "disconnected, click Reconnect" banner as-is.
       void authApi.me().catch(() => {})
+      if (activeTeamId) {
+        void teamsApi.list()
+          .then((currentTeams) => {
+            if (!closed && !currentTeams.some(({ id }) => id === activeTeamId)) {
+              notifyTeamContextError('TEAM_NOT_FOUND', currentTeams)
+            }
+          })
+          .catch((error) => {
+            if (!closed) setPresenceError(`Unable to verify team access: ${describeApiError(error)}`)
+          })
+      }
     }
     return () => {
       closed = true
       source.close()
     }
-  }, [reconnectKey, reloadAll, user?.id])
+  }, [activeTeamId, reconnectKey, reloadAll, user?.id])
 
   const currentKey = selected ? resourceKey(selected) : ''
   const activeDraft = currentKey ? drafts[currentKey] : undefined
@@ -478,7 +500,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   // collection the selection belongs to.
   const exportTarget = useMemo(() => {
     if (view === 'variables' && (variableScope === 'user' || variableScope === 'global')) {
-      const label = variableScope === 'user' ? 'Only me' : 'Everyone'
+      const label = variableScope === 'user' ? 'Only me' : 'Team'
       return { title: `Export ${label} variables as Play Next JSON`, run: () => exportScopedVariableScope(variableScope) }
     }
     if (selected?.kind === 'environment') {
@@ -1351,6 +1373,20 @@ function App({ user, onSignOut }: AppProps = {}) {
           <button className="sidebar-toggle" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}>☰</button>
           <img className="brand-logo brand-logo-light" src="/assets/play-next-logo.png" alt="Play Next" />
           <img className="brand-logo brand-logo-dark" src="/assets/play-next-logo-dark.png" alt="" aria-hidden="true" />
+          {teams.length > 0 && (
+            <label className="team-picker">
+              <span>Team</span>
+              <select
+                aria-label="Team"
+                value={activeTeamId ?? ''}
+                onChange={(event) => onTeamChange?.(event.target.value)}
+              >
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>{team.name} · {team.role}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
@@ -1363,6 +1399,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
+            {user?.systemRole === 'admin' && <Button variant="outline" size="sm" onClick={onOpenAdmin}>Admin</Button>}
             {user && <UserProfileMenu user={user} onSignOut={onSignOut} />}
             <ThemeToggle />
           </div>
@@ -1374,6 +1411,7 @@ function App({ user, onSignOut }: AppProps = {}) {
           <button onClick={() => setReconnectKey((value) => value + 1)}>Reconnect</button>
         </div>
       )}
+      {teamAccessNotice && <div className="connection-notice" role="status">{teamAccessNotice}</div>}
       {presenceError && <div className="connection-notice presence-unavailable" role="status">{presenceError}</div>}
       {syncNotice && <div className="connection-notice" role="status"><span>{syncNotice}</span><button onClick={() => setSyncNotice(null)}>Dismiss</button></div>}
       {loadingError && <div className="global-error" role="alert">{loadingError}<button aria-label="Dismiss error" onClick={() => setLoadingError(null)}>×</button></div>}
@@ -1487,7 +1525,7 @@ function App({ user, onSignOut }: AppProps = {}) {
                   options: [
                     { origin: 'user', label: 'Only me' },
                     ...(selectedEnvironment ? [{ origin: 'environment' as const, label: selectedEnvironment.name }] : []),
-                    { origin: 'global', label: 'Everyone' },
+                    { origin: 'global', label: 'Team' },
                   ],
                   onCreate: startCreatingVariable,
                 }}>
