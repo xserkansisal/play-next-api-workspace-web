@@ -1,4 +1,5 @@
 import type { EnvironmentResource, EnvironmentVariable } from '@/lib/workspace-types'
+import { createUuid } from '@/lib/uuid'
 import type { PostmanVariable } from '@/lib/postman-types'
 
 /**
@@ -169,7 +170,7 @@ export function parsePostmanEnvironment(raw: unknown): EnvironmentImportPlan {
  */
 export function exportEnvironmentToPostman(environment: EnvironmentResource): Record<string, unknown> {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     name: environment.name,
     values: environment.variables.map((variable) => ({
       key: variable.key,

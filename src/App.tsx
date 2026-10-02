@@ -24,6 +24,7 @@ import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
 import { exportEnvironmentToPostman } from '@/lib/postman-environment'
+import { createUuid } from '@/lib/uuid'
 import { buildAuthAncestry, resolveEffectiveAuth } from '@/lib/auth-resolution'
 import { prepareRequest } from '@/lib/request-preparation'
 import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
@@ -229,11 +230,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
   const lastEventId = useRef('')
-  const presenceClientId = useRef(
-    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : `tab-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-  )
+  const presenceClientId = useRef(createUuid())
   selectedRef.current = selected
   draftsRef.current = drafts
   baselinesRef.current = baselines
@@ -1100,7 +1097,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       return
     }
     const parentId = getCreationParentId(selected, collections)
-    const id = `draft-${crypto.randomUUID()}`
+    const id = `draft-${createUuid()}`
     const resource = newRequest(id, 'New request', collectionId, parentId ?? null)
     const draft: ResourceDraft = { kind: 'request', collectionId, ...(parentId ? { parentId } : {}), resource, isNew: true }
     const key = draftKey(draft)
@@ -1115,7 +1112,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   function createEnvironment() {
     const draft: ResourceDraft = {
       kind: 'environment',
-      resource: { id: `draft-${crypto.randomUUID()}`, name: '', variables: [] },
+      resource: { id: `draft-${createUuid()}`, name: '', variables: [] },
       isNew: true,
     }
     seedDraft(draft)

@@ -1,6 +1,7 @@
 import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type RequestMethod, type RequestResource } from '@/lib/workspace-types'
 import type { PreparedRequest } from '@/lib/request-runner'
 import { parseMultipartFields, parseUrlEncodedFields, serializeMultipart, serializeUrlEncodedFields } from '@/lib/request-body'
+import { createUuid } from '@/lib/uuid'
 
 const VARIABLE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g
 
@@ -231,7 +232,7 @@ export function prepareRequest(
           value: substitute(field.value),
           enabled: field.enabled,
         }))
-        const boundary = `----PlayNextBoundary${crypto.randomUUID().replace(/-/g, '')}`
+        const boundary = `----PlayNextBoundary${createUuid().replace(/-/g, '')}`
         const serialized = serializeMultipart(fields, boundary)
         if (!serialized.ok) {
           bodyError = serialized.message

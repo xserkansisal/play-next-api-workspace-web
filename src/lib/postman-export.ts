@@ -1,4 +1,5 @@
 import type { CollectionResource, KeyValueEntry, WorkspaceItem } from '@/lib/workspace-types'
+import { createUuid } from '@/lib/uuid'
 
 /**
  * Serializes one of our collections as a Postman Collection v2.1 file.
@@ -12,7 +13,7 @@ import type { CollectionResource, KeyValueEntry, WorkspaceItem } from '@/lib/wor
 export function exportCollectionToPostman(collection: CollectionResource): Record<string, unknown> {
   return {
     info: {
-      _postman_id: crypto.randomUUID(),
+      _postman_id: createUuid(),
       name: collection.name,
       description: collection.description || undefined,
       schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
