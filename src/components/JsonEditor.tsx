@@ -2,11 +2,12 @@ import { autocompletion, type Completion, type CompletionContext } from '@codemi
 import { json } from '@codemirror/lang-json'
 import { EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
 import { Decoration, EditorView, ViewPlugin, hoverTooltip, lineNumbers, type DecorationSet, type ViewUpdate } from '@codemirror/view'
-import { useEffect, useRef } from 'react'
+import { useContext, useEffect, useRef } from 'react'
 
 import { describeVariable, type VariableLookup } from '@/components/VariableInput'
+import { VariableCreationContext, type VariableCreationContextValue } from '@/components/VariableAutocomplete'
 import { findCompletionContext, originLabel, previewValue, suggestVariables } from '@/lib/variable-completion'
-import { describeOrigin, VARIABLE_PRECEDENCE } from '@/lib/variable-scopes'
+import { describeOrigin, validateVariableName, VARIABLE_PRECEDENCE } from '@/lib/variable-scopes'
 import { tokenizeTemplate } from '@/lib/variable-tokens'
 
 interface JsonEditorProps {
@@ -64,7 +65,7 @@ function variableHighlighter(lookup: () => VariableLookup) {
 }
 
 /** Same `{{` picker as `VariableInput`, built on CodeMirror's own completion UI. */
-export function variableCompletionSource(lookup: () => VariableLookup) {
+export function variableCompletionSource(lookup: () => VariableLookup, creation?: VariableCreationContextValue) {
   return (context: CompletionContext) => {
     const line = context.state.doc.lineAt(context.pos)
     const found = findCompletionContext(line.text, context.pos - line.from)
@@ -73,7 +74,8 @@ export function variableCompletionSource(lookup: () => VariableLookup) {
     const after = context.state.sliceDoc(context.pos, Math.min(line.to, context.pos + 200))
     const tail = /^[^{}\s]*\s*\}\}/.exec(after)
     const to = context.pos + (tail ? tail[0].length : 0)
-    const options: Completion[] = suggestVariables(lookup(), found.query).map((suggestion, index) => ({
+    const suggestions = suggestVariables(lookup(), found.query)
+    const options: Completion[] = suggestions.map((suggestion, index) => ({
       label: `{{${suggestion.name}}}`,
       displayLabel: suggestion.name,
       detail: previewValue(suggestion.name, suggestion.value),
@@ -86,6 +88,21 @@ export function variableCompletionSource(lookup: () => VariableLookup) {
         view.dispatch({ changes: { from: applyFrom, to, insert }, selection: { anchor: applyFrom + insert.length }, userEvent: 'input.complete' })
       },
     }))
+    const validatedName = validateVariableName(found.query)
+    if (!suggestions.length && creation && validatedName.ok) {
+      for (const { origin, label } of creation.options) {
+        options.push({
+          label: `Create "${validatedName.name}" in ${label}…`,
+          displayLabel: `Create ${validatedName.name} in ${label}`,
+          type: 'variable-create',
+          apply: (view, _completion, applyFrom) => {
+            const insert = `{{${validatedName.name}}}`
+            view.dispatch({ changes: { from: applyFrom, to, insert }, selection: { anchor: applyFrom + insert.length }, userEvent: 'input.complete' })
+            creation.onCreate(validatedName.name, origin)
+          },
+        })
+      }
+    }
     // Ordering and filtering are already done by suggestVariables; CodeMirror must not re-filter.
     return { from, to, options, filter: false }
   }
@@ -100,6 +117,9 @@ export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEd
   onChangeRef.current = onChange
   const variablesRef = useRef(variables)
   variablesRef.current = variables
+  const onCreateVariable = useContext(VariableCreationContext)
+  const onCreateVariableRef = useRef(onCreateVariable)
+  onCreateVariableRef.current = onCreateVariable
 
   useEffect(() => {
     if (!host.current) return
@@ -111,7 +131,11 @@ export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEd
           json(),
           EditorView.lineWrapping,
           variableHighlighter(() => variablesRef.current),
-          autocompletion({ override: [variableCompletionSource(() => variablesRef.current)], activateOnTyping: true, icons: false }),
+          autocompletion({
+            override: [variableCompletionSource(() => variablesRef.current, onCreateVariableRef.current ?? undefined)],
+            activateOnTyping: true,
+            icons: false,
+          }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString())
           }),

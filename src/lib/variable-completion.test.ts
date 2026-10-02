@@ -17,6 +17,13 @@ describe('findCompletionContext', () => {
     expect(findCompletionContext('x {{ ten', 8)).toEqual({ from: 2, query: 'ten' })
   })
 
+  it('uses the full name when the caret is inside a closed reference', () => {
+    const text = '{{next-url}}/game-sessions/{{session}}/bets'
+    expect(findCompletionContext(text, text.indexOf('url') + 1)).toEqual({ from: 0, query: 'next-url' })
+    const sessionReference = text.indexOf('{{session}}')
+    expect(findCompletionContext(text, sessionReference + 5)).toEqual({ from: sessionReference, query: 'session' })
+  })
+
   it('ignores closed, abandoned or absent references', () => {
     expect(findCompletionContext('{{baseUrl}}/x', 13)).toBeNull()
     expect(findCompletionContext('{{a\nb', 5)).toBeNull()
@@ -45,6 +52,14 @@ describe('applyCompletion', () => {
   it('does not double existing closing braces when editing inside a reference', () => {
     const text = '{{bas}}/x'
     expect(applyCompletion(text, findCompletionContext(text, 5)!, 5, 'baseUrl').value).toBe('{{baseUrl}}/x')
+  })
+
+  it('replaces the full existing name when the caret is inside it', () => {
+    const text = '{{next-url}}/game-sessions/{{session}}/bets'
+    const caret = text.indexOf('url') + 1
+    const context = findCompletionContext(text, caret)!
+    expect(context.query).toBe('next-url')
+    expect(applyCompletion(text, context, caret, 'nextUrl').value).toBe('{{nextUrl}}/game-sessions/{{session}}/bets')
   })
 })
 

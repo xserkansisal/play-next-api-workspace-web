@@ -37,13 +37,15 @@ type DropHint = { origin: VariableOrigin; name: string; position: 'before' | 'af
 
 const icon = { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const
 
-export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, environmentId, filter = '', selectedOrigin, standalone = false, onAddEnvironmentVariable, onEditEnvironmentVariable, onRemoveEnvironmentVariable }: {
+export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, environmentId, filter = '', selectedOrigin, initialAddKey, onInitialAddHandled, standalone = false, onAddEnvironmentVariable, onEditEnvironmentVariable, onRemoveEnvironmentVariable }: {
   resolved: Record<string, VariableResolution>
   variablesByScope: Record<VariableOrigin, VariableDefinition[]>
   hasEnvironment: boolean
   environmentId: string | null
   filter?: string
   selectedOrigin?: VariableOrigin
+  initialAddKey?: string | null
+  onInitialAddHandled?: () => void
   standalone?: boolean
   onAddEnvironmentVariable: (key: string, value: string) => Promise<void>
   onEditEnvironmentVariable: (oldKey: string, newKey: string, value: string) => Promise<void>
@@ -114,6 +116,15 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [moveMenu])
+
+  useEffect(() => {
+    if (!initialAddKey) return
+    setError(null)
+    setNotice(null)
+    setEditing(null)
+    setAdding({ origin: selectedOrigin ?? 'user', key: initialAddKey, value: '' })
+    onInitialAddHandled?.()
+  }, [initialAddKey, onInitialAddHandled, selectedOrigin])
 
   async function run(action: () => Promise<void>): Promise<boolean> {
     setBusy(true)

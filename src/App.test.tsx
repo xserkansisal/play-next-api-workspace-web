@@ -86,17 +86,19 @@ describe('workspace live update flow', () => {
     render(<App />)
 
     const picker = await screen.findByRole('combobox', { name: 'Environment' })
-    expect(picker).toHaveValue('staging')
-    expect([...picker.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+    expect(picker).toHaveTextContent('Staging')
+    await user.click(picker)
+    expect(screen.getAllByRole('option').map((option) => option.querySelector('.env-picker-option-name')?.textContent)).toEqual([
       'No environment',
       'Development',
       'Staging',
     ])
 
-    await user.selectOptions(picker, 'development')
-    expect(picker).toHaveValue('development')
-    await user.selectOptions(picker, '')
-    expect(picker).toHaveValue('')
+    await user.click(screen.getByRole('option', { name: /Development/ }))
+    expect(picker).toHaveTextContent('Development')
+    await user.click(picker)
+    await user.click(screen.getByRole('option', { name: /No environment/ }))
+    expect(picker).toHaveTextContent('No environment')
   })
 
   it('keeps unsaved input unchanged until the user explicitly loads the reviewed server version', async () => {

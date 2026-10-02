@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { VariableCreationContext, type VariableCreationContextValue } from '@/components/VariableAutocomplete'
 import { VariableInput, VariableTextarea, type VariableLookup } from '@/components/VariableInput'
 
 describe('VariableInput', () => {
@@ -13,7 +14,7 @@ describe('VariableInput', () => {
     )
     expect(container.querySelector('.var-token.found')?.textContent).toBe('{{baseUrl}}')
     expect(container.querySelector('.var-token.missing')?.textContent).toBe('{{userId}}')
-    const input = screen.getByLabelText('URL')
+    const input = screen.getByLabelText<HTMLInputElement>('URL')
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(input.getAttribute('title')).toContain('{{userId}} is not defined')
     expect(input.getAttribute('title')).toContain('{{baseUrl}} = https://api.test')
@@ -72,6 +73,75 @@ describe('VariableInput autocomplete', () => {
     render(<Controlled />)
     await user.type(screen.getByLabelText('URL'), '{{{{nope')
     expect(screen.getByRole('status')).toHaveTextContent('{{nope}} is not defined')
+  })
+
+  it('offers to create an unmatched variable in each available scope', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn()
+    const creation: VariableCreationContextValue = {
+      options: [
+        { origin: 'user', label: 'Only me' },
+        { origin: 'environment', label: 'Development' },
+        { origin: 'global', label: 'Everyone' },
+      ],
+      onCreate,
+    }
+    render(
+      <VariableCreationContext.Provider value={creation}>
+        <Controlled />
+      </VariableCreationContext.Provider>,
+    )
+    await user.type(screen.getByLabelText('URL'), '{{{{newToken')
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      expect.stringContaining('Create “newToken” in Only me'),
+      expect.stringContaining('Create “newToken” in Development'),
+      expect.stringContaining('Create “newToken” in Everyone'),
+    ])
+    await user.click(screen.getByRole('option', { name: /Create “newToken” in Development/ }))
+    expect(onCreate).toHaveBeenCalledWith('newToken', 'environment')
+    expect(screen.getByLabelText('URL')).toHaveValue('{{newToken}}')
+  })
+
+  it('uses arrow navigation and Enter to choose a variable creation scope', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn()
+    const creation: VariableCreationContextValue = {
+      options: [
+        { origin: 'user', label: 'Only me' },
+        { origin: 'global', label: 'Everyone' },
+      ],
+      onCreate,
+    }
+    render(
+      <VariableCreationContext.Provider value={creation}>
+        <Controlled />
+      </VariableCreationContext.Provider>,
+    )
+    await user.type(screen.getByLabelText('URL'), '{{{{newToken')
+    await user.keyboard('{ArrowDown}{Enter}')
+    expect(onCreate).toHaveBeenCalledWith('newToken', 'global')
+  })
+
+  it('uses the whole closed variable name when the caret is in its middle', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn()
+    const creation: VariableCreationContextValue = {
+      options: [{ origin: 'user', label: 'Only me' }],
+      onCreate,
+    }
+    render(
+      <VariableCreationContext.Provider value={creation}>
+        <Controlled initial="{{next-url}}" />
+      </VariableCreationContext.Provider>,
+    )
+    const input = screen.getByLabelText<HTMLInputElement>('URL')
+    await user.click(input)
+    input.setSelectionRange(7, 7)
+    fireEvent.select(input)
+    expect(screen.getByRole('option', { name: /Create “next-url” in Only me/ })).toBeInTheDocument()
+    await user.keyboard('{Enter}')
+    expect(onCreate).toHaveBeenCalledWith('next-url', 'user')
+    expect(input).toHaveValue('{{next-url}}')
   })
 
   it('also works in the raw body textarea', async () => {

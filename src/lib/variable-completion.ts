@@ -1,16 +1,16 @@
 import { VARIABLE_PRECEDENCE, type VariableOrigin, type VariableResolution } from '@/lib/variable-scopes'
 
-/** An unclosed `{{` immediately left of the caret, i.e. the user is in the middle of typing a reference. */
+/** A variable reference containing the caret, whether or not its closing braces are present. */
 export interface CompletionContext {
   /** Index of the opening `{{`. */
   from: number
-  /** What has been typed after `{{`, up to the caret. */
+  /** The full name when the reference is closed; otherwise the partial name before the caret. */
   query: string
 }
 
 /**
- * Finds the reference being typed at `caret`. Braces or a line break between the `{{` and the caret
- * mean the reference is either already closed or abandoned, so nothing is suggested.
+ * Finds the reference being edited at `caret`. When the caret is inside a closed reference, use
+ * its full contents for matching; otherwise return the partial name typed before the caret.
  */
 export function findCompletionContext(text: string, caret: number): CompletionContext | null {
   const before = text.slice(0, caret)
@@ -18,6 +18,14 @@ export function findCompletionContext(text: string, caret: number): CompletionCo
   if (from < 0) return null
   const typed = before.slice(from + 2)
   if (/[{}\n\r]/.test(typed)) return null
+
+  const after = text.slice(caret)
+  const closing = after.indexOf('}}')
+  if (closing >= 0) {
+    const remaining = after.slice(0, closing)
+    if (!/[{}\n\r]/.test(remaining)) return { from, query: `${typed}${remaining}`.trimStart() }
+  }
+
   return { from, query: typed.trimStart() }
 }
 

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { BulkImportDialog } from '@/components/BulkImportDialog'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { CompareDiff } from '@/components/CompareDiff'
+import { EnvironmentPicker } from '@/components/EnvironmentPicker'
 import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
@@ -11,6 +12,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { VariablesMenu } from '@/components/VariablesMenu'
+import { VariableCreationContext } from '@/components/VariableAutocomplete'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { describeApiError, workspaceApi, type BulkImportInput, type ProxySettings } from '@/lib/api'
@@ -29,7 +31,7 @@ import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
 import { loadVariableOrder } from '@/lib/variable-order-storage'
-import { resolveVariables, toVariableMap, type VariableOrigin } from '@/lib/variable-scopes'
+import { resolveVariables, toVariableMap, validateVariableName, type VariableOrigin } from '@/lib/variable-scopes'
 import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
 import { extractFromResponse } from '@/lib/response-extraction'
 import { applySyncRules } from '@/lib/sync-rules'
@@ -184,6 +186,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [view, setView] = useState<View>('workspace')
   const [variableScope, setVariableScope] = useState<'user' | 'environment' | 'global'>('user')
   const [variableFilter, setVariableFilter] = useState('')
+  const [pendingVariableKey, setPendingVariableKey] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [selected, setSelected] = useState<OpenResource | null>(null)
@@ -880,6 +883,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     if (openDraft && (!openBaseline || isDraftDirty(openDraft, openBaseline))) {
       throw new Error('This environment has unsaved changes in its tab. Save or discard them first.')
     }
+
     const latest = await workspaceApi.environment(selectedEnvironmentId)
     const result = mutate(latest.variables)
     if (!result.ok) throw new Error(result.error)
@@ -891,6 +895,16 @@ function App({ user, onSignOut }: AppProps = {}) {
       setBaselines((current) => ({ ...current, [key]: jsonCopy(saved) }))
     }
   }
+
+  const startCreatingVariable = useCallback((rawName: string, origin: VariableOrigin) => {
+    const validation = validateVariableName(rawName)
+    if (!validation.ok) return
+    setVariableScope(origin)
+    setVariableFilter('')
+    setPendingVariableKey(validation.name)
+    setView('variables')
+  }, [])
+  const clearPendingVariableKey = useCallback(() => setPendingVariableKey(null), [])
 
   async function createCollection() {
     const name = window.prompt('Collection name')
@@ -1330,19 +1344,11 @@ function App({ user, onSignOut }: AppProps = {}) {
           <span className="workspace-label">API Workspace</span>
         </div>
         <div className="top-actions">
-          <label className="env-picker">
-            <span className={`env-dot ${selectedEnvironment ? 'active' : ''}`} aria-hidden="true" />
-            <select
-              aria-label="Environment"
-              value={selectedEnvironmentId}
-              onChange={(event) => setSelectedEnvironmentId(event.target.value)}
-            >
-              <option value="">No environment</option>
-              {sortByName(environments).map((environment) => (
-                <option value={environment.id} key={environment.id}>{environment.name}</option>
-              ))}
-            </select>
-          </label>
+          <EnvironmentPicker
+            environments={sortByName(environments)}
+            value={selectedEnvironmentId}
+            onChange={setSelectedEnvironmentId}
+          />
           <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
           <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
@@ -1403,6 +1409,8 @@ function App({ user, onSignOut }: AppProps = {}) {
               environmentId={selectedEnvironment?.id ?? null}
               filter={variableFilter}
               selectedOrigin={variableScope}
+              initialAddKey={pendingVariableKey}
+              onInitialAddHandled={clearPendingVariableKey}
               standalone
               onEditEnvironmentVariable={(oldKey, newKey, value) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value))}
               onAddEnvironmentVariable={(key, value) => mutateSelectedEnvironmentVariables((variables) => addEnvironmentVariable(variables, key, value))}
@@ -1465,42 +1473,51 @@ function App({ user, onSignOut }: AppProps = {}) {
                     </div>
                   </div>
                 )}
-                <ResourceEditor
-                  draft={activeDraft}
-                  variables={resolvedVariables}
-                  collectionName={activeDraft.kind !== 'collection' && activeDraft.kind !== 'environment'
-                    ? collections.find(({ id }) => id === activeDraft.collectionId)?.name
-                    : undefined}
-                  dirty={dirty}
-                  saving={saving}
-                  error={resourceError}
-                  onChange={updateDraft}
-                  onSave={() => void saveDraft()}
-                  onDiscard={() => promptDiscard([currentKey])}
-                  onShowVersionHistory={activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew)
-                    ? () => setVersionHistoryOpen(true)
-                    : undefined}
-                  onDelete={() => deleteResource(selected!)}
-                  onSend={() => void sendActiveRequest()}
-                  sending={activeSending}
-                  sendError={activeSendError}
-                  response={activeResponse}
-                  requestKey={currentKey}
-                  runnerId={runnerId}
-                  onRunnerChange={setRunnerId}
-                  proxy={proxy}
-                  viewers={activePresenceUsers}
-                  effectiveAuth={activeEffectiveAuth}
-                  onRetryFromServer={canRetryFromServer
-                    ? () => {
-                      // Switching the selector as well as retrying: the user has just chosen to
-                      // send from the server, and leaving the control on "Browser" would make the
-                      // next send fail exactly the same way.
-                      setRunnerId('server')
-                      void sendActiveRequest('server')
-                    }
-                    : undefined}
-                />
+                <VariableCreationContext.Provider value={{
+                  options: [
+                    { origin: 'user', label: 'Only me' },
+                    ...(selectedEnvironment ? [{ origin: 'environment' as const, label: selectedEnvironment.name }] : []),
+                    { origin: 'global', label: 'Everyone' },
+                  ],
+                  onCreate: startCreatingVariable,
+                }}>
+                  <ResourceEditor
+                    draft={activeDraft}
+                    variables={resolvedVariables}
+                    collectionName={activeDraft.kind !== 'collection' && activeDraft.kind !== 'environment'
+                      ? collections.find(({ id }) => id === activeDraft.collectionId)?.name
+                      : undefined}
+                    dirty={dirty}
+                    saving={saving}
+                    error={resourceError}
+                    onChange={updateDraft}
+                    onSave={() => void saveDraft()}
+                    onDiscard={() => promptDiscard([currentKey])}
+                    onShowVersionHistory={activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew)
+                      ? () => setVersionHistoryOpen(true)
+                      : undefined}
+                    onDelete={() => deleteResource(selected!)}
+                    onSend={() => void sendActiveRequest()}
+                    sending={activeSending}
+                    sendError={activeSendError}
+                    response={activeResponse}
+                    requestKey={currentKey}
+                    runnerId={runnerId}
+                    onRunnerChange={setRunnerId}
+                    proxy={proxy}
+                    viewers={activePresenceUsers}
+                    effectiveAuth={activeEffectiveAuth}
+                    onRetryFromServer={canRetryFromServer
+                      ? () => {
+                        // Switching the selector as well as retrying: the user has just chosen to
+                        // send from the server, and leaving the control on "Browser" would make the
+                        // next send fail exactly the same way.
+                        setRunnerId('server')
+                        void sendActiveRequest('server')
+                      }
+                      : undefined}
+                  />
+                </VariableCreationContext.Provider>
               </div>
             </>
           ) : view === 'environments' ? (

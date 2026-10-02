@@ -217,6 +217,13 @@ describe('VariablesMenu adding', () => {
     expect(screen.queryByRole('textbox', { name: 'New Only me variable key' })).toBeNull()
   })
 
+  it('prefills the new-variable row when opened from autocomplete', () => {
+    const handled = vi.fn()
+    renderMenu({ standalone: true, selectedOrigin: 'user', initialAddKey: 'newToken', onInitialAddHandled: handled })
+    expect(screen.getByRole('textbox', { name: 'New Only me variable key' })).toHaveValue('newToken')
+    expect(handled).toHaveBeenCalledOnce()
+  })
+
   it('adds an environment variable through the environment handler, even to an empty group', async () => {
     const onAdd = vi.fn().mockResolvedValue(undefined)
     const user = userEvent.setup()

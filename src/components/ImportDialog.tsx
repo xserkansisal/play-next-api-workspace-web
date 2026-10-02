@@ -243,6 +243,8 @@ function Shell({
   children: React.ReactNode
   footer: React.ReactNode
 }) {
+  const [isDragging, setIsDragging] = useState(false)
+
   return (
     <div className="modal-backdrop">
       <section className="restore-dialog import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
@@ -254,18 +256,45 @@ function Shell({
           <button aria-label="Close" onClick={onCancel}>×</button>
         </header>
 
-        <input
-          type="file"
-          accept="application/json,.json,.postman_collection,.postman_environment"
-          aria-label="Postman file"
-          onChange={(event) => {
-            const file = event.target.files?.[0]
+        <label
+          className={`postman-import-dropzone${isDragging ? ' dragging' : ''}${fileName ? ' has-file' : ''}`}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setIsDragging(true)
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setIsDragging(false)
+            const file = event.dataTransfer.files[0]
             if (file) void onFile(file)
           }}
-        />
+        >
+          <input
+            type="file"
+            accept="application/json,.json,.postman_collection,.postman_environment"
+            aria-label="Postman file"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) void onFile(file)
+              event.currentTarget.value = ''
+            }}
+          />
+          <span className="postman-import-upload-icon" aria-hidden="true">↑</span>
+          {fileName ? (
+            <>
+              <strong>{fileName}</strong>
+              <span>File selected · click to choose a different file</span>
+            </>
+          ) : (
+            <>
+              <strong>Drop your Postman export here</strong>
+              <span>or click to browse · JSON collection or environment</span>
+            </>
+          )}
+        </label>
 
         <div className="import-preview">
-          {fileName && <p className="no-conflicts">Selected file: {fileName}</p>}
           {children}
         </div>
 

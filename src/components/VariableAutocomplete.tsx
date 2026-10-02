@@ -1,7 +1,7 @@
-import { useEffect, useId, useLayoutEffect, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 
-import { describeOrigin, type VariableOrigin, type VariableResolution } from '@/lib/variable-scopes'
+import { describeOrigin, validateVariableName, type VariableOrigin, type VariableResolution } from '@/lib/variable-scopes'
 import {
   applyCompletion,
   findCompletionContext,
@@ -15,6 +15,18 @@ type TextControl = HTMLInputElement | HTMLTextAreaElement
 
 const POPUP_WIDTH = 420
 const POPUP_MAX_HEIGHT = 340
+
+export interface VariableCreationOption {
+  origin: VariableOrigin
+  label: string
+}
+
+export interface VariableCreationContextValue {
+  options: VariableCreationOption[]
+  onCreate: (name: string, origin: VariableOrigin) => void
+}
+
+export const VariableCreationContext = createContext<VariableCreationContextValue | null>(null)
 
 const MIRRORED_STYLES = [
   'boxSizing', 'width', 'height', 'overflowX', 'overflowY',
@@ -95,12 +107,14 @@ interface PopupProps {
   suggestions: VariableSuggestion[]
   active: number
   hasVariables: boolean
+  creationOptions: VariableCreationOption[]
   position: { left: number; top: number; placement: 'below' | 'above' }
   onHover: (index: number) => void
   onPick: (suggestion: VariableSuggestion) => void
+  onCreate: (origin: VariableOrigin) => void
 }
 
-function SuggestionPopup({ id, query, suggestions, active, hasVariables, position, onHover, onPick }: PopupProps) {
+function SuggestionPopup({ id, query, suggestions, active, hasVariables, creationOptions, position, onHover, onPick, onCreate }: PopupProps) {
   const current = suggestions[active]
   useEffect(() => {
     document.getElementById(`${id}-option-${active}`)?.scrollIntoView?.({ block: 'nearest' })
@@ -148,11 +162,34 @@ function SuggestionPopup({ id, query, suggestions, active, hasVariables, positio
           })}
         </div>
       ) : (
-        <div className="var-suggest-empty" role="status">
-          {query.trim()
-            ? <><strong>{`{{${query.trim()}}}`}</strong>{' '}is not defined in the selected environment, your variables or global variables.</>
-            : hasVariables ? 'No matching variables.' : 'No variables defined yet. Add them from the Variables menu or an environment.'}
-        </div>
+        <>
+          <div className="var-suggest-empty" role="status">
+            {query.trim()
+              ? <><strong>{`{{${query.trim()}}}`}</strong>{' '}is not defined in the selected environment, your variables or global variables.</>
+              : hasVariables ? 'No matching variables.' : 'No variables defined yet. Add them from the Variables menu or an environment.'}
+          </div>
+          {creationOptions.length > 0 && (
+            <div className="var-suggest-list" id={id} role="listbox" aria-label="Variable suggestions">
+              {creationOptions.map(({ origin, label }, index) => (
+                <button
+                  id={`${id}-option-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={active === index}
+                  className={`var-suggest-option var-suggest-create${active === index ? ' active' : ''}`}
+                  key={origin}
+                  onMouseEnter={() => onHover(index)}
+                  onClick={() => onCreate(origin)}
+                >
+                  <span className="var-suggest-icon" aria-hidden="true">+</span>
+                  <span className="var-suggest-main">
+                    <span className="var-suggest-name">Create “{query.trim()}” in {label}…</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
       {current && (
         <div className="var-suggest-detail">
@@ -162,7 +199,7 @@ function SuggestionPopup({ id, query, suggestions, active, hasVariables, positio
       )}
       <div className="var-suggest-foot" aria-hidden="true">
         <span><kbd>↑</kbd> <kbd>↓</kbd> navigate</span>
-        <span><kbd>Enter</kbd> / <kbd>Tab</kbd> insert</span>
+        <span><kbd>Enter</kbd> / <kbd>Tab</kbd> {creationOptions.length > 0 && !suggestions.length ? 'create' : 'insert'}</span>
         <span><kbd>Esc</kbd> close</span>
       </div>
     </div>,
@@ -195,12 +232,15 @@ export function useVariableAutocomplete<T extends TextControl>(
   const [dismissedAt, setDismissedAt] = useState<number | null>(null)
   const [selection, setSelection] = useState({ key: '', index: 0 })
   const [position, setPosition] = useState<PopupProps['position'] | null>(null)
+  const creation = useContext(VariableCreationContext)
 
   const context = focused && caret !== null ? findCompletionContext(value, Math.min(caret, value.length)) : null
   const open = context !== null && context.from !== dismissedAt
   const suggestions = open ? suggestVariables(variables, context.query) : []
+  const validatedName = context ? validateVariableName(context.query) : null
+  const creationOptions = suggestions.length === 0 && validatedName?.ok ? creation?.options ?? [] : []
   const key = context ? `${context.from}:${context.query}` : ''
-  const active = selection.key === key ? Math.min(selection.index, Math.max(suggestions.length - 1, 0)) : 0
+  const active = selection.key === key ? Math.min(selection.index, Math.max((suggestions.length || creationOptions.length) - 1, 0)) : 0
 
   const readCaret = () => {
     const element = ref.current
@@ -245,6 +285,15 @@ export function useVariableAutocomplete<T extends TextControl>(
     setCaret(result.caret)
   }
 
+  const create = (origin: VariableOrigin) => {
+    const element = ref.current
+    if (!creation || !validatedName?.ok || !element || !context || caret === null) return
+    const result = applyCompletion(element.value, context, caret, validatedName.name)
+    replaceRange(element, context.from, result.to, result.insert, result.value, result.caret)
+    setCaret(result.caret)
+    creation.onCreate(validatedName.name, origin)
+  }
+
   const handlers: VariableAutocompleteHandlers<T> = {
     onKeyDown: (event) => {
       if (!open) return
@@ -254,7 +303,18 @@ export function useVariableAutocomplete<T extends TextControl>(
         setDismissedAt(context.from)
         return
       }
-      if (!suggestions.length) return
+      if (!suggestions.length) {
+        if (creationOptions.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+          event.preventDefault()
+          const step = event.key === 'ArrowDown' ? 1 : -1
+          setSelection({ key, index: (active + step + creationOptions.length) % creationOptions.length })
+        } else if (creationOptions.length && (event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          event.preventDefault()
+          event.stopPropagation()
+          create(creationOptions[active].origin)
+        }
+        return
+      }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
         const step = event.key === 'ArrowDown' ? 1 : -1
@@ -277,14 +337,14 @@ export function useVariableAutocomplete<T extends TextControl>(
 
   const aria = {
     'aria-autocomplete': 'list',
-    'aria-controls': open && suggestions.length ? id : undefined,
-    'aria-activedescendant': open && suggestions.length ? `${id}-option-${active}` : undefined,
+    'aria-controls': open && (suggestions.length > 0 || creationOptions.length > 0) ? id : undefined,
+    'aria-activedescendant': open && (suggestions.length > 0 || creationOptions.length > 0) ? `${id}-option-${active}` : undefined,
   }
 
   const popup = open && position
     ? <SuggestionPopup id={id} query={context.query} suggestions={suggestions} active={active}
-        hasVariables={Object.keys(variables).length > 0} position={position}
-        onHover={(index) => setSelection({ key, index })} onPick={pick} />
+        hasVariables={Object.keys(variables).length > 0} creationOptions={creationOptions} position={position}
+        onHover={(index) => setSelection({ key, index })} onPick={pick} onCreate={create} />
     : null
 
   return { handlers, aria, popup }
