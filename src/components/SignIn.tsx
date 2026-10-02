@@ -7,6 +7,23 @@ import type { AuthUser } from '@/lib/auth'
 
 const MAX_CODE_ATTEMPTS = 5
 
+function devLoginEnabled(): boolean {
+  return import.meta.env.DEV && import.meta.env.VITE_DEV_LOGIN === 'true'
+}
+
+function authErrorMessage(error: unknown): string {
+  const info = describeAuthError(error)
+  return info.code === 'EMAIL_DOMAIN_NOT_ALLOWED'
+    ? 'This email domain is not allowed to sign in. Use an address ending in @fluttersea.com, @sisal.com, or @sisal.it.'
+    : info.code === 'AUTH_RATE_LIMITED'
+      ? 'Too many code requests for this address. Please wait a few minutes before trying again.'
+      : info.code === 'AUTH_DELIVERY_FAILED'
+        ? "We couldn't send the sign-in code. Please try again shortly."
+        : info.code === 'VALIDATION_ERROR'
+          ? 'Enter a valid email address.'
+          : info.message
+}
+
 interface SignInProps {
   onSignedIn: (user: AuthUser) => void
 }
@@ -33,18 +50,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
       setCode('')
       setNotice(resend ? 'A new code has been sent. The previous code no longer works.' : 'If that address is eligible, a 6-digit code has been sent. It is valid for 15 minutes.')
     } catch (submitError) {
-      const info = describeAuthError(submitError)
-      setError(
-        info.code === 'EMAIL_DOMAIN_NOT_ALLOWED'
-          ? 'This email domain is not allowed to sign in. Use an address ending in @fluttersea.com, @sisal.com, or @sisal.it.'
-          : info.code === 'AUTH_RATE_LIMITED'
-            ? 'Too many code requests for this address. Please wait a few minutes before trying again.'
-            : info.code === 'AUTH_DELIVERY_FAILED'
-              ? "We couldn't send the sign-in code. Please try again shortly."
-              : info.code === 'VALIDATION_ERROR'
-                ? 'Enter a valid email address.'
-                : info.message,
-      )
+      setError(authErrorMessage(submitError))
     } finally {
       setPending(false)
     }
@@ -56,6 +62,23 @@ export function SignIn({ onSignedIn }: SignInProps) {
     if (!trimmed) {
       setError('Enter your email address.')
       return
+    }
+    if (devLoginEnabled()) {
+      setPending(true)
+      setError(null)
+      setNotice(null)
+      try {
+        const user = await authApi.devLogin(trimmed)
+        onSignedIn(user)
+        return
+      } catch (submitError) {
+        if (describeAuthError(submitError).status !== 404) {
+          setError(authErrorMessage(submitError))
+          return
+        }
+      } finally {
+        setPending(false)
+      }
     }
     await requestCode(trimmed, false)
   }

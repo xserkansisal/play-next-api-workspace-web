@@ -20,6 +20,7 @@ function authErrorResponse(status: number, code: string, message: string) {
 describe('SignIn', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   it('provides light and dark logo assets on the sign-in screen', () => {
@@ -30,12 +31,58 @@ describe('SignIn', () => {
   })
 
   it('requests a code, then reports the specific domain-rejection error', async () => {
+    vi.stubEnv('VITE_DEV_LOGIN', 'false')
     const requestCode = vi.spyOn(authApi, 'requestCode').mockRejectedValue(authErrorResponse(400, 'EMAIL_DOMAIN_NOT_ALLOWED', 'Domain not allowed'))
     const user = userEvent.setup()
     render(<SignIn onSignedIn={vi.fn()} />)
     await user.type(screen.getByLabelText('Email'), 'someone@example.com')
     await user.click(screen.getByRole('button', { name: 'Send code' }))
     expect(requestCode).toHaveBeenCalledWith('someone@example.com')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/domain is not allowed/i)
+  })
+
+  it('signs in directly in development when dev login is enabled', async () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_DEV_LOGIN', 'true')
+    const devLogin = vi.spyOn(authApi, 'devLogin').mockResolvedValue({ id: 'u1', email: 'a@sisal.com' })
+    const requestCode = vi.spyOn(authApi, 'requestCode').mockResolvedValue(undefined)
+    const onSignedIn = vi.fn()
+    const user = userEvent.setup()
+    render(<SignIn onSignedIn={onSignedIn} />)
+    await user.type(screen.getByLabelText('Email'), 'a@sisal.com')
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
+
+    expect(devLogin).toHaveBeenCalledWith('a@sisal.com')
+    expect(requestCode).not.toHaveBeenCalled()
+    expect(onSignedIn).toHaveBeenCalledWith({ id: 'u1', email: 'a@sisal.com' })
+    expect(screen.queryByLabelText('6-digit code')).not.toBeInTheDocument()
+  })
+
+  it('falls back to requesting a code when dev login is unavailable', async () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_DEV_LOGIN', 'true')
+    vi.spyOn(authApi, 'devLogin').mockRejectedValue(authErrorResponse(404, 'NOT_FOUND', 'Not found'))
+    const requestCode = vi.spyOn(authApi, 'requestCode').mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<SignIn onSignedIn={vi.fn()} />)
+    await user.type(screen.getByLabelText('Email'), 'a@sisal.com')
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
+
+    expect(requestCode).toHaveBeenCalledWith('a@sisal.com')
+    expect(await screen.findByLabelText('6-digit code')).toBeInTheDocument()
+  })
+
+  it('does not request a code when dev login fails with a non-404 error', async () => {
+    vi.stubEnv('DEV', true)
+    vi.stubEnv('VITE_DEV_LOGIN', 'true')
+    vi.spyOn(authApi, 'devLogin').mockRejectedValue(authErrorResponse(400, 'EMAIL_DOMAIN_NOT_ALLOWED', 'Domain not allowed'))
+    const requestCode = vi.spyOn(authApi, 'requestCode').mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<SignIn onSignedIn={vi.fn()} />)
+    await user.type(screen.getByLabelText('Email'), 'someone@example.com')
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
+
+    expect(requestCode).not.toHaveBeenCalled()
     expect(await screen.findByRole('alert')).toHaveTextContent(/domain is not allowed/i)
   })
 

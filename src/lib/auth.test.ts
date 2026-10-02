@@ -20,6 +20,17 @@ describe('authApi', () => {
     vi.restoreAllMocks()
   })
 
+  it('includes credentials on API requests so the browser sends the session cookie', () => {
+    expect(apiClient.defaults.withCredentials).toBe(true)
+  })
+
+  it('posts email to dev-login and returns the signed-in user', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { user: { id: 'u1', email: 'a@sisal.com' }, expiresAt: '2026-10-29T00:00:00.000Z' } })
+    const user = await authApi.devLogin('a@sisal.com')
+    expect(post).toHaveBeenCalledWith('/auth/dev-login', { email: 'a@sisal.com' })
+    expect(user).toEqual({ id: 'u1', email: 'a@sisal.com' })
+  })
+
   it('posts email and code to verify-code and returns the user', async () => {
     const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { user: { id: 'u1', email: 'a@sisal.com' }, expiresAt: '2026-10-29T00:00:00.000Z' } })
     const user = await authApi.verifyCode('a@sisal.com', '123456')

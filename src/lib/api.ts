@@ -22,10 +22,9 @@ export const apiClient = axios.create({
   baseURL: `${apiOrigin}/api/v1`,
   timeout: 10_000,
   headers: { Accept: 'application/json' },
-  // The session is an HttpOnly cookie (`play_next_session`), not something
-  // this client can read or attach itself. Axios only sends cookies with a
-  // request (same-origin or cross-origin) when this is set - without it,
-  // every authenticated route would silently 401 even right after sign-in.
+  // The API names the HttpOnly session cookie per environment. The browser
+  // attaches it automatically; this client must include credentials on every
+  // request without knowing or handling the cookie name itself.
   withCredentials: true,
 })
 

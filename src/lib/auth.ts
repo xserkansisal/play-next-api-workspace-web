@@ -89,6 +89,11 @@ export function describeAuthError(error: unknown): AuthErrorInfo {
 }
 
 export const authApi = {
+  /** POST /api/v1/auth/dev-login. Available only when the API's development bypass is enabled. */
+  async devLogin(email: string): Promise<AuthUser> {
+    const { data } = await apiClient.post<{ user: AuthUser; expiresAt: string }>('/auth/dev-login', { email })
+    return data.user
+  },
   /** POST /api/v1/auth/request-code. Always 202 for an allowed domain, regardless of whether the address has an account - the API deliberately keeps this response uniform. A disallowed domain is the one case it rejects outright (400 EMAIL_DOMAIN_NOT_ALLOWED), since the domain rule is public anyway. */
   async requestCode(email: string): Promise<void> {
     await apiClient.post('/auth/request-code', { email })
