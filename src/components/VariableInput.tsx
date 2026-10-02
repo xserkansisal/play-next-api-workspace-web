@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, type InputHTMLAttributes } from 'react'
+import { useLayoutEffect, useRef, type InputHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 
+import { useVariableAutocomplete } from '@/components/VariableAutocomplete'
 import { describeOrigin, type VariableResolution } from '@/lib/variable-scopes'
 import { tokenizeTemplate, variableNames } from '@/lib/variable-tokens'
 
@@ -16,7 +17,7 @@ export function describeVariable(name: string, variables: VariableLookup): strin
  * undefined ones in red. A native input cannot style part of its value, so the input's own text is
  * made transparent and an identically laid-out mirror behind it renders the coloured copy.
  */
-export function VariableInput({ value, variables, className = '', onScroll, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value'> & {
+export function VariableInput({ value, variables, className = '', onScroll, onChange, onKeyDown, onSelect, onClick, onFocus, onBlur, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value'> & {
   value: string
   variables: VariableLookup
 }) {
@@ -26,6 +27,7 @@ export function VariableInput({ value, variables, className = '', onScroll, ...p
     if (input.current && mirror.current) mirror.current.scrollLeft = input.current.scrollLeft
   }
   useLayoutEffect(sync)
+  const autocomplete = useVariableAutocomplete(input, value, variables)
 
   const names = variableNames(value)
   const missing = [...new Set(names.filter((name) => !variables[name]))]
@@ -46,15 +48,48 @@ export function VariableInput({ value, variables, className = '', onScroll, ...p
       <input
         ref={input}
         {...props}
+        {...autocomplete.aria}
         value={value}
         title={title ?? props.title}
         aria-invalid={missing.length > 0 || undefined}
         onScroll={(event) => { sync(); onScroll?.(event) }}
-        onSelect={sync}
+        onChange={(event) => { onChange?.(event); autocomplete.handlers.onValueChange() }}
+        onKeyDown={(event) => { autocomplete.handlers.onKeyDown(event); if (!event.defaultPrevented) onKeyDown?.(event) }}
+        onSelect={(event) => { sync(); autocomplete.handlers.onSelect(); onSelect?.(event) }}
+        onClick={(event) => { autocomplete.handlers.onClick(); onClick?.(event) }}
+        onFocus={(event) => { autocomplete.handlers.onFocus(); onFocus?.(event) }}
+        onBlur={(event) => { autocomplete.handlers.onBlur(); onBlur?.(event) }}
         onKeyUp={sync}
         className="var-field-input"
       />
       </span>
+      {autocomplete.popup}
     </span>
+  )
+}
+
+/** A plain textarea that offers the `{{` variable picker; used for the raw request body. */
+export function VariableTextarea({ value, variables, onChange, onKeyDown, onSelect, onClick, onFocus, onBlur, ...props }: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'value'> & {
+  value: string
+  variables: VariableLookup
+}) {
+  const textarea = useRef<HTMLTextAreaElement>(null)
+  const autocomplete = useVariableAutocomplete(textarea, value, variables)
+  return (
+    <>
+      <textarea
+        ref={textarea}
+        {...props}
+        {...autocomplete.aria}
+        value={value}
+        onChange={(event) => { onChange?.(event); autocomplete.handlers.onValueChange() }}
+        onKeyDown={(event) => { autocomplete.handlers.onKeyDown(event); if (!event.defaultPrevented) onKeyDown?.(event) }}
+        onSelect={(event) => { autocomplete.handlers.onSelect(); onSelect?.(event) }}
+        onClick={(event) => { autocomplete.handlers.onClick(); onClick?.(event) }}
+        onFocus={(event) => { autocomplete.handlers.onFocus(); onFocus?.(event) }}
+        onBlur={(event) => { autocomplete.handlers.onBlur(); onBlur?.(event) }}
+      />
+      {autocomplete.popup}
+    </>
   )
 }

@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState, type DragEvent as ReactDra
 import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { PresenceAvatars } from '@/components/PresenceAvatars'
-import { VariableInput, type VariableLookup } from '@/components/VariableInput'
+import { VariableInput, VariableTextarea, type VariableLookup } from '@/components/VariableInput'
 import { AuthEditor } from '@/components/AuthEditor'
 import type { ProxySettings } from '@/lib/api'
 import { copyVariableKey } from '@/lib/copy-key'
@@ -354,9 +354,10 @@ function RequestBodyEditor({
             </Suspense>
           )}
           {body.type === 'raw' && (
-            <textarea
+            <VariableTextarea
               className="body-textarea"
               aria-label="Raw request body"
+              variables={variables}
               value={body.content}
               onChange={(event) => onBodyChange({ ...body, content: event.target.value })}
               spellCheck={false}

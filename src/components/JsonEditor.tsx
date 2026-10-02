@@ -1,9 +1,12 @@
+import { autocompletion, type Completion, type CompletionContext } from '@codemirror/autocomplete'
 import { json } from '@codemirror/lang-json'
 import { EditorState, RangeSetBuilder, StateEffect } from '@codemirror/state'
 import { Decoration, EditorView, ViewPlugin, hoverTooltip, lineNumbers, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
 
 import { describeVariable, type VariableLookup } from '@/components/VariableInput'
+import { findCompletionContext, originLabel, previewValue, suggestVariables } from '@/lib/variable-completion'
+import { describeOrigin, VARIABLE_PRECEDENCE } from '@/lib/variable-scopes'
 import { tokenizeTemplate } from '@/lib/variable-tokens'
 
 interface JsonEditorProps {
@@ -60,6 +63,34 @@ function variableHighlighter(lookup: () => VariableLookup) {
   ]
 }
 
+/** Same `{{` picker as `VariableInput`, built on CodeMirror's own completion UI. */
+export function variableCompletionSource(lookup: () => VariableLookup) {
+  return (context: CompletionContext) => {
+    const line = context.state.doc.lineAt(context.pos)
+    const found = findCompletionContext(line.text, context.pos - line.from)
+    if (!found) return null
+    const from = line.from + found.from
+    const after = context.state.sliceDoc(context.pos, Math.min(line.to, context.pos + 200))
+    const tail = /^[^{}\s]*\s*\}\}/.exec(after)
+    const to = context.pos + (tail ? tail[0].length : 0)
+    const options: Completion[] = suggestVariables(lookup(), found.query).map((suggestion, index) => ({
+      label: `{{${suggestion.name}}}`,
+      displayLabel: suggestion.name,
+      detail: previewValue(suggestion.name, suggestion.value),
+      info: `from ${describeOrigin(suggestion.origin)}${suggestion.shadowed.length ? ` · overrides ${suggestion.shadowed.map(describeOrigin).join(', ')}` : ''}`,
+      type: `variable ${suggestion.origin}`,
+      section: found.query.trim() ? undefined : { name: originLabel(suggestion.origin), rank: VARIABLE_PRECEDENCE.indexOf(suggestion.origin) },
+      boost: -index,
+      apply: (view, _completion, applyFrom) => {
+        const insert = `{{${suggestion.name}}}`
+        view.dispatch({ changes: { from: applyFrom, to, insert }, selection: { anchor: applyFrom + insert.length }, userEvent: 'input.complete' })
+      },
+    }))
+    // Ordering and filtering are already done by suggestVariables; CodeMirror must not re-filter.
+    return { from, to, options, filter: false }
+  }
+}
+
 const NO_VARIABLES: VariableLookup = {}
 
 export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEditorProps) {
@@ -80,6 +111,7 @@ export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEd
           json(),
           EditorView.lineWrapping,
           variableHighlighter(() => variablesRef.current),
+          autocompletion({ override: [variableCompletionSource(() => variablesRef.current)], activateOnTyping: true, icons: false }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) onChangeRef.current(update.state.doc.toString())
           }),

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Variable autocomplete · {{ trigger</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">↗</span> play next <small>API Workspace</small></div>
+      <div class="top-actions"><span class="env-pill">Production ▾</span><span>Variables</span><span class="avatar">ST</span></div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <p class="side-title">COLLECTIONS</p>
+        <div class="tree-row"><span class="tree-icon">▣</span> Shop API</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Orders</div>
+        <div class="tree-row child selected"><span class="m post">POST</span> Create order</div>
+        <div class="tree-row child"><span class="m">GET</span> List orders</div>
+        <div class="tree-row child"><span class="m">GET</span> Order detail</div>
+        <div class="tree-row"><span class="tree-icon">▣</span> Internal Tools</div>
+      </aside>
+      <main class="main">
+        <nav class="mock-nav"><a href="01-url-trigger.html" class="current">1. {{ ile tetikleme</a><a href="02-filtering.html" class="">2. Filtreleme</a><a href="03-headers-table.html" class="">3. Header tablosu</a><a href="04-json-body.html" class="">4. JSON body</a><a href="05-no-match.html" class="">5. Eşleşme yok</a><a href="06-inserted.html" class="">6. Seçim sonrası</a></nav>
+        <div class="note"><b>Tetikleme:</b> Kullanıcı URL alanında <code>{{</code> yazdığı anda öneri listesi imlecin altında açılır. Liste, çözünürlük önceliğine göre gruplanır (Your variables → Environment → Global). Gölgelenen (shadowed) değişkenler gösterilmez; kazanan kaynakta “overrides …” notu çıkar. Secret görünümlü değerler maskelenir.</div>
+        <section class="request-panel">
+          <div class="url-row">
+            <span class="method-select">POST ▾</span>
+            <div class="url-input focused" style="position:relative"><span class="tok found">{{baseUrl}}</span>/<span class="tok typing">{{</span><span class="caret"></span>
+            <div class="suggest" role="listbox" aria-label="Variable suggestions" style="top:44px; left:118px;">
+              <div class="suggest-head"><span>Variables</span><code>{{</code></div>
+              <div class="suggest-list">
+              <div class="group-label">Your variables</div>
+              <div class="opt active" role="option" aria-selected="true">
+                <span class="opt-icon">U</span>
+                <span class="opt-main"><span class="opt-name">authToken</span><span class="opt-value secret">••••••••••••••••</span></span>
+                <span class="opt-right"><span class="badge user">Your variables</span><span class="shadow-note">overrides Production</span></span>
+              </div>
+              <div class="opt" role="option" aria-selected="false">
+                <span class="opt-icon">U</span>
+                <span class="opt-main"><span class="opt-name">userId</span><span class="opt-value">4821</span></span>
+                <span class="opt-right"><span class="badge user">Your variables</span></span>
+              </div>
+              <div class="group-label">Production</div>
+              <div class="opt" role="option" aria-selected="false">
+                <span class="opt-icon">E</span>
+                <span class="opt-main"><span class="opt-name">baseUrl</span><span class="opt-value">https://api.shop.example.com</span></span>
+                <span class="opt-right"><span class="badge env">Production</span><span class="shadow-note">overrides Global</span></span>
+              </div>
+              <div class="opt" role="option" aria-selected="false">
+                <span class="opt-icon">E</span>
+                <span class="opt-main"><span class="opt-name">apiVersion</span><span class="opt-value">v2</span></span>
+                <span class="opt-right"><span class="badge env">Production</span></span>
+              </div>
+              <div class="opt" role="option" aria-selected="false">
+                <span class="opt-icon">E</span>
+                <span class="opt-main"><span class="opt-name">tenantId</span><span class="opt-value">acme</span></span>
+                <span class="opt-right"><span class="badge env">Production</span></span>
+              </div>
+              <div class="group-label">Global</div>
+              <div class="opt" role="option" aria-selected="false">
+                <span class="opt-icon">G</span>
+                <span class="opt-main"><span class="opt-name">timeout</span><span class="opt-value">30000</span></span>
+                <span class="opt-right"><span class="badge global">Global</span></span>
+              </div>
+              </div>
+              <div class="suggest-detail"><strong>authToken</strong> · kaynak: <b>your variables</b><br>Production ortamındaki <code>authToken</code> değerini geçersiz kılıyor (shadowed).</div>
+              <div class="suggest-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> gezin</span><span><kbd>Enter</kbd> / <kbd>Tab</kbd> ekle</span><span><kbd>Esc</kbd> kapat</span></div>
+            </div>
+            </div>
+            <button class="send">Send</button>
+          </div>
+          <div class="editor-tabs"><span class="active">Params</span><span class="">Headers</span><span class="">Body</span><span class="">Auth</span></div>
+          <div class="panel-body">
+            <table class="kv"><tr><th class="check"></th><th>Key</th><th>Value</th><th>Description</th></tr><tr><td class="check">☐</td><td><div class="cell placeholder">Key</div></td><td><div class="cell placeholder">Value</div></td><td><div class="cell placeholder">Description</div></td></tr></table>
+          </div>
+        </section>
+        <div class="spacer"></div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

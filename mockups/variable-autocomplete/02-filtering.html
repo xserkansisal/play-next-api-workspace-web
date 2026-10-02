@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Variable autocomplete · Filtering</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">↗</span> play next <small>API Workspace</small></div>
+      <div class="top-actions"><span class="env-pill">Production ▾</span><span>Variables</span><span class="avatar">ST</span></div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar">
+        <p class="side-title">COLLECTIONS</p>
+        <div class="tree-row"><span class="tree-icon">▣</span> Shop API</div>
+        <div class="tree-row child"><span class="tree-icon">▾</span> Orders</div>
+        <div class="tree-row child selected"><span class="m post">POST</span> Create order</div>
+        <div class="tree-row child"><span class="m">GET</span> List orders</div>
+        <div class="tree-row child"><span class="m">GET</span> Order detail</div>
+        <div class="tree-row"><span class="tree-icon">▣</span> Internal Tools</div>
+      </aside>
+      <main class="main">
+        <nav class="mock-nav"><a href="01-url-trigger.html" class="">1. {{ ile tetikleme</a><a href="02-filtering.html" class="current">2. Filtreleme</a><a href="03-headers-table.html" class="">3. Header tablosu</a><a href="04-json-body.html" class="">4. JSON body</a><a href="05-no-match.html" class="">5. Eşleşme yok</a><a href="06-inserted.html" class="">6. Seçim sonrası</a></nav>
+        <div class="note"><b>Filtreleme:</b> <code>{{</code> sonrasında yazılan metin (burada <code>Id</code>) case-insensitive olarak eşleştirilir. Sıralama: önek eşleşmesi → kelime içi eşleşme → precedence. Eşleşen kısım altı çizili vurgulanır. Altta seçili değişkenin tam değeri ve kaynağı gösterilir.</div>
+        <section class="request-panel">
+          <div class="url-row">
+            <span class="method-select">POST ▾</span>
+            <div class="url-input focused" style="position:relative"><span class="tok found">{{baseUrl}}</span>/<span class="tok found">{{apiVersion}}</span>/orders?tenant=<span class="tok typing">{{Id</span><span class="caret"></span>
+            <div class="suggest" role="listbox" aria-label="Variable suggestions" style="top:44px; left:330px;">
+              <div class="suggest-head"><span>Variables</span><code>{{Id</code></div>
+              <div class="suggest-list">
+              <div class="opt" role="option" aria-selected="false">
+                <span class="opt-icon">U</span>
+                <span class="opt-main"><span class="opt-name">user<mark>Id</mark></span><span class="opt-value">4821</span></span>
+                <span class="opt-right"><span class="badge user">Your variables</span></span>
+              </div>
+              <div class="opt active" role="option" aria-selected="true">
+                <span class="opt-icon">E</span>
+                <span class="opt-main"><span class="opt-name">tenant<mark>Id</mark></span><span class="opt-value">acme</span></span>
+                <span class="opt-right"><span class="badge env">Production</span></span>
+              </div>
+              </div>
+              <div class="suggest-detail"><strong>tenantId</strong> = <code>acme</code> · kaynak: <b>Production</b></div>
+              <div class="suggest-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> gezin</span><span><kbd>Enter</kbd> / <kbd>Tab</kbd> ekle</span><span><kbd>Esc</kbd> kapat</span></div>
+            </div>
+            </div>
+            <button class="send">Send</button>
+          </div>
+          <div class="editor-tabs"><span class="active">Params</span><span class="">Headers</span><span class="">Body</span><span class="">Auth</span></div>
+          <div class="panel-body">
+            <table class="kv"><tr><th class="check"></th><th>Key</th><th>Value</th><th>Description</th></tr>
+            <tr><td class="check">☑</td><td><div class="cell">tenant</div></td><td><div class="cell"><span class="tok typing">{{Id</span></div></td><td><div class="cell placeholder">Description</div></td></tr></table>
+          </div>
+        </section>
+        <div class="spacer"></div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
