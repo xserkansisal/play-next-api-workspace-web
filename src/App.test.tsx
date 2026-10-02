@@ -857,4 +857,35 @@ describe('which scope a {{name}} resolves from', () => {
 
     expect(await screen.findByRole('heading', { name: 'Only me' })).toBeInTheDocument()
   })
+
+  it('exports only the currently open personal or global variable scope', async () => {
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([
+      { scope: 'user', key: 'personalToken', value: 'mine' },
+      { scope: 'global', key: 'sharedUrl', value: 'https://example.com' },
+    ])
+    vi.stubGlobal('URL', {
+      createObjectURL: vi.fn(() => 'blob:test'),
+      revokeObjectURL: vi.fn(),
+    })
+    const downloadedFiles: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloadedFiles.push(this.download)
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open Only me variables' }))
+    const exportButton = screen.getByRole('button', { name: 'Export' })
+    expect(exportButton).toHaveAttribute('title', 'Export Only me variables as Play Next JSON')
+    await user.click(exportButton)
+
+    await user.click(screen.getByRole('button', { name: 'Open Everyone variables' }))
+    expect(exportButton).toHaveAttribute('title', 'Export Everyone variables as Play Next JSON')
+    await user.click(exportButton)
+
+    expect(downloadedFiles).toEqual([
+      'play-next-api-user-variables.json',
+      'play-next-api-global-variables.json',
+    ])
+  })
 })

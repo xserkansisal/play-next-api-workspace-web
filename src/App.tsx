@@ -30,6 +30,7 @@ import { canProxy, runnerFor, type RunnerId } from '@/lib/request-runner'
 import { loadRunnerId, saveRunnerId } from '@/lib/runner-storage'
 import type { RecordedResponse } from '@/lib/request-runner'
 import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeScopedVariables } from '@/lib/scoped-variables'
+import { exportScopedVariables } from '@/lib/scoped-variable-export'
 import { loadVariableOrder } from '@/lib/variable-order-storage'
 import { resolveVariables, toVariableMap, validateVariableName, type VariableOrigin } from '@/lib/variable-scopes'
 import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
@@ -476,6 +477,10 @@ function App({ user, onSignOut }: AppProps = {}) {
   // Export follows the current selection: an environment when one is open, otherwise the
   // collection the selection belongs to.
   const exportTarget = useMemo(() => {
+    if (view === 'variables' && (variableScope === 'user' || variableScope === 'global')) {
+      const label = variableScope === 'user' ? 'Only me' : 'Everyone'
+      return { title: `Export ${label} variables as Play Next JSON`, run: () => exportScopedVariableScope(variableScope) }
+    }
     if (selected?.kind === 'environment') {
       const environment = environments.find(({ id }) => id === selected.environmentId)
       if (!environment) return null
@@ -486,7 +491,7 @@ function App({ user, onSignOut }: AppProps = {}) {
     if (!collection) return null
     return { title: `Export "${collection.name}" as a Postman v2.1 collection file`, run: () => exportCollection(collection.id) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, environments, collections, activeCollectionId])
+  }, [view, variableScope, selected, environments, collections, activeCollectionId, scopedVariables])
 
   function openResource(resource: OpenResource) {
     const key = resourceKey(resource)
@@ -1033,6 +1038,11 @@ function App({ user, onSignOut }: AppProps = {}) {
     const environment = environments.find(({ id }) => id === environmentId)
     if (!environment) return
     downloadJson(exportEnvironmentToPostman(environment), `${safeFileName(environment.name, 'environment')}.postman_environment.json`)
+  }
+
+  function exportScopedVariableScope(scope: 'user' | 'global') {
+    const label = scope === 'user' ? 'user' : 'global'
+    downloadJson(exportScopedVariables(scope, scopedVariables), `play-next-api-${label}-variables.json`)
   }
 
   async function createFolder() {

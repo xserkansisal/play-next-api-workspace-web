@@ -87,6 +87,12 @@ The **Export** button follows the current selection: an open environment exports
 `*.postman_environment.json`, otherwise the selected collection exports as
 `*.postman_collection.json`.
 
+When the **Only me** or **Everyone** scope is open in the Variables view, **Export** downloads
+that scope alone as `play-next-api-user-variables.json` or
+`play-next-api-global-variables.json`. These Play Next JSON files include the scope, format, and
+format version so the distinction is preserved. Variable values are written in plain text; store
+the downloaded files accordingly.
+
 ## Duplicating something
 
 Hovering a row in the sidebar shows a **⧉** button next to the **×**. It duplicates collections,
