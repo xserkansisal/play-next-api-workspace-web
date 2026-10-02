@@ -221,7 +221,11 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .environment-list-heading { display: flex; justify-content: space-between; margin-top: 8px; }
 .environment-list-heading h2 { margin: 0; font-size: 13px; }
 .environment-list-heading p, .field-label small { margin: 3px 0; color: #747b88; font-size: 12px; font-weight: 400; }
-.environment-head, .environment-row { grid-template-columns: 25px 1fr 1.5fr 25px 25px; }
+.environment-head, .environment-row { grid-template-columns: 18px 25px 1fr 1.5fr 25px 25px 25px; }
+.environment-row.is-dragging { opacity: .4; }
+.environment-row.drop-before { box-shadow: inset 0 2px 0 #6d5ce8; }
+.environment-row.drop-after { box-shadow: inset 0 -2px 0 #6d5ce8; }
+.environment-row .runtime-vars-move > .row-clone { width: 25px; height: 25px; font-size: 15px; }
 .resize-handle { height: 11px; flex: 0 0 11px; display: grid; place-items: center; cursor: row-resize; user-select: none; }
 .resize-handle::after { width: 35px; height: 3px; border-radius: 4px; background: #cfd2da; content: ""; }
 .response-panel { min-height: 130px; flex: 1; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
@@ -671,7 +675,7 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .sidebar.collapsed .sidebar-variable-scopes, .sidebar.collapsed .environments-tree { display: none; }
 .standalone-variables { position: static; display: block; flex: 1; min-height: 0; overflow: auto; padding: 24px; }
 .standalone-variables > summary { display: none; }
-.standalone-variables .runtime-vars-panel { position: static; width: 100%; max-width: 1080px; max-height: none; margin: 0 auto; padding: 0; overflow: visible; border: 0; box-shadow: none; }
+.standalone-variables .runtime-vars-panel { position: static; width: 100%; max-width: none; max-height: none; margin: 0; padding: 0; overflow: visible; border: 0; box-shadow: none; }
 .variables-detail-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px 24px; margin-bottom: 22px; padding: 24px 26px; border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(135deg, #fff 0%, #f7f6ff 100%); box-shadow: 0 5px 20px rgba(20, 24, 40, .035); }
 .variables-detail-title { display: flex; min-width: 0; align-items: flex-start; gap: 16px; }
 .variables-scope-icon { display: grid; width: 46px; height: 46px; flex: none; place-items: center; border-radius: 12px; color: #5c4dd0; background: #ebe8ff; font-size: 25px; line-height: 1; }

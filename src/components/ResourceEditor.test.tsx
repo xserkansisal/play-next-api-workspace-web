@@ -225,3 +225,45 @@ describe('duplicating an environment variable', () => {
     expect(onChange.mock.calls[0][0].resource.variables[2]).toEqual({ key: 'token_copy', value: 'abc', enabled: false })
   })
 })
+
+describe('reordering environment variables', () => {
+  const keys = (onChange: ReturnType<typeof vi.fn>) =>
+    (onChange.mock.calls.at(-1)?.[0].resource.variables as { key: string }[]).map(({ key }) => key)
+
+  it('moves a variable with the row menu', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderEditor(environmentDraft, null, onChange)
+
+    await user.click(screen.getByLabelText('Move token'))
+    expect(screen.getByRole('menuitem', { name: 'Move down' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Move to bottom' })).toBeDisabled()
+    await user.click(screen.getByRole('menuitem', { name: 'Move to top' }))
+
+    expect(keys(onChange)).toEqual(['token', 'baseUrl'])
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('moves a variable with the keyboard on its handle', () => {
+    const onChange = vi.fn()
+    renderEditor(environmentDraft, null, onChange)
+
+    fireEvent.keyDown(screen.getByLabelText('Reorder baseUrl'), { key: 'ArrowDown' })
+
+    expect(keys(onChange)).toEqual(['token', 'baseUrl'])
+  })
+
+  it('moves a variable by dragging it onto another row', () => {
+    const onChange = vi.fn()
+    renderEditor(environmentDraft, null, onChange)
+    const dataTransfer = { setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: '', dropEffect: '' }
+    // jsdom drops clientY from drag events, so the hover lands on the lower half: "after" the row.
+    const target = screen.getByLabelText('Reorder token').parentElement!
+
+    fireEvent.dragStart(screen.getByLabelText('Reorder baseUrl'), { dataTransfer })
+    fireEvent.dragOver(target, { dataTransfer })
+    fireEvent.drop(target, { dataTransfer })
+
+    expect(keys(onChange)).toEqual(['token', 'baseUrl'])
+  })
+})

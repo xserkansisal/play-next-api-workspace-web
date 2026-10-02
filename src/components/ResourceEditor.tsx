@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
@@ -480,6 +480,14 @@ function KeyValueEditor({ label, entries, variables, onChange }: { label: string
   )
 }
 
+type MoveTarget = 'top' | 'up' | 'down' | 'bottom'
+const ENV_MOVE_OPTIONS: { target: MoveTarget; label: string }[] = [
+  { target: 'top', label: 'Move to top' },
+  { target: 'up', label: 'Move up' },
+  { target: 'down', label: 'Move down' },
+  { target: 'bottom', label: 'Move to bottom' },
+]
+
 function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; onChange: (resource: EnvironmentResource) => void }) {
   const add = () => onChange({ ...draft, variables: [...draft.variables, { key: '', value: '', enabled: true }] })
   const change = (index: number, patch: Partial<EnvironmentVariable>) => onChange({
@@ -494,20 +502,120 @@ function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; on
     const copy = { ...source, key: copyVariableKey(source.key, (candidate) => taken.has(candidate)) }
     onChange({ ...draft, variables: [...draft.variables.slice(0, index + 1), copy, ...draft.variables.slice(index + 1)] })
   }
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dropHint, setDropHint] = useState<{ index: number; position: 'before' | 'after' } | null>(null)
+  const [menuIndex, setMenuIndex] = useState<number | null>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const last = draft.variables.length - 1
+
+  useEffect(() => {
+    if (menuIndex === null) return
+    const close = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement).closest('.runtime-vars-move')) setMenuIndex(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [menuIndex])
+
+  const moveTo = (from: number, to: number) => {
+    const target = Math.max(0, Math.min(last, to))
+    if (from === target) return
+    const next = [...draft.variables]
+    const [moved] = next.splice(from, 1)
+    next.splice(target, 0, moved)
+    onChange({ ...draft, variables: next })
+    return target
+  }
+  const moveBy = (index: number, target: MoveTarget) =>
+    moveTo(index, target === 'top' ? 0 : target === 'bottom' ? last : target === 'up' ? index - 1 : index + 1)
+
+  const handleKeyboardMove = (event: ReactKeyboardEvent, index: number) => {
+    const target = event.key === 'ArrowUp' ? 'up' : event.key === 'ArrowDown' ? 'down' : event.key === 'Home' ? 'top' : event.key === 'End' ? 'bottom' : null
+    if (!target) return
+    event.preventDefault()
+    const next = moveBy(index, target)
+    // Keep focus on the moved row's handle so repeated presses keep moving it.
+    if (next !== undefined) requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-handle="${next}"]`)?.focus())
+  }
+  const handleDragOver = (event: ReactDragEvent<HTMLDivElement>, index: number) => {
+    if (dragIndex === null) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    const box = event.currentTarget.getBoundingClientRect()
+    const position = event.clientY < box.top + box.height / 2 ? 'before' : 'after'
+    if (dropHint?.index !== index || dropHint.position !== position) setDropHint({ index, position })
+  }
+  const endDrag = () => { setDragIndex(null); setDropHint(null) }
+  const handleDrop = (event: ReactDragEvent) => {
+    event.preventDefault()
+    if (dragIndex !== null && dropHint && dropHint.index !== dragIndex) {
+      const insertAt = dropHint.index + (dropHint.position === 'after' ? 1 : 0)
+      moveTo(dragIndex, insertAt > dragIndex ? insertAt - 1 : insertAt)
+    }
+    endDrag()
+  }
+
   return (
     <div className="resource-form environment-form">
       <label className="field-label">Environment name<input className="text-field" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></label>
       <div className="environment-list-heading"><div><h2>Variables</h2><p>Keys are case-sensitive and cannot contain spaces or braces.</p></div></div>
-      <div className="param-head environment-head"><span></span><span>KEY</span><span>VALUE</span><span></span><span></span></div>
-      {draft.variables.map((variable, index) => (
-        <div className="param-row environment-row" key={`variable-${index}`}>
+      <div ref={listRef}>
+      <div className="param-head environment-head"><span></span><span></span><span>KEY</span><span>VALUE</span><span></span><span></span><span></span></div>
+      {draft.variables.map((variable, index) => {
+        const name = variable.key || `variable ${index + 1}`
+        const hint = dropHint?.index === index && dragIndex !== index ? dropHint.position : null
+        const menuOpen = menuIndex === index
+        return (
+        <div
+          className={['param-row environment-row', dragIndex === index && 'is-dragging', hint && `drop-${hint}`].filter(Boolean).join(' ')}
+          key={`variable-${index}`}
+          onDragOver={(event) => handleDragOver(event, index)}
+          onDrop={handleDrop}
+        >
+          <button
+            type="button"
+            className="runtime-vars-handle"
+            draggable
+            data-handle={index}
+            aria-label={`Reorder ${name}`}
+            title="Drag to reorder (or focus and use ↑ ↓ Home End)"
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = 'move'
+              event.dataTransfer.setData('text/plain', variable.key)
+              const row = event.currentTarget.parentElement
+              if (row) event.dataTransfer.setDragImage(row, 12, row.offsetHeight / 2)
+              setDragIndex(index)
+              setMenuIndex(null)
+            }}
+            onDragEnd={endDrag}
+            onKeyDown={(event) => handleKeyboardMove(event, index)}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
+          </button>
           <input className="check" type="checkbox" aria-label={`Enable variable ${variable.key || index + 1}`} checked={variable.enabled} onChange={(event) => change(index, { enabled: event.target.checked })} />
           <input className="cell-input" aria-label={`Variable key ${index + 1}`} value={variable.key} placeholder="baseUrl" onChange={(event) => change(index, { key: event.target.value })} />
           <input className="cell-input" aria-label={`Variable value ${index + 1}`} value={variable.value} placeholder="https://api.example.com" onChange={(event) => change(index, { value: event.target.value })} />
           <button className="row-clone" aria-label={`Duplicate variable ${index + 1}`} title={`Duplicate ${variable.key || 'this variable'}`} onClick={() => duplicate(index)}>⧉</button>
           <button className="row-remove" aria-label={`Remove variable ${index + 1}`} onClick={() => onChange({ ...draft, variables: draft.variables.filter((_, i) => i !== index) })}>×</button>
+          <span className="runtime-vars-move">
+            <button type="button" className="row-clone" aria-label={`Move ${name}`} title="Move" aria-haspopup="menu" aria-expanded={menuOpen}
+              onClick={() => setMenuIndex(menuOpen ? null : index)}>⋮</button>
+            {menuOpen && (
+              <span className="runtime-vars-move-menu" role="menu" aria-label={`Move ${name}`} onKeyDown={(event) => { if (event.key === 'Escape') setMenuIndex(null) }}>
+                {ENV_MOVE_OPTIONS.map(({ target, label }) => (
+                  <button type="button" role="menuitem" key={target}
+                    disabled={((target === 'top' || target === 'up') && index === 0) || ((target === 'bottom' || target === 'down') && index === last)}
+                    onClick={() => { moveBy(index, target); setMenuIndex(null) }}>
+                    {label}
+                  </button>
+                ))}
+              </span>
+            )}
+          </span>
         </div>
-      ))}
+        )
+      })}
+      </div>
       <button className="add-param" onClick={add}>＋ Add variable</button>
     </div>
   )
