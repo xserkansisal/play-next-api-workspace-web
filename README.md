@@ -29,8 +29,9 @@ Request drafts are saved independently, with explicit unsaved indicators and liv
 controls that preserve local edits rather than silently merging or replacing them. **Discard changes**
 reverts an open item to its last saved version (a never-saved request or environment is closed instead).
 Shortcuts follow the platform: `⌘S` / `Ctrl+S` saves and `⇧⌘⌫` / `Ctrl+Shift+Backspace` asks to
-discard. Right-clicking a request tab offers Discard changes, Discard changes in all tabs, and Close
-tab; closing a request tab with unsaved edits offers Save and close, Discard changes, or Cancel; and
+discard. Right-clicking a request tab offers Discard changes, Discard changes in all tabs, Close tab,
+Close other tabs, and Close all tabs. Bulk closing warns before losing unsaved edits; closing a single
+request tab with unsaved edits offers Save and close, Discard changes, or Cancel; and
 the browser asks before leaving or reloading the page while anything is unsaved. The request body
 is edited with JSON highlighting while remaining text, so `{{variables}}` stay editable.
 

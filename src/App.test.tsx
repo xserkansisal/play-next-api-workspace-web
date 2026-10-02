@@ -494,6 +494,34 @@ describe('discarding from the tab menu, the keyboard and before leaving', () => 
     expect(document.querySelectorAll('.tab-dirty')).toHaveLength(0)
   })
 
+  it('closes other tabs after warning about their unsaved changes', async () => {
+    const user = await editBoth()
+    await user.pointer({ keys: '[MouseRight]', target: tabFor('List orders') })
+    await user.click(screen.getByRole('menuitem', { name: 'Close other tabs' }))
+
+    const dialog = screen.getByRole('alertdialog', { name: 'Close 1 tab?' })
+    expect(dialog).toHaveTextContent('Unsaved changes in 1 tab will be lost')
+    await user.click(within(dialog).getByRole('button', { name: 'Close tabs' }))
+
+    expect(screen.getByRole('button', { name: 'Close List orders' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Close Create order' })).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/orders/a')
+    expect(tabFor('List orders').querySelector('.tab-dirty')).not.toBeNull()
+  })
+
+  it('closes all tabs after warning about unsaved changes', async () => {
+    const user = await editBoth()
+    await user.pointer({ keys: '[MouseRight]', target: tabFor('Create order') })
+    await user.click(screen.getByRole('menuitem', { name: 'Close all tabs' }))
+
+    const dialog = screen.getByRole('alertdialog', { name: 'Close 2 tabs?' })
+    expect(dialog).toHaveTextContent('Unsaved changes in 2 tabs will be lost')
+    await user.click(within(dialog).getByRole('button', { name: 'Close tabs' }))
+
+    expect(screen.queryByRole('button', { name: 'Close List orders' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Close Create order' })).toBeNull()
+  })
+
   it('disables discard items when nothing is unsaved and closes the menu on Escape', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -501,6 +529,8 @@ describe('discarding from the tab menu, the keyboard and before leaving', () => 
     await user.pointer({ keys: '[MouseRight]', target: tabFor('List orders') })
     expect(screen.getByRole('menuitem', { name: 'Discard changes' })).toBeDisabled()
     expect(screen.getByRole('menuitem', { name: 'Discard changes in all tabs' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Close other tabs' })).toBeDisabled()
+    expect(screen.getByRole('menuitem', { name: 'Close all tabs' })).toBeEnabled()
     expect(screen.getByRole('menuitem', { name: 'Close tab' })).toHaveFocus()
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('menu')).toBeNull()

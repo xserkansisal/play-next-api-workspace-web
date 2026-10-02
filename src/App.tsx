@@ -203,6 +203,7 @@ function App({ user, onSignOut }: AppProps = {}) {
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
   const [closePrompt, setClosePrompt] = useState<ClosePrompt | null>(null)
+  const [closeTabsPrompt, setCloseTabsPrompt] = useState<{ keys: string[]; unsavedCount: number } | null>(null)
   /** The drafts awaiting confirmation before their local edits are thrown away. */
   const [discardPrompt, setDiscardPrompt] = useState<{ keys: string[] } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ tab: OpenResource; x: number; y: number } | null>(null)
@@ -529,6 +530,13 @@ function App({ user, onSignOut }: AppProps = {}) {
       return
     }
     removeTab(tab)
+  }
+
+  function requestCloseTabs(keys: string[]) {
+    if (keys.length === 0) return
+    const unsavedCount = keys.filter(isUnsaved).length
+    if (unsavedCount > 0) setCloseTabsPrompt({ keys, unsavedCount })
+    else removeTabs(keys)
   }
 
   async function saveAndCloseTab() {
@@ -1562,15 +1570,30 @@ function App({ user, onSignOut }: AppProps = {}) {
         )
       })()}
 
+      {closeTabsPrompt && (
+        <ConfirmDialog
+          title={`Close ${closeTabsPrompt.keys.length} tab${closeTabsPrompt.keys.length === 1 ? '' : 's'}?`}
+          message={closeTabsPrompt.unsavedCount > 0
+            ? `Unsaved changes in ${closeTabsPrompt.unsavedCount} tab${closeTabsPrompt.unsavedCount === 1 ? '' : 's'} will be lost. This cannot be undone.`
+            : 'This cannot be undone.'}
+          confirmLabel="Close tabs"
+          destructive
+          onConfirm={() => { removeTabs(closeTabsPrompt.keys); setCloseTabsPrompt(null) }}
+          onCancel={() => setCloseTabsPrompt(null)}
+        />
+      )}
+
       {tabMenu && (() => {
         const key = resourceKey(tabMenu.tab)
+        const otherTabKeys = requestTabs.filter((tab) => resourceKey(tab) !== key).map(resourceKey)
+        const allTabKeys = requestTabs.map(resourceKey)
         const run = (action: () => void) => () => { setTabMenu(null); action() }
         return (
           <div
             className="tab-context-menu"
             role="menu"
             aria-label="Tab actions"
-            style={{ left: Math.min(tabMenu.x, window.innerWidth - 230), top: Math.min(tabMenu.y, window.innerHeight - 130) }}
+            style={{ left: Math.min(tabMenu.x, window.innerWidth - 230), top: Math.max(0, Math.min(tabMenu.y, window.innerHeight - 190)) }}
             ref={tabMenuRef}
             onMouseDown={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
@@ -1585,6 +1608,8 @@ function App({ user, onSignOut }: AppProps = {}) {
             <button role="menuitem" disabled={unsavedTabKeys.length === 0} onClick={run(() => promptDiscard(unsavedTabKeys))}>Discard changes in all tabs</button>
             <hr />
             <button role="menuitem" onClick={run(() => requestCloseTab(tabMenu.tab))}>Close tab</button>
+            <button role="menuitem" disabled={otherTabKeys.length === 0} onClick={run(() => requestCloseTabs(otherTabKeys))}>Close other tabs</button>
+            <button role="menuitem" onClick={run(() => requestCloseTabs(allTabKeys))}>Close all tabs</button>
           </div>
         )
       })()}
