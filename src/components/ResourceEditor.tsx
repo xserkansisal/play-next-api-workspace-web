@@ -12,7 +12,7 @@ import { copyVariableKey } from '@/lib/copy-key'
 import type { AuthSource } from '@/lib/auth-resolution'
 import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import { parseMultipartFields, parseUrlEncodedFields, serializeUrlEncodedFields, type MultipartField } from '@/lib/request-body'
-import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type OpenResource, type RequestAuth, type RequestBody, type RequestMethod, type ResourceAuth, type ResourceDraft, type WorkspaceItem } from '@/lib/workspace-types'
+import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type OpenResource, type RequestAuth, type RequestBody, type RequestMethod, type ResourceAuth, type ResourceDraft, type Script, type ScriptStage, type WorkspaceItem, MAX_SCRIPT_REFERENCES } from '@/lib/workspace-types'
 import { sortTreeItems } from '@/lib/workspace-ui'
 import type { PresenceUser } from '@/lib/presence'
 import { DISCARD_SHORTCUT, matchesShortcut, SAVE_SHORTCUT, shortcutLabel } from '@/lib/shortcuts'
@@ -61,8 +61,66 @@ interface ResourceEditorProps {
   /** Resolved variables, used to colour `{{name}}` references as defined or undefined. */
   variables?: VariableLookup
   viewers?: PresenceUser[]
+  /** The team's shared script library; request script pickers draw from it. */
+  scripts?: Script[]
+  onManageScripts?: () => void
   /** What the open item's "Inherit" auth setting currently resolves to, for a live preview. */
   effectiveAuth?: { auth: AuthCredentials; source: AuthSource }
+}
+
+function LinkedScripts({ label, stage, ids, scripts, canEdit, onChange }: {
+  label: string
+  stage: ScriptStage
+  ids: string[]
+  scripts: Script[]
+  canEdit: boolean
+  onChange: (ids: string[]) => void
+}) {
+  const byId = new Map(scripts.map((script) => [script.id, script]))
+  const available = scripts.filter((script) => script.stage === stage && !ids.includes(script.id))
+  const move = (index: number, offset: number) => {
+    const next = [...ids]
+    const [item] = next.splice(index, 1)
+    next.splice(index + offset, 0, item)
+    onChange(next)
+  }
+  return (
+    <div className="linked-scripts">
+      <strong>{label}</strong>
+      <small>Run in this order, before the inline script for the same stage.</small>
+      {ids.length > 0 && (
+        <ol aria-label={label}>
+          {ids.map((id, index) => {
+            const script = byId.get(id)
+            const wrongStage = !!script && script.stage !== stage
+            return (
+              <li key={id}>
+                <span>{script ? script.name : 'Unknown script'}{!script && <small> · missing from the library</small>}{wrongStage && <small> · wrong stage</small>}</span>
+                {canEdit && (
+                  <span>
+                    <Button type="button" variant="outline" size="sm" disabled={index === 0} aria-label={`Move ${script?.name ?? id} up`} onClick={() => move(index, -1)}>↑</Button>
+                    <Button type="button" variant="outline" size="sm" disabled={index === ids.length - 1} aria-label={`Move ${script?.name ?? id} down`} onClick={() => move(index, 1)}>↓</Button>
+                    <Button type="button" variant="outline" size="sm" aria-label={`Remove ${script?.name ?? id}`} onClick={() => onChange(ids.filter((other) => other !== id))}>Remove</Button>
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      )}
+      {canEdit && ids.length < MAX_SCRIPT_REFERENCES && (
+        <select
+          className="auth-select"
+          aria-label={`Add ${stage} script`}
+          value=""
+          onChange={(event) => { if (event.target.value) onChange([...ids, event.target.value]) }}
+        >
+          <option value="">{available.length ? 'Add a shared script…' : 'No more scripts available'}</option>
+          {available.map((script) => <option key={script.id} value={script.id}>{script.name}</option>)}
+        </select>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -95,7 +153,7 @@ function suggestedContentType(type: RequestBody['type']): string {
   }
 }
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onShowSnapshots, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, onRunSavedResources, onShowRunHistory, onOpenResource, onCreateRequest, requestLocations, onRequestLocationChange, onCreateFolder, runStarting = false, runError, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onShowSnapshots, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, onRunSavedResources, onShowRunHistory, onOpenResource, onCreateRequest, requestLocations, onRequestLocationChange, onCreateFolder, runStarting = false, runError, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth, scripts = [], onManageScripts }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const [sendMethodOverride, setSendMethodOverride] = useState<'saved' | 'HEAD' | 'OPTIONS'>('saved')
@@ -313,6 +371,21 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                   )}
                   {tab === 'Scripts' && (
                     <div className="request-scripts">
+                      {([
+                        ['Shared pre-request scripts', 'preRequestScriptIds', 'pre-request'],
+                        ['Shared post-response scripts', 'postResponseScriptIds', 'post-response'],
+                      ] as const).map(([label, field, stage]) => (
+                        <LinkedScripts
+                          key={field}
+                          label={label}
+                          stage={stage}
+                          ids={draft.resource[field] ?? []}
+                          scripts={scripts}
+                          canEdit={canEdit}
+                          onChange={(ids) => onChange({ ...draft, resource: { ...draft.resource, [field]: ids } })}
+                        />
+                      ))}
+                      {onManageScripts && <Button type="button" variant="outline" size="sm" onClick={onManageScripts}>Manage script library</Button>}
                       {([
                         ['Pre-request script', 'preRequestScript', 'runs before the request'],
                         ['Post-response script', 'postResponseScript', 'runs after the response'],

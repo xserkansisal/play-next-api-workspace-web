@@ -49,6 +49,9 @@ export interface RequestResource {
   auth: RequestAuth
   preRequestScript?: string
   postResponseScript?: string
+  /** Ordered IDs of shared library scripts; always send both arrays on save, or the omitted stage is cleared. */
+  preRequestScriptIds?: string[]
+  postResponseScriptIds?: string[]
   /**
    * The resolved auth this request actually runs with, computed server-side from its own setting
    * and its ancestors. Response-only - never send this back in a create/update payload.
@@ -80,7 +83,7 @@ export type CreateItemInput =
 
 /** A node in the id-free tree accepted by `POST /api/v1/collections` (created atomically, one transaction). */
 export type TreeNodeInput =
-  | { type: 'request'; name: string; description: string; method: RequestMethod; url: string; queryParams: KeyValueEntry[]; headers: KeyValueEntry[]; body: RequestBody | null; auth: RequestAuth }
+  | { type: 'request'; name: string; description: string; method: RequestMethod; url: string; queryParams: KeyValueEntry[]; headers: KeyValueEntry[]; body: RequestBody | null; auth: RequestAuth; preRequestScriptIds?: string[]; postResponseScriptIds?: string[] }
   | { type: 'folder'; name: string; description: string; items: TreeNodeInput[]; auth?: ResourceAuth }
 
 export interface CollectionResource {
@@ -124,6 +127,8 @@ export type CollectionSnapshotNode =
       auth: RequestAuth
       preRequestScript: string
       postResponseScript: string
+      preRequestScriptIds?: string[]
+      postResponseScriptIds?: string[]
     }
 
 export interface CollectionSnapshot {
@@ -187,6 +192,8 @@ export type ItemVersionSnapshot =
       auth: RequestAuth
       preRequestScript?: string
       postResponseScript?: string
+      preRequestScriptIds?: string[]
+      postResponseScriptIds?: string[]
     }
 
 export interface ResourceVersion<TSnapshot> {
@@ -331,3 +338,30 @@ export function parseReadyEpoch(data: string): string | null {
   const epoch = (parsed as { epoch?: unknown }).epoch
   return typeof epoch === 'string' && epoch.length > 0 ? epoch : null
 }
+
+export type ScriptStage = 'pre-request' | 'post-response'
+
+/** A reusable, team-scoped script from the shared library. */
+export interface Script {
+  id: string
+  teamId: string
+  name: string
+  description: string
+  stage: ScriptStage
+  source: string
+  createdAt: string
+  updatedAt: string
+  createdBy: string | null
+  updatedBy: string | null
+}
+
+export interface ScriptInput {
+  name: string
+  description?: string
+  stage: ScriptStage
+  source: string
+}
+
+export const MAX_SCRIPT_NAME_LENGTH = 200
+export const MAX_SCRIPT_SOURCE_LENGTH = 32_768
+export const MAX_SCRIPT_REFERENCES = 50

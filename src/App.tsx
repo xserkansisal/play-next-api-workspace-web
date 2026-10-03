@@ -19,6 +19,7 @@ import { OpenApiCreateDialog } from '@/components/OpenApiCreateDialog'
 import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
 import { OpenApiSyncDialog } from '@/components/OpenApiSyncDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
+import { ScriptLibraryDialog } from '@/components/ScriptLibraryDialog'
 import { TeamMembers } from '@/components/TeamMembers'
 import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
@@ -72,6 +73,7 @@ import type {
   ResourceDraft,
   RestoreCheck,
   RestoreConflict,
+  Script,
   TrashEntry,
   TreeNodeInput,
   WorkspaceItem,
@@ -287,6 +289,8 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
   const [snapshotsOpen, setSnapshotsOpen] = useState(false)
+  const [scripts, setScripts] = useState<Script[]>([])
+  const [scriptLibraryOpen, setScriptLibraryOpen] = useState(false)
   const [runHistory, setRunHistory] = useState<RunHistoryState | null>(null)
   const [runPrompt, setRunPrompt] = useState<{ kind: 'collection' | 'folder'; name: string; items: WorkspaceItem[] } | null>(null)
   const [runStartingKey, setRunStartingKey] = useState<string | null>(null)
@@ -373,6 +377,18 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       .catch(() => { if (!cancelled) setProxy({ enabled: false, anyHost: false, allowedHosts: [] }) })
     return () => { cancelled = true }
   }, [])
+
+  const loadScripts = useCallback(async () => {
+    try {
+      setScripts(await workspaceApi.scripts())
+    } catch {
+      setScripts([])
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadScripts()
+  }, [loadScripts, activeTeamId])
 
   useEffect(() => {
     saveRunnerId(runnerId)
@@ -1044,6 +1060,8 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
             auth: target.resource.auth,
             preRequestScript: target.resource.preRequestScript ?? '',
             postResponseScript: target.resource.postResponseScript ?? '',
+            preRequestScriptIds: target.resource.preRequestScriptIds ?? [],
+            postResponseScriptIds: target.resource.postResponseScriptIds ?? [],
           }
           const created = await workspaceApi.createItem(target.collectionId, input)
           if (created.type !== 'request') throw new Error('The API returned a non-request resource while creating a request.')
@@ -1115,6 +1133,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     } catch (error) {
       const message = describeApiError(error)
       playSound('error')
+      if (apiErrorCode(error) === 'INVALID_SCRIPT_REFERENCE') void loadScripts()
       if (isActive) setResourceError(message)
       return { error: message }
     } finally {
@@ -1951,6 +1970,8 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
                     onOpenResource={openResource}
                     onCreateRequest={activeDraft.kind === 'folder' || activeDraft.kind === 'collection' ? createRequest : undefined}
                     onCreateFolder={activeDraft.kind === 'folder' || activeDraft.kind === 'collection' ? () => void createFolder() : undefined}
+                    scripts={scripts}
+                    onManageScripts={() => setScriptLibraryOpen(true)}
                     runStarting={runStartingKey === currentKey}
                     runError={runStartError}
                     onDelete={() => deleteResource(selected!)}
@@ -2070,6 +2091,16 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           canRestore={canEditWorkspace}
           onClose={() => setVersionHistoryOpen(false)}
           onRestored={applyRestoredVersion}
+        />
+      )}
+
+      {scriptLibraryOpen && (
+        <ScriptLibraryDialog
+          scripts={scripts}
+          canEdit={canEditWorkspace}
+          onChange={setScripts}
+          onRefresh={loadScripts}
+          onClose={() => setScriptLibraryOpen(false)}
         />
       )}
 

@@ -2572,3 +2572,11 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme] .admin-user-detail { border-color: var(--glass-line); border-radius: 18px; }
 :root[data-theme] .admin-danger-zone { border-radius: 14px; }
 :root[data-theme] .admin-role-badge { border-radius: 999px; }
+
+.script-library-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.script-library-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; }
+.script-library-list li > span:last-child { display: flex; gap: 6px; }
+.linked-scripts { margin-top: 10px; display: grid; gap: 6px; font-size: 12px; }
+.linked-scripts ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.linked-scripts li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.linked-scripts li > span:last-child { display: flex; gap: 4px; }

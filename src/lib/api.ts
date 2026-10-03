@@ -12,6 +12,8 @@ import type {
   ResourceVersion,
   RestoreCheck,
   RequestResource,
+  Script,
+  ScriptInput,
   TrashEntry,
   TreeNodeInput,
   WorkspaceItem,
@@ -58,7 +60,7 @@ apiClient.interceptors.response.use(
       const code = error.response?.data?.error?.code
       const hasTeamContext = !!error.config?.headers?.get('X-Team-Id')
       const memberRoute = /^\/teams\/[^/]+\/members(?:\/|$)/.test(error.config?.url ?? '')
-      const teamScopedRoute = /^\/(?:activity|collections|environments|variables|trash|presence)(?:\/|$)/.test(error.config?.url ?? '') || memberRoute
+      const teamScopedRoute = /^\/(?:activity|collections|environments|variables|scripts|trash|presence)(?:\/|$)/.test(error.config?.url ?? '') || memberRoute
       if (teamScopedRoute && (
         code === 'TEAM_CONTEXT_REQUIRED' ||
         code === 'TEAM_MEMBERSHIP_REQUIRED' ||
@@ -226,6 +228,21 @@ export const workspaceApi = {
   async variables(): Promise<ScopedVariable[]> {
     const { data } = await apiClient.get<{ variables: ScopedVariable[] }>('/variables')
     return data.variables ?? []
+  },
+  async scripts(): Promise<Script[]> {
+    const { data } = await apiClient.get<{ scripts: Script[] }>('/scripts')
+    return data.scripts ?? []
+  },
+  async createScript(input: ScriptInput): Promise<Script> {
+    const { data } = await apiClient.post<Script>('/scripts', input)
+    return data
+  },
+  async updateScript(scriptId: string, input: ScriptInput): Promise<Script> {
+    const { data } = await apiClient.put<Script>(`/scripts/${scriptId}`, input)
+    return data
+  },
+  async deleteScript(scriptId: string): Promise<void> {
+    await apiClient.delete(`/scripts/${scriptId}`)
   },
   async variableOrder(): Promise<string[]> {
     const { data } = await apiClient.get<{ order: string[] }>('/variables/order')
@@ -425,6 +442,8 @@ export const workspaceApi = {
       auth: resource.auth,
       preRequestScript: resource.preRequestScript ?? '',
       postResponseScript: resource.postResponseScript ?? '',
+      preRequestScriptIds: resource.preRequestScriptIds ?? [],
+      postResponseScriptIds: resource.postResponseScriptIds ?? [],
     })
     return data
   },

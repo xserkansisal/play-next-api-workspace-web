@@ -107,6 +107,8 @@ describe('API errors and save isolation', () => {
       auth: { type: 'none' },
       preRequestScript: 'pm.environment.set("x", "1")',
       postResponseScript: 'pm.test("ok", () => pm.expect(pm.response.code).to.equal(200))',
+      preRequestScriptIds: [],
+      postResponseScriptIds: [],
     })
     expect(put.mock.calls[0]?.[1]).not.toHaveProperty('parentId')
     expect(put).toHaveBeenCalledTimes(1)
@@ -226,5 +228,24 @@ describe('API errors and save isolation', () => {
     })
     post.mockRestore()
     put.mockRestore()
+  })
+})
+
+describe('shared script library API', () => {
+  it('lists, creates, updates and deletes scripts', async () => {
+    const script = { id: 's1', name: 'A', stage: 'pre-request', source: 'x' }
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { scripts: [script] } })
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: script })
+    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: script })
+    const del = vi.spyOn(apiClient, 'delete').mockResolvedValue({ data: '' })
+    expect(await workspaceApi.scripts()).toEqual([script])
+    expect(get).toHaveBeenCalledWith('/scripts')
+    const input = { name: 'A', stage: 'pre-request' as const, source: 'x' }
+    await workspaceApi.createScript(input)
+    expect(post).toHaveBeenCalledWith('/scripts', input)
+    await workspaceApi.updateScript('s1', input)
+    expect(put).toHaveBeenCalledWith('/scripts/s1', input)
+    await workspaceApi.deleteScript('s1')
+    expect(del).toHaveBeenCalledWith('/scripts/s1')
   })
 })
