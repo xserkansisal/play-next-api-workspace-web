@@ -607,7 +607,13 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     if (selected?.kind === 'environment') {
       const environment = environments.find(({ id }) => id === selected.environmentId)
       if (!environment) return null
-      return { title: `Export "${environment.name}" as a Postman environment file`, run: () => exportEnvironment(environment.id) }
+      const includesSecrets = environment.variables.some((variable) => variable.isSecret)
+      return {
+        title: includesSecrets
+          ? `Export "${environment.name}" as a Postman environment file; the downloaded file will contain secret values`
+          : `Export "${environment.name}" as a Postman environment file`,
+        run: () => exportEnvironment(environment.id),
+      }
     }
     if (!activeCollectionId) return null
     const collection = collections.find(({ id }) => id === activeCollectionId)
@@ -1147,7 +1153,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     }
   }
 
-  async function appendSelectedEnvironmentVariable(key: string, value: string) {
+  async function appendSelectedEnvironmentVariable(key: string, value: string, isSecret = false) {
     if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
     if (!selectedEnvironmentId) throw new Error('No environment is selected.')
     const resourceKeyForEnvironment = resourceKey({ kind: 'environment', environmentId: selectedEnvironmentId })
@@ -1157,7 +1163,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       throw new Error('This environment has unsaved changes in its tab. Save or discard them first.')
     }
 
-    const resource = await workspaceApi.appendEnvironmentVariable(selectedEnvironmentId, { key, value })
+    const resource = await workspaceApi.appendEnvironmentVariable(selectedEnvironmentId, { key, value, isSecret })
     setEnvironments((current) => sortByName(current.map((entry) => entry.id === resource.id ? resource : entry)))
     if (draftsRef.current[resourceKeyForEnvironment]) {
       const saved: ResourceDraft = { kind: 'environment', resource }
@@ -1853,7 +1859,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
               initialAddKey={pendingVariableKey}
               onInitialAddHandled={clearPendingVariableKey}
               standalone
-              onEditEnvironmentVariable={(oldKey, newKey, value) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value))}
+              onEditEnvironmentVariable={(oldKey, newKey, value, isSecret) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value, isSecret))}
               onAddEnvironmentVariable={appendSelectedEnvironmentVariable}
               onRemoveEnvironmentVariable={(name) => mutateSelectedEnvironmentVariables((variables) => removeEnvironmentVariable(variables, name))}
             />

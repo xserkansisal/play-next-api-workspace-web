@@ -339,7 +339,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
             </>
           ) : draft.kind === 'environment' ? (
             <fieldset disabled={!canEdit} className="resource-fieldset">
-              <EnvironmentEditor draft={draft.resource} onChange={(resource) => onChange({ ...draft, resource })} canEdit={canEdit} />
+              <EnvironmentEditor key={draft.resource.id} draft={draft.resource} onChange={(resource) => onChange({ ...draft, resource })} canEdit={canEdit} />
             </fieldset>
           ) : (
             <div className={draft.kind === 'collection' ? 'collection-editor-layout' : 'folder-editor-layout'}>
@@ -715,7 +715,11 @@ const ENV_MOVE_OPTIONS: { target: MoveTarget; label: string }[] = [
 ]
 
 function EnvironmentEditor({ draft, onChange, canEdit = true }: { draft: EnvironmentResource; onChange: (resource: EnvironmentResource) => void; canEdit?: boolean }) {
-  const add = () => onChange({ ...draft, variables: [...draft.variables, { key: '', value: '', enabled: true }] })
+  const [revealedIndex, setRevealedIndex] = useState<number | null>(null)
+  const add = () => {
+    setRevealedIndex(null)
+    onChange({ ...draft, variables: [...draft.variables, { key: '', value: '', enabled: true }] })
+  }
   const change = (index: number, patch: Partial<EnvironmentVariable>) => onChange({
     ...draft,
     variables: draft.variables.map((variable, i) => i === index ? { ...variable, ...patch } : variable),
@@ -723,6 +727,7 @@ function EnvironmentEditor({ draft, onChange, canEdit = true }: { draft: Environ
   // The copy is inserted directly below the original rather than at the end of the list, so a
   // long environment does not send the user looking for what they just duplicated.
   const duplicate = (index: number) => {
+    setRevealedIndex(null)
     const source = draft.variables[index]
     const taken = new Set(draft.variables.map((variable) => variable.key))
     const copy = { ...source, key: copyVariableKey(source.key, (candidate) => taken.has(candidate)) }
@@ -746,6 +751,7 @@ function EnvironmentEditor({ draft, onChange, canEdit = true }: { draft: Environ
   const moveTo = (from: number, to: number) => {
     const target = Math.max(0, Math.min(last, to))
     if (from === target) return
+    setRevealedIndex(null)
     const next = [...draft.variables]
     const [moved] = next.splice(from, 1)
     next.splice(target, 0, moved)
@@ -785,9 +791,9 @@ function EnvironmentEditor({ draft, onChange, canEdit = true }: { draft: Environ
   return (
     <div className="resource-form environment-form">
       <label className="field-label">Environment name<input className="text-field" value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} /></label>
-      <div className="environment-list-heading"><div><h2>Variables</h2><p>Keys are case-sensitive and cannot contain spaces or braces.</p></div></div>
+      <div className="environment-list-heading"><div><h2>Variables</h2><p>Keys are case-sensitive and cannot contain spaces or braces. Secret values are masked until revealed.</p></div></div>
       <div ref={listRef}>
-      <div className="param-head environment-head"><span></span><span></span><span>KEY</span><span>VALUE</span><span></span><span></span><span></span></div>
+      <div className="param-head environment-head"><span></span><span></span><span>KEY</span><span>VALUE</span><span>SECRET</span><span></span><span></span><span></span></div>
       {draft.variables.map((variable, index) => {
         const name = variable.key || `variable ${index + 1}`
         const hint = dropHint?.index === index && dragIndex !== index ? dropHint.position : null
@@ -821,10 +827,23 @@ function EnvironmentEditor({ draft, onChange, canEdit = true }: { draft: Environ
             <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" /><circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" /><circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" /></svg>
           </button>
           <input className="check" type="checkbox" aria-label={`Enable variable ${variable.key || index + 1}`} checked={variable.enabled} onChange={(event) => change(index, { enabled: event.target.checked })} />
-          <input className="cell-input" aria-label={`Variable key ${index + 1}`} value={variable.key} placeholder="baseUrl" onChange={(event) => change(index, { key: event.target.value })} />
-          <input className="cell-input" aria-label={`Variable value ${index + 1}`} value={variable.value} placeholder="https://api.example.com" onChange={(event) => change(index, { value: event.target.value })} />
+          <input className="cell-input" aria-label={`Variable key ${index + 1}`} value={variable.key} placeholder="baseUrl" onChange={(event) => {
+            setRevealedIndex(null)
+            change(index, { key: event.target.value })
+          }} />
+          <div className="environment-variable-value">
+            <input className="cell-input" type={variable.isSecret && revealedIndex !== index ? 'password' : 'text'} aria-label={`Variable value ${index + 1}`} value={variable.value} placeholder="https://api.example.com" onChange={(event) => change(index, { value: event.target.value })} />
+            {variable.isSecret && <button type="button" className="secret-value-toggle" aria-label={`${revealedIndex === index ? 'Hide' : 'Reveal'} value for ${name}`} onClick={() => setRevealedIndex(revealedIndex === index ? null : index)}>{revealedIndex === index ? 'Hide' : 'Show'}</button>}
+          </div>
+          <input className="check" type="checkbox" aria-label={`Mark variable ${name} as secret`} checked={variable.isSecret === true} onChange={(event) => {
+            change(index, { isSecret: event.target.checked })
+            if (!event.target.checked && revealedIndex === index) setRevealedIndex(null)
+          }} />
           <button className="row-clone" aria-label={`Duplicate variable ${index + 1}`} title={`Duplicate ${variable.key || 'this variable'}`} onClick={() => duplicate(index)}>⧉</button>
-          <button className="row-remove" aria-label={`Remove variable ${index + 1}`} onClick={() => onChange({ ...draft, variables: draft.variables.filter((_, i) => i !== index) })}>×</button>
+          <button className="row-remove" aria-label={`Remove variable ${index + 1}`} onClick={() => {
+            setRevealedIndex(null)
+            onChange({ ...draft, variables: draft.variables.filter((_, i) => i !== index) })
+          }}>×</button>
           <span className="runtime-vars-move">
             <button type="button" className="row-clone" aria-label={`Move ${name}`} title="Move" aria-haspopup="menu" aria-expanded={menuOpen}
               onClick={() => setMenuIndex(menuOpen ? null : index)}>⋮</button>

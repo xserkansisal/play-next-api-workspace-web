@@ -30,8 +30,8 @@ const MOVE_OPTIONS: { target: 'top' | 'up' | 'down' | 'bottom'; label: string }[
   { target: 'bottom', label: 'Move to bottom' },
 ]
 
-type EditingVariable = { origin: VariableOrigin; name: string; key: string; value: string }
-type AddingVariable = { origin: VariableOrigin; key: string; value: string }
+type EditingVariable = { origin: VariableOrigin; name: string; key: string; value: string; isSecret: boolean }
+type AddingVariable = { origin: VariableOrigin; key: string; value: string; isSecret: boolean }
 type DragState = { origin: VariableOrigin; name: string }
 type DropHint = { origin: VariableOrigin; name: string; position: 'before' | 'after' }
 
@@ -48,8 +48,8 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   onInitialAddHandled?: () => void
   standalone?: boolean
   editableOrigins?: VariableOrigin[]
-  onAddEnvironmentVariable: (key: string, value: string) => Promise<void>
-  onEditEnvironmentVariable: (oldKey: string, newKey: string, value: string) => Promise<void>
+  onAddEnvironmentVariable: (key: string, value: string, isSecret: boolean) => Promise<void>
+  onEditEnvironmentVariable: (oldKey: string, newKey: string, value: string, isSecret: boolean) => Promise<void>
   onRemoveEnvironmentVariable: (name: string) => Promise<void>
 }) {
   const canEditOrigin = (origin: VariableOrigin) => editableOrigins.includes(origin)
@@ -57,6 +57,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<EditingVariable | null>(null)
   const [adding, setAdding] = useState<AddingVariable | null>(null)
+  const [addingSecretRevealed, setAddingSecretRevealed] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [moveMenu, setMoveMenu] = useState<DragState | null>(null)
@@ -64,13 +65,14 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   const [dropHint, setDropHint] = useState<DropHint | null>(null)
   const [announcement, setAnnouncement] = useState('')
   const [pendingRemoval, setPendingRemoval] = useState<{ name: string; origin: VariableOrigin } | null>(null)
+  const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(() => new Set())
   const cancelRemoval = useCallback(() => setPendingRemoval(null), [])
   const panelRef = useRef<HTMLDivElement>(null)
   const query = filter.trim().toLowerCase()
   const filteredByGroup = Object.fromEntries(SCOPE_GROUPS.map(({ origin }) => {
     const definitions = new Map<string, VariableDefinition>()
     for (const variable of variablesByScope[origin]) {
-      if (!query || variable.key.toLowerCase().includes(query) || variable.value.toLowerCase().includes(query)) {
+      if (!query || variable.key.toLowerCase().includes(query) || (!variable.isSecret && variable.value.toLowerCase().includes(query))) {
         definitions.set(variable.key, variable)
       }
     }
@@ -89,7 +91,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
     origin,
     orderVariableNames(
       [...filteredByGroup[origin].keys()],
-      (name) => filteredByGroup[origin].get(name)!.value,
+      (name) => filteredByGroup[origin].get(name)!.isSecret ? '' : filteredByGroup[origin].get(name)!.value,
       order.sort,
       manualListFor(order, origin, environmentId),
     ),
@@ -108,6 +110,26 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
     ? standaloneNames.filter((name) => filteredByGroup.environment.get(name)?.enabled === false).length
     : 0
   const visibleNameCount = standalone ? standaloneNames.length : names.length
+  const secretKey = (origin: VariableOrigin, name: string) => `${origin}:${origin === 'environment' ? environmentId ?? 'none' : ''}:${name}`
+  const isSecretRevealed = (origin: VariableOrigin, name: string) => revealedSecrets.has(secretKey(origin, name))
+  const toggleSecretReveal = (origin: VariableOrigin, name: string) => {
+    const key = secretKey(origin, name)
+    setRevealedSecrets((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+  const hideSecret = (origin: VariableOrigin, name: string) => {
+    const key = secretKey(origin, name)
+    setRevealedSecrets((current) => {
+      if (!current.has(key)) return current
+      const next = new Set(current)
+      next.delete(key)
+      return next
+    })
+  }
   const scopeDescription = selectedOrigin === 'user'
     ? 'Private values that apply only to your account and take precedence over shared values.'
     : selectedOrigin === 'environment'
@@ -130,7 +152,8 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
     setError(null)
     setNotice(null)
     setEditing(null)
-    setAdding({ origin: selectedOrigin ?? 'user', key: initialAddKey, value: '' })
+    setAdding({ origin: selectedOrigin ?? 'user', key: initialAddKey, value: '', isSecret: false })
+    setAddingSecretRevealed(false)
     onInitialAddHandled?.()
   }, [initialAddKey, onInitialAddHandled, selectedOrigin])
 
@@ -152,7 +175,8 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
     setError(null)
     setNotice(null)
     setEditing(null)
-    setAdding({ origin, key: '', value: '' })
+    setAdding({ origin, key: '', value: '', isSecret: false })
+    setAddingSecretRevealed(false)
     if (group) group.open = true
   }
 
@@ -163,9 +187,9 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
       setError(validation.error)
       return
     }
-    const { origin, value } = adding
+    const { origin, value, isSecret } = adding
     const key = validation.name
-    const saved = await run(() => origin === 'environment' ? onAddEnvironmentVariable(key, value) : addScopedVariable(origin, key, value))
+    const saved = await run(() => origin === 'environment' ? onAddEnvironmentVariable(key, value, isSecret) : addScopedVariable(origin, key, value))
     if (!saved) return
     setAdding(null)
     // In manual order a new row goes to the bottom of its group, where the user just added it,
@@ -189,7 +213,8 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   function startEdit(name: string, origin: VariableOrigin) {
     setError(null)
     setAdding(null)
-    setEditing({ origin, name, key: name, value: filteredByGroup[origin].get(name)?.value ?? '' })
+    const definition = filteredByGroup[origin].get(name)
+    setEditing({ origin, name, key: name, value: definition?.value ?? '', isSecret: definition?.isSecret === true })
   }
 
   async function saveEdit() {
@@ -201,7 +226,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
     }
     const { origin, name, value } = editing
     const saved = await run(() => origin === 'environment'
-      ? onEditEnvironmentVariable(name, validation.name, value)
+      ? onEditEnvironmentVariable(name, validation.name, value, editing.isSecret)
       : updateScopedVariable(origin, name, validation.name, value))
     if (!saved) return
     setEditing(null)
@@ -385,9 +410,18 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                     onKeyDown={(event) => { if (event.key === 'Enter') void saveAdd(); if (event.key === 'Escape') setAdding(null) }} />
                 </td>
                 <td>
-                  <input className="runtime-vars-input" aria-label={`New ${label} variable value`} placeholder="value" value={adding.value} disabled={busy}
+                  <input className="runtime-vars-input" type={adding.origin === 'environment' && adding.isSecret && !addingSecretRevealed ? 'password' : 'text'} aria-label={`New ${label} variable value`} placeholder="value" value={adding.value} disabled={busy}
                     onChange={(event) => setAdding({ ...adding, value: event.target.value })}
                     onKeyDown={(event) => { if (event.key === 'Enter') void saveAdd(); if (event.key === 'Escape') setAdding(null) }} />
+                  {adding.origin === 'environment' && (
+                    <div className="runtime-vars-secret-options">
+                      <label><input type="checkbox" aria-label="Mark new environment variable as secret" checked={adding.isSecret} disabled={busy} onChange={(event) => {
+                        setAdding({ ...adding, isSecret: event.target.checked })
+                        if (!event.target.checked) setAddingSecretRevealed(false)
+                      }} /> Secret</label>
+                      {adding.isSecret && <button type="button" className="runtime-vars-icon runtime-vars-secret-toggle" aria-label={`${addingSecretRevealed ? 'Hide' : 'Reveal'} new environment variable value`} onClick={() => setAddingSecretRevealed((current) => !current)}>{addingSecretRevealed ? 'Hide' : 'Show'}</button>}
+                    </div>
+                  )}
                 </td>
                 <td />
                 <td className="runtime-vars-actions">
@@ -461,6 +495,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                         : undefined
                       const overrides = !disabled && resolution?.origin === origin ? resolution.shadowed : []
                       const isEditing = canEditOrigin(origin) && editing?.origin === origin && editing.name === name
+                      const revealed = isSecretRevealed(origin, name)
                       const isDragging = dragging?.origin === origin && dragging.name === name
                       const hint = dropHint?.origin === origin && dropHint.name === name && !isDragging ? dropHint.position : null
                       const handle = (
@@ -495,9 +530,18 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                                 onKeyDown={(event) => { if (event.key === 'Enter') void saveEdit(); if (event.key === 'Escape') setEditing(null) }} />
                             </td>
                             <td>
-                              <input className="runtime-vars-input" aria-label={`Value for ${name}`} value={editing.value} disabled={busy}
+                              <input className="runtime-vars-input" type={editing.isSecret && !revealed ? 'password' : 'text'} aria-label={`Value for ${name}`} value={editing.value} disabled={busy}
                                 onChange={(event) => setEditing({ ...editing, value: event.target.value })}
                                 onKeyDown={(event) => { if (event.key === 'Enter') void saveEdit(); if (event.key === 'Escape') setEditing(null) }} />
+                              {origin === 'environment' && (
+                                <div className="runtime-vars-secret-options">
+                                  <label><input type="checkbox" aria-label={`Mark variable ${name} as secret`} checked={editing.isSecret} disabled={busy} onChange={(event) => {
+                                    setEditing({ ...editing, isSecret: event.target.checked })
+                                    if (!event.target.checked) hideSecret(origin, name)
+                                  }} /> Secret</label>
+                                  {editing.isSecret && <button type="button" className="runtime-vars-icon runtime-vars-secret-toggle" aria-label={`${revealed ? 'Hide' : 'Reveal'} value for ${name}`} onClick={() => toggleSecretReveal(origin, name)}>{revealed ? 'Hide' : 'Show'}</button>}
+                                </div>
+                              )}
                             </td>
                             <td />
                             <td className="runtime-vars-actions">
@@ -518,7 +562,10 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                           <td className="runtime-vars-key" title={name}>
                             <code>{name}</code>
                           </td>
-                          <td className="runtime-vars-value" title={definition.value}>{definition.value}</td>
+                          <td className="runtime-vars-value">
+                            <span title={definition.isSecret && !revealed ? undefined : definition.value}>{definition.isSecret && !revealed ? '••••••' : definition.value}</span>
+                            {definition.isSecret && <button type="button" className="runtime-vars-icon runtime-vars-secret-toggle" aria-label={`${revealed ? 'Hide' : 'Reveal'} value for ${name}`} onClick={() => toggleSecretReveal(origin, name)}>{revealed ? 'Hide' : 'Show'}</button>}
+                          </td>
                           <td className="runtime-vars-status">
                             {overriddenBy ? (
                               <span className="runtime-vars-status-badge is-overridden" title={`${overriddenBy} takes precedence in requests.`}>Overridden by {overriddenBy}</span>

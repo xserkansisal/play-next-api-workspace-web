@@ -35,16 +35,19 @@ export interface EnvironmentVariableLike {
   key: string
   value: string
   enabled: boolean
+  isSecret?: boolean
 }
 
 export interface VariableDefinition {
   key: string
   value: string
   enabled?: boolean
+  isSecret?: boolean
 }
 
 export interface VariableResolution {
   value: string
+  isSecret?: boolean
   /** The layer the value actually came from. */
   origin: VariableOrigin
   /**
@@ -78,6 +81,7 @@ export function resolveVariables(
     environment: new Map(),
     global: new Map(),
   }
+  const secretEnvironmentNames = new Set<string>()
   for (const variable of scoped) {
     const layer = byOrigin[variable.scope]
     if (layer) layer.set(variable.key, variable.value)
@@ -85,6 +89,8 @@ export function resolveVariables(
   for (const variable of environmentVariables) {
     if (!variable.enabled || !variable.key) continue
     byOrigin.environment.set(variable.key, variable.value)
+    if (variable.isSecret) secretEnvironmentNames.add(variable.key)
+    else secretEnvironmentNames.delete(variable.key)
   }
 
   const resolved: Record<string, VariableResolution> = {}
@@ -95,7 +101,12 @@ export function resolveVariables(
     const holders = VARIABLE_PRECEDENCE.filter((origin) => byOrigin[origin].has(name))
     const [winner, ...losers] = holders
     if (!winner) continue
-    resolved[name] = { value: byOrigin[winner].get(name)!, origin: winner, shadowed: losers }
+    resolved[name] = {
+      value: byOrigin[winner].get(name)!,
+      origin: winner,
+      shadowed: losers,
+      ...(winner === 'environment' && secretEnvironmentNames.has(name) ? { isSecret: true } : {}),
+    }
   }
   return resolved
 }

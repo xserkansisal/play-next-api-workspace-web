@@ -150,7 +150,7 @@ function SuggestionPopup({ id, query, suggestions, active, hasVariables, creatio
                   <span className="var-suggest-icon" aria-hidden="true">{ORIGIN_ICON[suggestion.origin]}</span>
                   <span className="var-suggest-main">
                     <span className="var-suggest-name"><HighlightedName suggestion={suggestion} query={query} /></span>
-                    <span className="var-suggest-value">{previewValue(suggestion.name, suggestion.value)}</span>
+                    <span className="var-suggest-value">{previewValue(suggestion.name, suggestion.value, suggestion.isSecret)}</span>
                   </span>
                   <span className="var-suggest-meta">
                     <span className={`var-suggest-badge ${suggestion.origin}`}>{originLabel(suggestion.origin)}</span>

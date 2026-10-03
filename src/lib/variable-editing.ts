@@ -14,6 +14,7 @@ export function editEnvironmentVariable(
   oldKey: string,
   newKey: string,
   value: string,
+  isSecret?: boolean,
 ): VariableEditResult {
   const winner = findLastIndex(variables, (row) => row.enabled && row.key === oldKey)
   if (winner === -1) return { ok: false, error: `"${oldKey}" is no longer defined in this environment.` }
@@ -22,7 +23,7 @@ export function editEnvironmentVariable(
   }
   const next: EnvironmentVariable[] = []
   variables.forEach((row, index) => {
-    if (index === winner) next.push({ ...row, key: newKey, value })
+    if (index === winner) next.push({ ...row, key: newKey, value, ...(isSecret !== undefined ? { isSecret } : {}) })
     else if (!(row.enabled && row.key === oldKey)) next.push(row)
   })
   return { ok: true, variables: next }

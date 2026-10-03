@@ -137,7 +137,12 @@ export function parsePostmanEnvironment(raw: unknown): EnvironmentImportPlan {
     // than a genuinely empty one.
     if (entry.type === 'secret' && value === '') secretsBlanked += 1
     seen.set(key, variables.length)
-    variables.push({ key, value, enabled: entry.enabled !== false && entry.disabled !== true })
+    variables.push({
+      key,
+      value,
+      enabled: entry.enabled !== false && entry.disabled !== true,
+      ...(entry.type === 'secret' ? { isSecret: true } : {}),
+    })
   }
 
   if (emptyKeys > 0) warnings.push(`${emptyKeys} value(s) had no key and were skipped.`)
@@ -165,8 +170,8 @@ export function parsePostmanEnvironment(raw: unknown): EnvironmentImportPlan {
 /**
  * Serializes one of our environments as a Postman environment file.
  *
- * Lossy by design: this app has no "secret" variable type, so every value is exported as
- * `type: "default"` and its value is written out in clear text.
+ * Secret metadata is preserved, but Postman exports contain the value in clear text.
+ * Exporting is an explicit user action, so callers should treat the resulting file as sensitive.
  */
 export function exportEnvironmentToPostman(environment: EnvironmentResource): Record<string, unknown> {
   return {
@@ -175,7 +180,7 @@ export function exportEnvironmentToPostman(environment: EnvironmentResource): Re
     values: environment.variables.map((variable) => ({
       key: variable.key,
       value: variable.value,
-      type: 'default',
+      type: variable.isSecret ? 'secret' : 'default',
       enabled: variable.enabled,
     })),
     _postman_variable_scope: 'environment',

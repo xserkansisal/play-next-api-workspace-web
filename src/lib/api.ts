@@ -478,18 +478,24 @@ export const workspaceApi = {
     return data
   },
   async createEnvironment(input: Pick<EnvironmentResource, 'name' | 'variables'>) {
-    const { data } = await apiClient.post<EnvironmentResource>('/environments', input)
+    const { data } = await apiClient.post<EnvironmentResource>('/environments', {
+      ...input,
+      variables: input.variables.map((variable) => ({ ...variable, isSecret: variable.isSecret ?? false })),
+    })
     return data
   },
   async saveEnvironment(resource: EnvironmentResource) {
     const { data } = await apiClient.put<EnvironmentResource>(`/environments/${resource.id}`, {
       name: resource.name,
-      variables: resource.variables,
+      variables: resource.variables.map((variable) => ({ ...variable, isSecret: variable.isSecret ?? false })),
     })
     return data
   },
-  async appendEnvironmentVariable(environmentId: string, input: { key: string; value: string; enabled?: boolean }): Promise<EnvironmentResource> {
-    const { data } = await apiClient.post<EnvironmentResource>(`/environments/${environmentId}/variables`, input)
+  async appendEnvironmentVariable(environmentId: string, input: { key: string; value: string; enabled?: boolean; isSecret?: boolean }): Promise<EnvironmentResource> {
+    const { data } = await apiClient.post<EnvironmentResource>(`/environments/${environmentId}/variables`, {
+      ...input,
+      isSecret: input.isSecret ?? false,
+    })
     return data
   },
   async deleteEnvironment(id: string) {

@@ -12,6 +12,7 @@ export type PostmanDescription = string | { content?: string; type?: string } | 
 export interface PostmanVariable {
   key?: string
   value?: unknown
+  type?: string
   disabled?: boolean
   description?: PostmanDescription
 }

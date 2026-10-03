@@ -41,6 +41,14 @@ describe('suggestVariables', () => {
     expect(result.map((s) => s.name)).toEqual(['idempotencyKey', 'userId', 'tenantId'])
     expect(result[1].matchIndex).toBe(4)
   })
+
+  it('preserves the explicit secret marker on suggestions for display masking', () => {
+    const result = suggestVariables({
+      credential: { value: 'private-value', origin: 'environment', shadowed: [], isSecret: true },
+    }, '')
+    expect(result[0]).toMatchObject({ name: 'credential', value: 'private-value', isSecret: true })
+    expect(previewValue(result[0].name, result[0].value, result[0].isSecret)).toMatch(/^•+$/)
+  })
 })
 
 describe('applyCompletion', () => {
@@ -66,6 +74,7 @@ describe('applyCompletion', () => {
 describe('previewValue', () => {
   it('masks values of secret-looking names', () => {
     expect(previewValue('authToken', 'abc')).toMatch(/^•+$/)
+    expect(previewValue('deploymentTarget', 'private-value', true)).toMatch(/^•+$/)
     expect(previewValue('baseUrl', 'https://x')).toBe('https://x')
     expect(previewValue('baseUrl', '')).toBe('(empty)')
   })

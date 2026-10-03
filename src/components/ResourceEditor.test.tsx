@@ -509,6 +509,43 @@ describe('duplicating an environment variable', () => {
   })
 })
 
+describe('secret environment variables', () => {
+  const secretEnvironment = {
+    kind: 'environment',
+    resource: {
+      id: 'e-secret',
+      name: 'Production',
+      variables: [{ key: 'apiKey', value: 'highly-private-value', enabled: true, isSecret: true }],
+    },
+  } as unknown as ResourceDraft
+
+  it('masks a secret value until the user reveals it', async () => {
+    const user = userEvent.setup()
+    renderEditor(secretEnvironment)
+
+    const value = screen.getByLabelText('Variable value 1')
+    expect(value).toHaveAttribute('type', 'password')
+    await user.click(screen.getByRole('button', { name: 'Reveal value for apiKey' }))
+    expect(value).toHaveAttribute('type', 'text')
+    await user.click(screen.getByRole('button', { name: 'Hide value for apiKey' }))
+    expect(value).toHaveAttribute('type', 'password')
+  })
+
+  it('lets the user change the secret classification without altering the stored value', async () => {
+    const onChange = vi.fn()
+    renderEditor(secretEnvironment, null, onChange)
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Mark variable apiKey as secret' }))
+
+    expect(onChange.mock.calls.at(-1)?.[0].resource.variables[0]).toEqual({
+      key: 'apiKey',
+      value: 'highly-private-value',
+      enabled: true,
+      isSecret: false,
+    })
+  })
+})
+
 describe('reordering environment variables', () => {
   const keys = (onChange: ReturnType<typeof vi.fn>) =>
     (onChange.mock.calls.at(-1)?.[0].resource.variables as { key: string }[]).map(({ key }) => key)

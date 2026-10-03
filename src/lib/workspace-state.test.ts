@@ -186,7 +186,45 @@ describe('API errors and save isolation', () => {
   it('appends an environment variable through the dedicated API endpoint', async () => {
     const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { id: 'environment-1', name: 'Local', variables: [] } } as never)
     await workspaceApi.appendEnvironmentVariable('environment-1', { key: 'token', value: 'abc' })
-    expect(post).toHaveBeenCalledWith('/environments/environment-1/variables', { key: 'token', value: 'abc' })
+    expect(post).toHaveBeenCalledWith('/environments/environment-1/variables', { key: 'token', value: 'abc', isSecret: false })
     post.mockRestore()
+  })
+
+  it('sends explicit secret metadata when creating or saving environments', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { id: 'environment-1', name: 'Local', variables: [] } } as never)
+    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: { id: 'environment-1', name: 'Local', variables: [] } } as never)
+
+    await workspaceApi.createEnvironment({
+      name: 'Local',
+      variables: [
+        { key: 'url', value: 'http://localhost', enabled: true },
+        { key: 'token', value: 'private', enabled: true, isSecret: true },
+      ],
+    })
+    await workspaceApi.saveEnvironment({
+      id: 'environment-1',
+      name: 'Local',
+      variables: [
+        { key: 'url', value: 'http://localhost', enabled: true },
+        { key: 'token', value: 'private', enabled: true, isSecret: true },
+      ],
+    })
+
+    expect(post).toHaveBeenCalledWith('/environments', {
+      name: 'Local',
+      variables: [
+        { key: 'url', value: 'http://localhost', enabled: true, isSecret: false },
+        { key: 'token', value: 'private', enabled: true, isSecret: true },
+      ],
+    })
+    expect(put).toHaveBeenCalledWith('/environments/environment-1', {
+      name: 'Local',
+      variables: [
+        { key: 'url', value: 'http://localhost', enabled: true, isSecret: false },
+        { key: 'token', value: 'private', enabled: true, isSecret: true },
+      ],
+    })
+    post.mockRestore()
+    put.mockRestore()
   })
 })

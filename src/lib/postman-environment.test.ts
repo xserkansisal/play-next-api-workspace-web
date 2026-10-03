@@ -78,7 +78,7 @@ describe('parsePostmanEnvironment', () => {
 
   it('warns that secret-typed values are withheld by Postman rather than genuinely empty', () => {
     const plan = parsePostmanEnvironment(envFile([{ key: 'apiKey', value: '', type: 'secret', enabled: true }]))
-    expect(plan.variables).toEqual([{ key: 'apiKey', value: '', enabled: true }])
+    expect(plan.variables).toEqual([{ key: 'apiKey', value: '', enabled: true, isSecret: true }])
     expect(plan.warnings.join(' ')).toContain('marked "secret"')
   })
 
@@ -137,6 +137,7 @@ describe('exportEnvironmentToPostman', () => {
       variables: [
         { key: 'baseUrl', value: 'https://api.example.com', enabled: true },
         { key: 'legacy', value: 'old', enabled: false },
+        { key: 'ACCESS_TOKEN', value: 'private-value', enabled: true, isSecret: true },
       ],
     })
     expect(exported._postman_variable_scope).toBe('environment')
@@ -148,6 +149,12 @@ describe('exportEnvironmentToPostman', () => {
     expect(round.variables).toEqual([
       { key: 'baseUrl', value: 'https://api.example.com', enabled: true },
       { key: 'legacy', value: 'old', enabled: false },
+      { key: 'ACCESS_TOKEN', value: 'private-value', enabled: true, isSecret: true },
+    ])
+    expect(exported.values).toEqual([
+      { key: 'baseUrl', value: 'https://api.example.com', type: 'default', enabled: true },
+      { key: 'legacy', value: 'old', type: 'default', enabled: false },
+      { key: 'ACCESS_TOKEN', value: 'private-value', type: 'secret', enabled: true },
     ])
   })
 })

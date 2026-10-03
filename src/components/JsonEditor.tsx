@@ -79,7 +79,7 @@ export function variableCompletionSource(lookup: () => VariableLookup, creation?
     const options: Completion[] = suggestions.map((suggestion, index) => ({
       label: `{{${suggestion.name}}}`,
       displayLabel: suggestion.name,
-      detail: previewValue(suggestion.name, suggestion.value),
+      detail: previewValue(suggestion.name, suggestion.value, suggestion.isSecret),
       info: `from ${describeOrigin(suggestion.origin)}${suggestion.shadowed.length ? ` · overrides ${suggestion.shadowed.map(describeOrigin).join(', ')}` : ''}`,
       type: `variable ${suggestion.origin}`,
       section: found.query.trim() ? undefined : { name: originLabel(suggestion.origin), rank: VARIABLE_PRECEDENCE.indexOf(suggestion.origin) },

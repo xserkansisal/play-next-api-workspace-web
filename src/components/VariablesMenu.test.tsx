@@ -38,6 +38,47 @@ function userRows() {
 }
 
 describe('VariablesMenu standalone scope detail', () => {
+  it('masks explicitly secret environment values and allows revealing them', async () => {
+    const user = userEvent.setup()
+    const secret = 'highly-private-value'
+    renderMenu({
+      standalone: true,
+      selectedOrigin: 'environment',
+      resolved: { credential: { value: secret, origin: 'environment', shadowed: [], isSecret: true } },
+      variablesByScope: {
+        user: [],
+        environment: [{ key: 'credential', value: secret, enabled: true, isSecret: true }],
+        global: [],
+      },
+    })
+
+    expect(screen.queryByText(secret)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Reveal value for credential' }))
+    expect(screen.getByText(secret)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Hide value for credential' }))
+    expect(screen.queryByText(secret)).not.toBeInTheDocument()
+  })
+
+  it('lets a secret environment variable be reclassified while editing it', async () => {
+    const user = userEvent.setup()
+    const onEdit = vi.fn().mockResolvedValue(undefined)
+    renderMenu({
+      resolved: { credential: { value: 'private', origin: 'environment', shadowed: [], isSecret: true } },
+      variablesByScope: {
+        user: [],
+        environment: [{ key: 'credential', value: 'private', enabled: true, isSecret: true }],
+        global: [],
+      },
+      onEditEnvironmentVariable: onEdit,
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Edit credential' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Mark variable credential as secret' }))
+    await user.click(screen.getByRole('button', { name: 'Save credential' }))
+
+    expect(onEdit).toHaveBeenCalledWith('credential', 'credential', 'private', false)
+  })
+
   it('shows the selected scope context and a filtered count', () => {
     renderMenu({ standalone: true, selectedOrigin: 'environment', filter: 'host' })
 
@@ -231,7 +272,20 @@ describe('VariablesMenu adding', () => {
     await user.click(screen.getByRole('button', { name: 'New Environments variable' }))
     await user.type(screen.getByRole('textbox', { name: 'New Environments variable key' }), 'host')
     await user.click(screen.getByRole('button', { name: 'Add Environments variable' }))
-    expect(onAdd).toHaveBeenCalledWith('host', '')
+    expect(onAdd).toHaveBeenCalledWith('host', '', false)
+  })
+
+  it('can create an environment variable as secret from the Variables menu', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    renderMenu({ resolved: {}, onAddEnvironmentVariable: onAdd })
+    await user.click(screen.getByRole('button', { name: 'New Environments variable' }))
+    await user.type(screen.getByRole('textbox', { name: 'New Environments variable key' }), 'credential')
+    await user.click(screen.getByRole('checkbox', { name: 'Mark new environment variable as secret' }))
+    await user.type(screen.getByLabelText('New Environments variable value'), 'private')
+    expect(screen.getByLabelText('New Environments variable value')).toHaveAttribute('type', 'password')
+    await user.click(screen.getByRole('button', { name: 'Add Environments variable' }))
+    expect(onAdd).toHaveBeenCalledWith('credential', 'private', true)
   })
 
   it('rejects an invalid key without calling the API, and cannot add to an environment that is not selected', async () => {

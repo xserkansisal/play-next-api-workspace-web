@@ -10,6 +10,15 @@ import {
 } from '@/lib/variable-scopes'
 
 describe('resolveVariables', () => {
+  it('carries secret metadata only when the effective value comes from a secret environment variable', () => {
+    expect(resolveVariables([], [{ key: 'deploymentTarget', value: 'private', enabled: true, isSecret: true }]).deploymentTarget)
+      .toMatchObject({ value: 'private', origin: 'environment', isSecret: true })
+    expect(resolveVariables(
+      [{ scope: 'user', key: 'deploymentTarget', value: 'personal' }],
+      [{ key: 'deploymentTarget', value: 'private', enabled: true, isSecret: true }],
+    ).deploymentTarget).toMatchObject({ value: 'personal', origin: 'user' })
+  })
+
   it('prefers a personal value over the shared ones, which is the point of capturing it', () => {
     const resolved = resolveVariables(
       [

@@ -32,6 +32,7 @@ export function findCompletionContext(text: string, caret: number): CompletionCo
 export interface VariableSuggestion {
   name: string
   value: string
+  isSecret?: boolean
   origin: VariableOrigin
   shadowed: VariableOrigin[]
   /** Where `query` matched inside `name`, for highlighting; -1 when the query is empty. */
@@ -53,6 +54,7 @@ export function suggestVariables(variables: Record<string, VariableResolution>, 
     suggestions.push({
       name,
       value: resolution.value,
+      ...(resolution.isSecret ? { isSecret: true } : {}),
       origin: resolution.origin,
       shadowed: resolution.shadowed,
       matchIndex,
@@ -81,9 +83,9 @@ export function applyCompletion(text: string, context: CompletionContext, caret:
 const SECRET_NAME = /token|secret|password|passwd|pwd|credential|api[-_]?key|private[-_]?key|auth/i
 
 /** Display-only masking for suggestion lists, which are shown to anyone looking at the screen. */
-export function previewValue(name: string, value: string): string {
+export function previewValue(name: string, value: string, isSecret = false): string {
   if (value === '') return '(empty)'
-  if (SECRET_NAME.test(name)) return '•'.repeat(Math.min(Math.max(value.length, 8), 16))
+  if (isSecret || SECRET_NAME.test(name)) return '•'.repeat(Math.min(Math.max(value.length, 8), 16))
   return value
 }
 
