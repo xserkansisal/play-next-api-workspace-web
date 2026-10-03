@@ -3,6 +3,8 @@ import { lazy, Suspense, useEffect, useRef, useState, type DragEvent as ReactDra
 import { Button } from '@/components/ui/button'
 import { ResponsePanel } from '@/components/ResponsePanel'
 import { PresenceAvatars } from '@/components/PresenceAvatars'
+import { RequestLocationPicker } from '@/components/RequestLocationPicker'
+import type { RequestLocationOption } from '@/components/RequestLocationPicker'
 import { VariableInput, VariableTextarea, type VariableLookup } from '@/components/VariableInput'
 import { AuthEditor } from '@/components/AuthEditor'
 import type { ProxySettings } from '@/lib/api'
@@ -49,6 +51,8 @@ interface ResourceEditorProps {
   onShowRunHistory?: () => void
   onOpenResource?: (resource: OpenResource) => void
   onCreateRequest?: () => void
+  requestLocations?: RequestLocationOption[]
+  onRequestLocationChange?: (location: { collectionId: string; parentId?: string }) => void
   onCreateFolder?: () => void
   runStarting?: boolean
   runError?: string | null
@@ -91,7 +95,7 @@ function suggestedContentType(type: RequestBody['type']): string {
   }
 }
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onShowSnapshots, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, onRunSavedResources, onShowRunHistory, onOpenResource, onCreateRequest, onCreateFolder, runStarting = false, runError, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onShowSnapshots, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, onRunSavedResources, onShowRunHistory, onOpenResource, onCreateRequest, requestLocations, onRequestLocationChange, onCreateFolder, runStarting = false, runError, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const [sendMethodOverride, setSendMethodOverride] = useState<'saved' | 'HEAD' | 'OPTIONS'>('saved')
@@ -221,6 +225,20 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
           </header>
           {draft.kind === 'request' ? (
             <>
+              {draft.isNew && requestLocations && requestLocations.length > 0 && (
+                <div className="request-location-field">
+                  <span>Save in</span>
+                  <RequestLocationPicker
+                    options={requestLocations}
+                    value={JSON.stringify([draft.collectionId, draft.parentId ?? null])}
+                    disabled={!canEdit}
+                    onChange={(location) => onRequestLocationChange?.({
+                      collectionId: location.collectionId,
+                      ...(location.parentId ? { parentId: location.parentId } : {}),
+                    })}
+                  />
+                </div>
+              )}
               <div className="url-row">
                 <select
                   className="method-select"

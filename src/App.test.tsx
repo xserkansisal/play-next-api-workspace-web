@@ -6,7 +6,7 @@ import App from '@/App'
 import { workspaceApi } from '@/lib/api'
 import { presenceApi } from '@/lib/presence'
 import { browserFetchRunner, serverProxyRunner } from '@/lib/request-runner'
-import type { CollectionResource, RequestResource } from '@/lib/workspace-types'
+import type { CollectionResource, FolderResource, RequestResource } from '@/lib/workspace-types'
 
 const request: RequestResource = {
   id: 'request-1',
@@ -521,6 +521,42 @@ describe('workspace live update flow', () => {
 
     expect(screen.queryByRole('textbox', { name: 'Request name' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Close New request' })).toBeNull()
+  })
+
+  it('lets a new request choose a destination and defaults to the opened folder', async () => {
+    const folder: FolderResource = {
+      id: 'folder-1',
+      collectionId: collection.id,
+      parentId: null,
+      type: 'folder',
+      name: 'Orders',
+      description: '',
+      items: [],
+    }
+    const withFolder = { ...collection, items: [folder, request] }
+    vi.spyOn(workspaceApi, 'collection').mockResolvedValue(withFolder)
+    const createItem = vi.spyOn(workspaceApi, 'createItem').mockResolvedValue({ ...request, id: 'created-request', parentId: null })
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Orders' }))
+    await user.click(within(document.querySelector('.folder-contents')!).getByRole('button', { name: 'New request' }))
+
+    const location = await screen.findByRole('combobox', { name: 'Request location' })
+    expect(location).toHaveAttribute('aria-valuetext', 'Commerce API / Orders')
+    await user.click(location)
+    expect(screen.getByRole('option', { name: 'Commerce API / Orders' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    await user.click(location)
+    await user.click(screen.getByRole('option', { name: 'Commerce API' }))
+    expect(location).toHaveAttribute('aria-valuetext', 'Commerce API')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(createItem).toHaveBeenCalledWith(collection.id, expect.objectContaining({
+      type: 'request',
+      name: 'New request',
+    })))
+    expect(createItem.mock.calls[0]?.[1]).not.toHaveProperty('parentId')
   })
 
   it('moves a request to Trash only after it is confirmed in the dialog', async () => {

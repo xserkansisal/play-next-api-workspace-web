@@ -77,7 +77,7 @@ import type {
   WorkspaceItem,
 } from '@/lib/workspace-types'
 import { applyMove, type MoveSource, type MoveTarget } from '@/lib/tree-move'
-import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName } from '@/lib/workspace-ui'
+import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName, sortTreeItems } from '@/lib/workspace-ui'
 
 type View = 'workspace' | 'environments' | 'variables' | 'trash' | 'history' | 'activity' | 'members'
 
@@ -176,6 +176,42 @@ function getCreationParentId(selected: OpenResource | null, collections: Collect
   return undefined
 }
 
+interface RequestLocation {
+  collectionId: string
+  parentId?: string
+}
+
+interface RequestLocationOption extends RequestLocation {
+  value: string
+  label: string
+}
+
+function getRequestLocations(collections: CollectionResource[]): RequestLocationOption[] {
+  const locations: RequestLocationOption[] = []
+  for (const collection of collections) {
+    locations.push({
+      collectionId: collection.id,
+      value: JSON.stringify([collection.id, null]),
+      label: collection.name,
+    })
+    const visit = (items: WorkspaceItem[], path: string[]) => {
+      for (const item of sortTreeItems(items)) {
+        if (item.type !== 'folder') continue
+        const folderPath = [...path, item.name]
+        locations.push({
+          collectionId: collection.id,
+          parentId: item.id,
+          value: JSON.stringify([collection.id, item.id]),
+          label: `${collection.name} / ${folderPath.join(' / ')}`,
+        })
+        visit(item.items, folderPath)
+      }
+    }
+    visit(collection.items, [])
+  }
+  return locations
+}
+
 function draftKey(draft: ResourceDraft): string {
   return resourceKey(draft.kind === 'collection'
     ? { kind: 'collection', collectionId: draft.resource.id }
@@ -233,6 +269,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [selected, setSelected] = useState<OpenResource | null>(null)
+  const lastOpenedLocation = useRef<RequestLocation | null>(null)
   const [drafts, setDrafts] = useState<Record<string, ResourceDraft>>({})
   const [baselines, setBaselines] = useState<Record<string, ResourceDraft>>({})
   const [requestTabs, setRequestTabs] = useState<OpenResource[]>([])
@@ -584,6 +621,22 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       if (!draft) return
       setDrafts((current) => ({ ...current, [key]: draft }))
       setBaselines((current) => ({ ...current, [key]: jsonCopy(draft) }))
+    }
+    if (resource.kind !== 'environment') {
+      const collection = collections.find(({ id }) => id === resource.collectionId)
+      const parentId = resource.kind === 'folder'
+        ? resource.itemId
+        : resource.kind === 'request'
+          ? collection
+            ? (() => {
+              const item = findItem(collection, resource.itemId)
+              if (item?.type === 'request') return item.parentId ?? undefined
+              const draft = draftsRef.current[resourceKey(resource)]
+              return draft?.kind === 'request' ? draft.parentId : undefined
+            })()
+            : undefined
+          : undefined
+      lastOpenedLocation.current = { collectionId: resource.collectionId, ...(parentId ? { parentId } : {}) }
     }
     setSelected(resource)
     setResourceError(null)
@@ -1126,6 +1179,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       const key = draftKey(draft)
       setDrafts((current) => ({ ...current, [key]: draft }))
       setBaselines((current) => ({ ...current, [key]: jsonCopy(draft) }))
+      lastOpenedLocation.current = { collectionId: resource.id }
       setSelected({ kind: 'collection', collectionId: resource.id })
       setView('workspace')
     } catch (error) {
@@ -1160,6 +1214,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         setEnvironments((current) => sortByName([...current, created]))
       } catch (error) {
         setImportFlow(null)
+        lastOpenedLocation.current = { collectionId: resource.id }
         setSelected({ kind: 'collection', collectionId: resource.id })
         setView('workspace')
         setLoadingError(`The collection "${resource.name}" was imported, but its environment could not be created: ${describeApiError(error)}`)
@@ -1168,6 +1223,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     }
 
     setImportFlow(null)
+    lastOpenedLocation.current = { collectionId: resource.id }
     setSelected({ kind: 'collection', collectionId: resource.id })
     setView('workspace')
   }
@@ -1231,6 +1287,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
 
   function openCollection(collectionId: string) {
     setImportFlow(null)
+    lastOpenedLocation.current = { collectionId }
     setSelected({ kind: 'collection', collectionId })
     setView('workspace')
   }
@@ -1328,6 +1385,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       const key = draftKey(draft)
       setDrafts((current) => ({ ...current, [key]: draft }))
       setBaselines((current) => ({ ...current, [key]: jsonCopy(draft) }))
+      lastOpenedLocation.current = { collectionId, parentId: item.id }
       setSelected({ kind: 'folder', collectionId, itemId: item.id })
       setView('workspace')
     } catch (error) {
@@ -1337,12 +1395,29 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
 
   function createRequest() {
     if (!canEditWorkspace) return
-    const collectionId = selected && selected.kind !== 'environment' ? selected.collectionId : collections[0]?.id
+    const locations = getRequestLocations(collections)
+    const selectedCollectionId = selected && selected.kind !== 'environment' ? selected.collectionId : undefined
+    const selectedParentId = getCreationParentId(selected, collections)
+    const selectedDraft = selected?.kind === 'request' ? draftsRef.current[resourceKey(selected)] : undefined
+    const currentLocation = selectedDraft?.kind === 'request' && selectedDraft.isNew
+      ? { collectionId: selectedDraft.collectionId, ...(selectedDraft.parentId ? { parentId: selectedDraft.parentId } : {}) }
+      : selectedCollectionId
+        ? { collectionId: selectedCollectionId, ...(selectedParentId ? { parentId: selectedParentId } : {}) }
+        : null
+    const preferred = lastOpenedLocation.current ?? currentLocation
+    const matchesLocation = (candidate: RequestLocation | null) => candidate && locations.find(({ collectionId, parentId }) =>
+      collectionId === candidate.collectionId && parentId === candidate.parentId)
+    const location = matchesLocation(preferred)
+      ?? matchesLocation(currentLocation)
+      ?? locations.find(({ collectionId }) => collectionId === selectedCollectionId)
+      ?? locations[0]
+    const collectionId = location?.collectionId
     if (!collectionId) {
       setLoadingError('Create a collection before adding a request.')
       return
     }
-    const parentId = getCreationParentId(selected, collections)
+    const parentId = location.parentId
+    lastOpenedLocation.current = { collectionId, ...(parentId ? { parentId } : {}) }
     const id = `draft-${createUuid()}`
     const resource = newRequest(id, 'New request', collectionId, parentId ?? null)
     const draft: ResourceDraft = { kind: 'request', collectionId, ...(parentId ? { parentId } : {}), resource, isNew: true }
@@ -1352,6 +1427,36 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     setSelected(open)
     setView('workspace')
     setRequestTabs((tabs) => [...tabs, open])
+    setResourceError(null)
+  }
+
+  function changeNewRequestLocation(location: RequestLocation) {
+    if (activeDraft?.kind !== 'request' || !activeDraft.isNew) return
+    const oldKey = draftKey(activeDraft)
+    const nextDraft: ResourceDraft = {
+      ...activeDraft,
+      collectionId: location.collectionId,
+      ...(location.parentId ? { parentId: location.parentId } : { parentId: undefined }),
+      resource: {
+        ...activeDraft.resource,
+        collectionId: location.collectionId,
+        parentId: location.parentId ?? null,
+      },
+    }
+    const nextKey = draftKey(nextDraft)
+    const nextResource: OpenResource = {
+      kind: 'request',
+      collectionId: location.collectionId,
+      itemId: activeDraft.resource.id,
+    }
+    setDrafts((current) => {
+      const next = { ...current, [nextKey]: nextDraft }
+      if (oldKey !== nextKey) delete next[oldKey]
+      return next
+    })
+    setRequestTabs((tabs) => tabs.map((tab) => resourceKey(tab) === oldKey ? nextResource : tab))
+    setSelected((current) => current && resourceKey(current) === oldKey ? nextResource : current)
+    lastOpenedLocation.current = location
     setResourceError(null)
   }
 
@@ -1393,6 +1498,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         setCollections((current) => sortByName([...current, copy]))
         const draft: ResourceDraft = { kind: 'collection', resource: copy }
         seedDraft(draft)
+        lastOpenedLocation.current = { collectionId: copy.id }
         setSelected({ kind: 'collection', collectionId: copy.id })
         setView('workspace')
       } else if (resource.kind === 'environment') {
@@ -1791,6 +1897,8 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
                   <ResourceEditor
                     draft={activeDraft}
                     variables={resolvedVariables}
+                    requestLocations={activeDraft.kind === 'request' && activeDraft.isNew ? getRequestLocations(collections) : undefined}
+                    onRequestLocationChange={changeNewRequestLocation}
                     collectionName={activeDraft.kind !== 'collection' && activeDraft.kind !== 'environment'
                       ? collections.find(({ id }) => id === activeDraft.collectionId)?.name
                       : undefined}
