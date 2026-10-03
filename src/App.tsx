@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { Button } from '@/components/ui/button'
 import { BulkImportDialog } from '@/components/BulkImportDialog'
+import { ImportOptionsDialog, type ImportSource } from '@/components/ImportOptionsDialog'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { RunConfirmDialog } from '@/components/RunConfirmDialog'
 import { CompareDiff } from '@/components/CompareDiff'
@@ -246,8 +247,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const [responses, setResponses] = useState<Record<string, RecordedResponse>>({})
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({})
   const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory())
-  const [importOpen, setImportOpen] = useState(false)
-  const [bulkImportOpen, setBulkImportOpen] = useState(false)
+  const [importFlow, setImportFlow] = useState<ImportSource | 'options' | null>(null)
   const selectedRef = useRef(selected)
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
@@ -262,8 +262,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     if (canEditWorkspace) return
     setRestoreState(null)
     setTrashPrompt(null)
-    setImportOpen(false)
-    setBulkImportOpen(false)
+    setImportFlow(null)
     setVersionHistoryOpen(false)
     if (view === 'trash' || view === 'members') setView('workspace')
   }, [canEditWorkspace, view])
@@ -1103,7 +1102,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         const created = await workspaceApi.createEnvironment(environment)
         setEnvironments((current) => sortByName([...current, created]))
       } catch (error) {
-        setImportOpen(false)
+        setImportFlow(null)
         setSelected({ kind: 'collection', collectionId: resource.id })
         setView('workspace')
         setLoadingError(`The collection "${resource.name}" was imported, but its environment could not be created: ${describeApiError(error)}`)
@@ -1111,7 +1110,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       }
     }
 
-    setImportOpen(false)
+    setImportFlow(null)
     setSelected({ kind: 'collection', collectionId: resource.id })
     setView('workspace')
   }
@@ -1121,7 +1120,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     try {
       const resource = await workspaceApi.createEnvironment(payload)
       setEnvironments((current) => sortByName([...current, resource]))
-      setImportOpen(false)
+      setImportFlow(null)
       setSelected({ kind: 'environment', environmentId: resource.id })
       setView('environments')
     } catch (error) {
@@ -1161,7 +1160,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   function finishBulkImport(collectionId: string, parentId: string | null) {
-    setBulkImportOpen(false)
+    setImportFlow(null)
     setSelected(parentId ? { kind: 'folder', collectionId, itemId: parentId } : { kind: 'collection', collectionId })
     setView('workspace')
   }
@@ -1537,8 +1536,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
             value={selectedEnvironmentId}
             onChange={setSelectedEnvironmentId}
           />
-          {canEditWorkspace && <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>}
-          {canEditWorkspace && <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>}
+          {canEditWorkspace && <Button variant="outline" size="sm" onClick={() => setImportFlow('options')}>Import</Button>}
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
             {currentTeam && canManageMembers && <Button variant="outline" size="sm" onClick={() => setView('members')}>Members</Button>}
@@ -1750,16 +1748,23 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         </div>
       </div>
 
-      {importOpen && (
-        <ImportDialog collections={collections} environments={environments} onCancel={() => setImportOpen(false)} onImport={importCollection} onImportEnvironment={importEnvironment} />
+      {importFlow === 'options' && (
+        <ImportOptionsDialog
+          onCancel={() => setImportFlow(null)}
+          onSelect={(source) => setImportFlow(source)}
+        />
       )}
 
-      {bulkImportOpen && (
+      {importFlow === 'postman' && (
+        <ImportDialog collections={collections} environments={environments} onCancel={() => setImportFlow(null)} onImport={importCollection} onImportEnvironment={importEnvironment} />
+      )}
+
+      {importFlow === 'bulk' && (
         <BulkImportDialog
           collections={collections}
           initialCollectionId={selected && selected.kind !== 'environment' ? selected.collectionId : undefined}
           initialParentId={selected?.kind === 'folder' ? selected.itemId : undefined}
-          onCancel={() => setBulkImportOpen(false)}
+          onCancel={() => setImportFlow(null)}
           onComplete={finishBulkImport}
           onPreview={previewBulkImport}
           onImport={importBulkItems}

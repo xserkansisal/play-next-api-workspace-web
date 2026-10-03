@@ -128,6 +128,28 @@ describe('workspace live update flow', () => {
     expect(workspaceApi.trash).not.toHaveBeenCalled()
   })
 
+  it('opens a single import chooser for Postman and bulk imports', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByRole('button', { name: 'List orders' })
+    expect(screen.getByRole('button', { name: 'Import' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Bulk import' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+    expect(screen.getByRole('heading', { name: 'Bring your API into Play Next' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /OpenAPI \/ Swagger.*Coming soon/ })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: /Play Next bulk import/ }))
+    expect(screen.getByRole('heading', { name: 'Import into a collection' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Bulk import JSON file')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+    await user.click(screen.getByRole('button', { name: /Postman export/ }))
+    expect(screen.getByRole('heading', { name: 'Import from Postman' })).toBeInTheDocument()
+  })
+
   it('shows the active team name when the user belongs to only one team', async () => {
     render(
       <App
