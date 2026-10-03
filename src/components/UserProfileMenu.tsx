@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 
 import { UserAvatar } from '@/components/UserAvatar'
 import { describeApiError } from '@/lib/api'
 import { avatarColors, isAvatarColor, type AvatarColor } from '@/lib/avatar'
 import { authApi, nameFromEmail } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
+import { isSoundEnabled, playSound, setSoundEnabled, subscribeSound } from '@/lib/sound'
 
 interface UserProfileMenuProps {
   user: AuthUser
@@ -19,6 +20,7 @@ export function UserProfileMenu({ user, onSignOut }: UserProfileMenuProps) {
   const [profile, setProfile] = useState(user)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const soundEnabled = useSyncExternalStore(subscribeSound, isSoundEnabled, isSoundEnabled)
   const rootRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const fallbackName = nameFromEmail(profile.email)
@@ -164,6 +166,25 @@ export function UserProfileMenu({ user, onSignOut }: UserProfileMenuProps) {
               </div>
             )}
           </section>
+          <div className="profile-sound-setting">
+            <div>
+              <h3>Sounds</h3>
+              <p>Short feedback sounds for saves, errors and updates</p>
+            </div>
+            <button
+              className="profile-switch"
+              type="button"
+              role="switch"
+              aria-checked={soundEnabled}
+              aria-label="Interface sounds"
+              onClick={() => {
+                setSoundEnabled(!soundEnabled)
+                if (!soundEnabled) playSound('click')
+              }}
+            >
+              <span aria-hidden="true" />
+            </button>
+          </div>
           <div className="profile-panel-footer">
             <span>Names and email are read-only.</span>
             <span>Avatar: {saving ? 'Saving…' : 'Saved to profile'}</span>

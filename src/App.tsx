@@ -26,6 +26,7 @@ import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { VariablesMenu } from '@/components/VariablesMenu'
 import { VariableCreationContext } from '@/components/VariableAutocomplete'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
+import { playSound } from '@/lib/sound'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
 import { apiErrorCode, apiErrorDetails, describeApiError, workspaceApi, type BulkImportInput, type CollectionRunDetail, type ProxySettings } from '@/lib/api'
 import { authApi, teamsApi } from '@/lib/auth'
@@ -433,6 +434,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           if (latest && known.some((entry) => entry && matchesKnownServerState(entry, latest))) return
           const currentDraft = draftsRef.current[activeKey]
           const baseline = baselinesRef.current[activeKey]
+          playSound('notification')
           setRemoteUpdate({
             event,
             error: currentDraft && baseline && isDraftDirty(currentDraft, baseline)
@@ -784,6 +786,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           ? `Body is not valid JSON at line ${outcome.error.line}, column ${outcome.error.column}: ${outcome.error.message}. Request was not sent.`
           : `${outcome.message} Request was not sent.`
       setSendErrors((current) => ({ ...current, [key]: message }))
+      playSound('error')
       return
     }
 
@@ -819,6 +822,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       }
     }
     setSending((current) => ({ ...current, [key]: false }))
+    playSound(result.kind === 'success' ? 'complete' : 'error')
     const sentAt = new Date().toISOString()
     // Sync runs here, at the one place a response arrives, so a rule applies whichever runner sent
     // the request and whether or not the response panel happens to be open.
@@ -865,7 +869,9 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         ? await workspaceApi.runCollection(collectionId, environmentId)
         : await workspaceApi.runFolder(collectionId, draft.resource.id, environmentId)
       setRunHistory({ collectionId, collectionName, folderName, initialRun: run })
+      playSound('complete')
     } catch (error) {
+      playSound('error')
       const description = describeApiError(error)
       if (apiErrorCode(error) === 'RATE_LIMITED') {
         const retryAfterSeconds = apiErrorDetails(error)?.retryAfterSeconds
@@ -1097,9 +1103,11 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       lastSavedRef.current[savedKey] = jsonCopy(saved)
       setDrafts((current) => ({ ...current, [savedKey]: saved }))
       setBaselines((current) => ({ ...current, [savedKey]: jsonCopy(saved) }))
+      playSound('success')
       return { key: savedKey }
     } catch (error) {
       const message = describeApiError(error)
+      playSound('error')
       if (isActive) setResourceError(message)
       return { error: message }
     } finally {
@@ -1182,7 +1190,9 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       lastOpenedLocation.current = { collectionId: resource.id }
       setSelected({ kind: 'collection', collectionId: resource.id })
       setView('workspace')
+      playSound('pop')
     } catch (error) {
+      playSound('error')
       setLoadingError(describeApiError(error))
     }
   }
@@ -1388,7 +1398,9 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       lastOpenedLocation.current = { collectionId, parentId: item.id }
       setSelected({ kind: 'folder', collectionId, itemId: item.id })
       setView('workspace')
+      playSound('pop')
     } catch (error) {
+      playSound('error')
       setLoadingError(describeApiError(error))
     }
   }

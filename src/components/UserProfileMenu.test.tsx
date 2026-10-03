@@ -1,11 +1,34 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { authApi } from '@/lib/auth'
+import { isSoundEnabled, setSoundEnabled } from '@/lib/sound'
 
 describe('UserProfileMenu', () => {
+  afterEach(() => {
+    setSoundEnabled(true)
+    window.localStorage.clear()
+  })
+
+  it('turns interface sounds off and on from the profile panel', async () => {
+    const user = userEvent.setup()
+    render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)
+
+    await user.click(screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i }))
+    const toggle = screen.getByRole('switch', { name: 'Interface sounds' })
+    expect(toggle).toBeChecked()
+
+    await user.click(toggle)
+    expect(toggle).not.toBeChecked()
+    expect(isSoundEnabled()).toBe(false)
+
+    await user.click(toggle)
+    expect(toggle).toBeChecked()
+    expect(isSoundEnabled()).toBe(true)
+  })
+
   it('shows sign out inside the open profile panel', async () => {
     const user = userEvent.setup()
     const onSignOut = vi.fn()
