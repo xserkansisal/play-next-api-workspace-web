@@ -293,30 +293,25 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                   )}
                   {tab === 'Scripts' && (
                     <div className="request-scripts">
-                      <label className="field-label">
-                        Pre-request script
-                        <textarea
-                          className="body-textarea"
-                          aria-label="Pre-request script"
-                          value={draft.resource.preRequestScript ?? ''}
-                          maxLength={MAX_SCRIPT_LENGTH}
-                          spellCheck={false}
-                          onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, preRequestScript: event.target.value } })}
-                        />
-                        <small>{(draft.resource.preRequestScript ?? '').length.toLocaleString()} / {MAX_SCRIPT_LENGTH.toLocaleString()} characters · runs before the request</small>
-                      </label>
-                      <label className="field-label">
-                        Post-response script
-                        <textarea
-                          className="body-textarea"
-                          aria-label="Post-response script"
-                          value={draft.resource.postResponseScript ?? ''}
-                          maxLength={MAX_SCRIPT_LENGTH}
-                          spellCheck={false}
-                          onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, postResponseScript: event.target.value } })}
-                        />
-                        <small>{(draft.resource.postResponseScript ?? '').length.toLocaleString()} / {MAX_SCRIPT_LENGTH.toLocaleString()} characters · runs after the response</small>
-                      </label>
+                      {([
+                        ['Pre-request script', 'preRequestScript', 'runs before the request'],
+                        ['Post-response script', 'postResponseScript', 'runs after the response'],
+                      ] as const).map(([label, field, hint]) => (
+                        <div className="script-block" key={field}>
+                          <div className="body-toolbar">
+                            <span>{label}</span>
+                            <span>{(draft.resource[field] ?? '').length.toLocaleString()} / {MAX_SCRIPT_LENGTH.toLocaleString()} characters · {hint}</span>
+                          </div>
+                          <textarea
+                            className="body-textarea"
+                            aria-label={label}
+                            value={draft.resource[field] ?? ''}
+                            maxLength={MAX_SCRIPT_LENGTH}
+                            spellCheck={false}
+                            onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, [field]: event.target.value } })}
+                          />
+                        </div>
+                      ))}
                     </div>
                   )}
                 </fieldset>

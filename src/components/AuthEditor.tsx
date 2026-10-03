@@ -56,9 +56,9 @@ export function AuthEditor({ mode, auth, onChange, variables, effective }: AuthE
 
   return (
     <div className="auth-editor">
-      <label className="field-label">
-        Type
-        <select className="text-field auth-type-select" aria-label="Authentication type" value={type} onChange={(event) => onChange(defaultFor(event.target.value as AuthType, mode))}>
+      <label className="body-type-control">
+        <span>Auth type</span>
+        <select aria-label="Authentication type" value={type} onChange={(event) => onChange(defaultFor(event.target.value as AuthType, mode))}>
           <option value="inherit">{inheritLabel}</option>
           <option value="none">No Auth</option>
           <option value="basic">Basic Auth</option>
@@ -68,7 +68,7 @@ export function AuthEditor({ mode, auth, onChange, variables, effective }: AuthE
       </label>
 
       {type === 'inherit' && (
-        <p className="auth-inherit-preview">
+        <p className="tab-note auth-inherit-preview">
           {effective
             ? `Resolves to: ${describeAuthValue(effective.auth)} (from ${describeAuthSource(effective.source)})`
             : 'Resolves to: No Auth (nothing configured above this item)'}
@@ -77,32 +77,32 @@ export function AuthEditor({ mode, auth, onChange, variables, effective }: AuthE
 
       {type === 'basic' && auth !== null && auth.type === 'basic' && (
         <div className="auth-fields">
-          <label className="field-label">Username<VariableInput className="text-field" variables={variables} aria-label="Basic auth username" value={auth.username} onChange={(event) => onChange({ ...auth, username: event.target.value })} /></label>
-          <label className="field-label">Password<VariableInput className="text-field" variables={variables} aria-label="Basic auth password" value={auth.password} onChange={(event) => onChange({ ...auth, password: event.target.value })} /></label>
+          <label className="auth-row"><span>Username</span><VariableInput className="cell-input" variables={variables} aria-label="Basic auth username" value={auth.username} onChange={(event) => onChange({ ...auth, username: event.target.value })} /></label>
+          <label className="auth-row"><span>Password</span><VariableInput className="cell-input" variables={variables} aria-label="Basic auth password" value={auth.password} onChange={(event) => onChange({ ...auth, password: event.target.value })} /></label>
         </div>
       )}
 
       {type === 'bearer' && auth !== null && auth.type === 'bearer' && (
         <div className="auth-fields">
-          <label className="field-label">Token<VariableInput className="text-field" variables={variables} aria-label="Bearer token" value={auth.token} onChange={(event) => onChange({ ...auth, token: event.target.value })} /></label>
+          <label className="auth-row"><span>Token</span><VariableInput className="cell-input" variables={variables} aria-label="Bearer token" value={auth.token} onChange={(event) => onChange({ ...auth, token: event.target.value })} /></label>
         </div>
       )}
 
       {type === 'api-key' && auth !== null && auth.type === 'api-key' && (
         <div className="auth-fields">
-          <label className="field-label">
-            Add to
-            <select className="text-field" aria-label="API key location" value={auth.in} onChange={(event) => onChange({ ...auth, in: event.target.value as 'header' | 'query' })}>
+          <label className="auth-row">
+            <span>Add to</span>
+            <select className="auth-select" aria-label="API key location" value={auth.in} onChange={(event) => onChange({ ...auth, in: event.target.value as 'header' | 'query' })}>
               <option value="header">Header</option>
               <option value="query">Query Param</option>
             </select>
           </label>
-          <label className="field-label">Key<VariableInput className="text-field" variables={variables} aria-label="API key name" value={auth.key} onChange={(event) => onChange({ ...auth, key: event.target.value })} /></label>
-          <label className="field-label">Value<VariableInput className="text-field" variables={variables} aria-label="API key value" value={auth.value} onChange={(event) => onChange({ ...auth, value: event.target.value })} /></label>
+          <label className="auth-row"><span>Key</span><VariableInput className="cell-input" variables={variables} aria-label="API key name" value={auth.key} onChange={(event) => onChange({ ...auth, key: event.target.value })} /></label>
+          <label className="auth-row"><span>Value</span><VariableInput className="cell-input" variables={variables} aria-label="API key value" value={auth.value} onChange={(event) => onChange({ ...auth, value: event.target.value })} /></label>
         </div>
       )}
 
-      {type === 'none' && <p className="auth-inherit-preview">No authentication is sent for this {mode === 'request' ? 'request' : 'item, and this stops inheritance for anything below it'}.</p>}
+      {type === 'none' && <p className="tab-note auth-inherit-preview">No authentication is sent for this {mode === 'request' ? 'request' : 'item, and this stops inheritance for anything below it'}.</p>}
     </div>
   )
 }

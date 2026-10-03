@@ -216,23 +216,23 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .add-param { margin-top: 8px; padding: 6px 4px; border: 0; color: #777e8c; background: transparent; font-size: 13px; }
 .auth-placeholder { padding: 15px; color: #4d5461; font-size: 13px; }
 .auth-placeholder p { color: #858b97; }
-.auth-editor { padding: 15px; display: flex; flex-direction: column; gap: 12px; }
-.auth-type-select { max-width: 260px; }
-.auth-fields { display: flex; flex-direction: column; gap: 10px; }
-.auth-inherit-preview { color: #858b97; font-size: 13px; margin: 0; }
+.auth-editor { display: flex; flex-direction: column; }
+.auth-fields { border: 1px solid var(--border); border-radius: 8px; }
+.auth-row { min-height: 40px; display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px; padding: 0 10px; color: #626977; font-size: 12px; font-weight: 600; }
+.auth-row + .auth-row { border-top: 1px solid #f0f1f4; }
+.auth-select { width: 100%; max-width: 200px; padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--foreground); background: var(--background); font-size: 13px; font-weight: 400; }
+.tab-note { margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; color: #626977; font-size: 12px; line-height: 1.5; }
+.script-block + .script-block { margin-top: 18px; }
 .auth-section-heading { margin: 18px 0 2px; font-size: 14px; color: #4d5461; }
 .body-editor { overflow: auto; }
 .body-type-control { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: #626977; font-size: 12px; }
 .body-type-control select { min-width: 170px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; color: var(--foreground); background: var(--background); font-size: 13px; }
-.body-toolbar { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; color: #626977; font-size: 12px; }
+.body-toolbar { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; font-weight: 500; border: 1px solid var(--border); border-bottom: 0; border-radius: 8px 8px 0 0; color: #626977; font-size: 12px; }
 .json-editor { overflow: hidden; border: 1px solid var(--border); border-radius: 0 0 8px 8px; }
 .json-editor .cm-editor { max-height: 320px; }
 .body-textarea { display: block; width: 100%; min-height: 220px; padding: 10px; border: 1px solid var(--border); border-radius: 0 0 8px 8px; outline: 0; color: var(--foreground); background: var(--editor-bg); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
 .body-textarea:focus { border-color: #f2d08a; box-shadow: 0 0 0 2px #fff8ea; }
-.request-scripts { display: grid; gap: 18px; padding: 14px 0; }
-.request-scripts .field-label { display: grid; gap: 7px; color: #737a87; font-size: 12px; }
-.request-scripts .body-textarea { min-height: 150px; border-radius: 8px; }
-.request-scripts small { color: #858b97; font-weight: 400; }
+.request-scripts .body-textarea { min-height: 150px; }
 .body-rows-head, .body-param-row { grid-template-columns: minmax(100px, 1fr) minmax(100px, 1.4fr) 25px; }
 .body-rows-head { padding-left: 4px; }
 .body-param-row { min-height: 40px; display: grid; align-items: center; gap: 9px; border-top: 1px solid #f0f1f4; }
@@ -1344,6 +1344,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .auth-placeholder,
 :root[data-theme='dark'] .auth-placeholder p,
 :root[data-theme='dark'] .auth-inherit-preview,
+:root[data-theme='dark'] .tab-note,
+:root[data-theme='dark'] .auth-row,
 :root[data-theme='dark'] .auth-section-heading,
 :root[data-theme='dark'] .breadcrumbs,
 :root[data-theme='dark'] .request-tab,
@@ -1395,6 +1397,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .version-history-notice { color: #61d49a; }
 :root[data-theme='dark'] .body-toolbar,
 :root[data-theme='dark'] .body-type-control { color: #b7bac5; }
+:root[data-theme='dark'] .auth-row + .auth-row { border-color: var(--border); }
+:root[data-theme='dark'] .auth-select { color: var(--foreground); background: var(--background); }
 
 :root[data-theme='dark'] .inline-error,
 :root[data-theme='dark'] .version-history-confirm,
