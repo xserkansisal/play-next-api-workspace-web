@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Button } from '@/components/ui/button'
 import { BulkImportDialog } from '@/components/BulkImportDialog'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { RunConfirmDialog } from '@/components/RunConfirmDialog'
 import { CompareDiff } from '@/components/CompareDiff'
+import { CollectionRunHistoryDialog } from '@/components/CollectionRunHistoryDialog'
 import { EnvironmentPicker } from '@/components/EnvironmentPicker'
 import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
@@ -16,7 +18,7 @@ import { VariablesMenu } from '@/components/VariablesMenu'
 import { VariableCreationContext } from '@/components/VariableAutocomplete'
 import { WorkspaceTree } from '@/components/WorkspaceTree'
 import { clampSidebarWidth, loadSidebarWidth, saveSidebarWidth } from '@/lib/sidebar-width-storage'
-import { describeApiError, workspaceApi, type BulkImportInput, type ProxySettings } from '@/lib/api'
+import { apiErrorCode, apiErrorDetails, describeApiError, workspaceApi, type BulkImportInput, type CollectionRunDetail, type ProxySettings } from '@/lib/api'
 import { authApi, teamsApi } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
 import { parsePresenceSnapshot, presenceApi, presenceLocation, presenceResourceKey } from '@/lib/presence'
@@ -38,11 +40,11 @@ import { notifyTeamContextError } from '@/lib/teams'
 import { canEditTeam, canManageTeamMembers } from '@/lib/teams'
 import type { Team } from '@/lib/teams'
 import { resolveVariables, toVariableMap, validateVariableName, type VariableOrigin } from '@/lib/variable-scopes'
-import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
+import { editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
 import { extractFromResponse } from '@/lib/response-extraction'
 import { applySyncRules } from '@/lib/sync-rules'
 import { describeMissingVariables, diagnoseMissingVariables } from '@/lib/variable-diagnostics'
-import { applyChangeEvent, isDraftDirty, parseChangeEvent, resourceKey } from '@/lib/workspace-types'
+import { applyChangeEvent, isDraftDirty, parseChangeEvent, parseReadyEpoch, resourceKey } from '@/lib/workspace-types'
 import type {
   ChangeEvent,
   CollectionResource,
@@ -79,6 +81,13 @@ interface RestoreState {
   collectionNameConflict?: boolean
   loading: boolean
   error?: string
+}
+
+interface RunHistoryState {
+  collectionId: string
+  collectionName: string
+  folderName?: string
+  initialRun?: CollectionRunDetail
 }
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
@@ -223,6 +232,10 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const [remoteUpdate, setRemoteUpdate] = useState<RemoteUpdate | null>(null)
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
+  const [runHistory, setRunHistory] = useState<RunHistoryState | null>(null)
+  const [runPrompt, setRunPrompt] = useState<{ kind: 'collection' | 'folder'; name: string; items: WorkspaceItem[] } | null>(null)
+  const [runStartingKey, setRunStartingKey] = useState<string | null>(null)
+  const [runStartError, setRunStartError] = useState<string | null>(null)
   const [closePrompt, setClosePrompt] = useState<ClosePrompt | null>(null)
   const [closeTabsPrompt, setCloseTabsPrompt] = useState<{ keys: string[]; unsavedCount: number } | null>(null)
   /** The drafts awaiting confirmation before their local edits are thrown away. */
@@ -239,6 +252,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
   const lastEventId = useRef('')
+  const lastEventEpoch = useRef<string | null>(null)
   const presenceClientId = useRef(createUuid())
   selectedRef.current = selected
   draftsRef.current = drafts
@@ -381,6 +395,21 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     // the presence listener is separate so it does not enter resource-change handling.
     source.addEventListener('change', onChange as EventListener)
     source.addEventListener('resync', onChange as EventListener)
+    source.addEventListener('ready', ((message: MessageEvent<string>) => {
+      const epoch = parseReadyEpoch(message.data)
+      if (!epoch) return
+      const previousEpoch = lastEventEpoch.current
+      lastEventEpoch.current = epoch
+      if (previousEpoch !== null && previousEpoch !== epoch) {
+        lastEventId.current = ''
+        setSyncNotice('The API restarted. Workspace data was refreshed; review open resources before replacing any local version.')
+        setRemoteUpdate({
+          event: null,
+          error: 'The API restarted and workspace data was refreshed. Review this open resource before replacing it.',
+        })
+        void reloadAll()
+      }
+    }) as EventListener)
     source.addEventListener('presence', ((message: MessageEvent<string>) => {
       const snapshot = parsePresenceSnapshot(message.data)
       if (snapshot) setPresenceUsers(snapshot.users.filter((entry) => entry.userId !== user?.id))
@@ -541,6 +570,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     }
     setSelected(resource)
     setResourceError(null)
+    setRunStartError(null)
     setView(resource.kind === 'environment' ? 'environments' : 'workspace')
     if (resource.kind === 'request' && !requestTabs.some((tab) => resourceKey(tab) === key)) {
       setRequestTabs((tabs) => [...tabs, resource])
@@ -670,11 +700,12 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     }
   }, [tabMenu])
 
-  async function sendActiveRequest(overrideRunnerId?: RunnerId) {
+  async function sendActiveRequest(overrideRunnerId?: RunnerId, methodOverride?: 'HEAD' | 'OPTIONS') {
     if (!activeDraft || activeDraft.kind !== 'request') return
     const key = draftKey(activeDraft)
     const resource = activeDraft.resource
-    const outcome = prepareRequest(resource, toVariableMap(resolvedVariables), activeEffectiveAuth?.auth)
+    const resourceToPrepare = methodOverride === 'HEAD' ? { ...resource, body: null } : resource
+    const outcome = prepareRequest(resourceToPrepare, toVariableMap(resolvedVariables), activeEffectiveAuth?.auth)
 
     if (!outcome.ok) {
       const message = outcome.reason === 'missing-variables'
@@ -689,7 +720,10 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     setSendErrors((current) => omitKeys(current, [key]))
     setSending((current) => ({ ...current, [key]: true }))
     const chosenRunner = overrideRunnerId ?? runnerId
-    let result = await runnerFor(chosenRunner).run(outcome.request)
+    const request = methodOverride
+      ? { ...outcome.request, method: methodOverride }
+      : outcome.request
+    let result = await runnerFor(chosenRunner).run(request)
     // The browser is blocked by the *target's* CORS policy, which no setting on this app or its
     // API can change - that header belongs to a server we do not own. The API is not a browser
     // and is not bound by CORS, so when it can reach the host the request is simply re-sent from
@@ -702,9 +736,9 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       chosenRunner === 'browser'
       && result.kind === 'failure'
       && result.corsBlocked === true
-      && canProxy(outcome.request.url, proxy)
+      && canProxy(request.url, proxy)
     ) {
-      const viaServer = await runnerFor('server').run(outcome.request)
+      const viaServer = await runnerFor('server').run(request)
       // A proxy that also fails leaves the original error in place: it names the real obstacle,
       // while the proxy's would describe a fallback the user never asked for.
       if (viaServer.kind === 'success') {
@@ -725,13 +759,13 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         void saveScopedVariable(scope, name, value).catch(() => {})
       })
       : []
-    setResponses((current) => ({ ...current, [key]: { result, sentAt, url: outcome.request.url, syncOutcomes, ...(sentFromServerAfterCorsBlock ? { sentFromServerAfterCorsBlock } : {}), ...(serverRetryFailed ? { serverRetryFailed } : {}) } }))
+    setResponses((current) => ({ ...current, [key]: { result, sentAt, url: request.url, syncOutcomes, ...(sentFromServerAfterCorsBlock ? { sentFromServerAfterCorsBlock } : {}), ...(serverRetryFailed ? { serverRetryFailed } : {}) } }))
     setHistory(appendHistoryEntry({
       sentAt,
-      method: outcome.request.method,
-      url: outcome.request.url,
+      method: request.method,
+      url: request.url,
       requestName: resource.name || undefined,
-      requestBody: outcome.request.body,
+      requestBody: request.body,
       status: result.kind === 'success' ? result.status : undefined,
       statusText: result.kind === 'success' ? result.statusText : undefined,
       durationMs: result.durationMs,
@@ -739,6 +773,54 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       failure: result.kind === 'failure' ? result.message : undefined,
       responseBody: result.kind === 'success' ? result.bodyText : undefined,
     }))
+  }
+
+  function requestRunSavedResources() {
+    if (!activeDraft || (activeDraft.kind !== 'collection' && activeDraft.kind !== 'folder')) return
+    setRunPrompt({ kind: activeDraft.kind, name: activeDraft.resource.name, items: activeDraft.resource.items })
+  }
+
+  async function runSavedResources() {
+    if (!activeDraft || (activeDraft.kind !== 'collection' && activeDraft.kind !== 'folder')) return
+    const draft = activeDraft
+    const collectionId = draft.kind === 'collection' ? draft.resource.id : draft.collectionId
+    const collectionName = collections.find(({ id }) => id === collectionId)?.name ?? collectionId
+    const folderName = draft.kind === 'folder' ? draft.resource.name : undefined
+    const key = draftKey(draft)
+    setRunStartingKey(key)
+    setRunStartError(null)
+    try {
+      const environmentId = selectedEnvironmentId || undefined
+      const run = draft.kind === 'collection'
+        ? await workspaceApi.runCollection(collectionId, environmentId)
+        : await workspaceApi.runFolder(collectionId, draft.resource.id, environmentId)
+      setRunHistory({ collectionId, collectionName, folderName, initialRun: run })
+    } catch (error) {
+      const description = describeApiError(error)
+      if (apiErrorCode(error) === 'RATE_LIMITED') {
+        const retryAfterSeconds = apiErrorDetails(error)?.retryAfterSeconds
+        setRunStartError(
+          typeof retryAfterSeconds === 'number' && Number.isFinite(retryAfterSeconds)
+            ? `${description} Collection runs are limited to 3 per minute; try again in ${Math.ceil(retryAfterSeconds)} seconds.`
+            : `${description} Collection runs are limited to 3 per minute.`,
+        )
+      } else {
+        setRunStartError(description)
+      }
+    } finally {
+      setRunStartingKey(null)
+    }
+  }
+
+  function showRunHistory() {
+    if (!activeDraft || (activeDraft.kind !== 'collection' && activeDraft.kind !== 'folder')) return
+    const collectionId = activeDraft.kind === 'collection' ? activeDraft.resource.id : activeDraft.collectionId
+    setRunHistory({
+      collectionId,
+      collectionName: collections.find(({ id }) => id === collectionId)?.name ?? collectionId,
+      folderName: activeDraft.kind === 'folder' ? activeDraft.resource.name : undefined,
+    })
+    setRunStartError(null)
   }
 
   function setLocalCollection(collection: CollectionResource) {
@@ -838,6 +920,8 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
             headers: target.resource.headers,
             body: target.resource.body,
             auth: target.resource.auth,
+            preRequestScript: target.resource.preRequestScript ?? '',
+            postResponseScript: target.resource.postResponseScript ?? '',
           }
           const created = await workspaceApi.createItem(target.collectionId, input)
           if (created.type !== 'request') throw new Error('The API returned a non-request resource while creating a request.')
@@ -942,6 +1026,25 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       const saved: ResourceDraft = { kind: 'environment', resource }
       setDrafts((current) => ({ ...current, [key]: saved }))
       setBaselines((current) => ({ ...current, [key]: jsonCopy(saved) }))
+    }
+  }
+
+  async function appendSelectedEnvironmentVariable(key: string, value: string) {
+    if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
+    if (!selectedEnvironmentId) throw new Error('No environment is selected.')
+    const resourceKeyForEnvironment = resourceKey({ kind: 'environment', environmentId: selectedEnvironmentId })
+    const openDraft = draftsRef.current[resourceKeyForEnvironment]
+    const openBaseline = baselinesRef.current[resourceKeyForEnvironment]
+    if (openDraft && (!openBaseline || isDraftDirty(openDraft, openBaseline))) {
+      throw new Error('This environment has unsaved changes in its tab. Save or discard them first.')
+    }
+
+    const resource = await workspaceApi.appendEnvironmentVariable(selectedEnvironmentId, { key, value })
+    setEnvironments((current) => sortByName(current.map((entry) => entry.id === resource.id ? resource : entry)))
+    if (draftsRef.current[resourceKeyForEnvironment]) {
+      const saved: ResourceDraft = { kind: 'environment', resource }
+      setDrafts((current) => ({ ...current, [resourceKeyForEnvironment]: saved }))
+      setBaselines((current) => ({ ...current, [resourceKeyForEnvironment]: jsonCopy(saved) }))
     }
   }
 
@@ -1510,7 +1613,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
               onInitialAddHandled={clearPendingVariableKey}
               standalone
               onEditEnvironmentVariable={(oldKey, newKey, value) => mutateSelectedEnvironmentVariables((variables) => editEnvironmentVariable(variables, oldKey, newKey, value))}
-              onAddEnvironmentVariable={(key, value) => mutateSelectedEnvironmentVariables((variables) => addEnvironmentVariable(variables, key, value))}
+              onAddEnvironmentVariable={appendSelectedEnvironmentVariable}
               onRemoveEnvironmentVariable={(name) => mutateSelectedEnvironmentVariables((variables) => removeEnvironmentVariable(variables, name))}
             />
           ) : view === 'environments' && selected?.kind !== 'environment' ? (
@@ -1593,9 +1696,16 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
                     onShowVersionHistory={activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew)
                       ? () => setVersionHistoryOpen(true)
                       : undefined}
+                    onRunSavedResources={activeDraft.kind === 'collection' || activeDraft.kind === 'folder' ? requestRunSavedResources : undefined}
+                    onShowRunHistory={activeDraft.kind === 'collection' || activeDraft.kind === 'folder' ? showRunHistory : undefined}
+                    onOpenResource={openResource}
+                    onCreateRequest={activeDraft.kind === 'folder' || activeDraft.kind === 'collection' ? createRequest : undefined}
+                    onCreateFolder={activeDraft.kind === 'folder' || activeDraft.kind === 'collection' ? () => void createFolder() : undefined}
+                    runStarting={runStartingKey === currentKey}
+                    runError={runStartError}
                     onDelete={() => deleteResource(selected!)}
                     canEdit={canEditWorkspace}
-                    onSend={() => void sendActiveRequest()}
+                    onSend={(methodOverride) => void sendActiveRequest(undefined, methodOverride)}
                     sending={activeSending}
                     sendError={activeSendError}
                     response={activeResponse}
@@ -1666,6 +1776,16 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         />
       )}
 
+      {runHistory && (
+        <CollectionRunHistoryDialog
+          collectionId={runHistory.collectionId}
+          collectionName={runHistory.collectionName}
+          folderName={runHistory.folderName}
+          initialRun={runHistory.initialRun}
+          onClose={() => setRunHistory(null)}
+        />
+      )}
+
       {discardPrompt && (() => {
         const keys = discardPrompt.keys
         const single = keys.length === 1 ? drafts[keys[0]!] : undefined
@@ -1685,6 +1805,16 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           />
         )
       })()}
+
+      {runPrompt && (
+        <RunConfirmDialog
+          kind={runPrompt.kind}
+          name={runPrompt.name}
+          items={runPrompt.items}
+          onCancel={() => setRunPrompt(null)}
+          onConfirm={() => { setRunPrompt(null); void runSavedResources() }}
+        />
+      )}
 
       {closeTabsPrompt && (
         <ConfirmDialog
