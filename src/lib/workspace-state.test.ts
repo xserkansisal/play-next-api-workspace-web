@@ -130,6 +130,28 @@ describe('API errors and save isolation', () => {
     post.mockRestore()
   })
 
+  it('uses snapshot list, detail, diff, and atomic restore routes', async () => {
+    const get = vi.spyOn(apiClient, 'get')
+      .mockResolvedValueOnce({ data: { snapshots: [], nextOffset: 25 } } as never)
+      .mockResolvedValueOnce({ data: { id: 'snapshot-1', snapshot: {}, itemCount: 1 } } as never)
+      .mockResolvedValueOnce({ data: { items: {} } } as never)
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { id: 'collection-1', items: [] } } as never)
+
+    await workspaceApi.collectionSnapshots('collection-1', 25, 50)
+    await workspaceApi.collectionSnapshot('collection-1', 'snapshot-1')
+    await workspaceApi.collectionSnapshotDiff('collection-1', 'snapshot-1', 'current')
+    await workspaceApi.restoreCollectionSnapshot('collection-1', 'snapshot-1')
+
+    expect(get).toHaveBeenNthCalledWith(1, '/collections/collection-1/snapshots', { params: { limit: 25, offset: 50 } })
+    expect(get).toHaveBeenNthCalledWith(2, '/collections/collection-1/snapshots/snapshot-1')
+    expect(get).toHaveBeenNthCalledWith(3, '/collections/collection-1/snapshots/diff', {
+      params: { from: 'snapshot-1', to: 'current' },
+    })
+    expect(post).toHaveBeenCalledWith('/collections/collection-1/snapshots/snapshot-1/restore')
+    get.mockRestore()
+    post.mockRestore()
+  })
+
   it('runs saved collections and folders and pages through the caller run history', async () => {
     const run = { id: 'run-1', collectionId: 'collection-1', results: [] }
     const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: run } as never)

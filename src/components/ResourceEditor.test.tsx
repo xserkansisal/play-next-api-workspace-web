@@ -121,6 +121,34 @@ describe('the response area belongs to a request', () => {
     expect(container.querySelector('.response-panel')).toBeNull()
   })
 
+  it('offers collection snapshots separately from resource version history', async () => {
+    const onShowSnapshots = vi.fn()
+    render(
+      <ResourceEditor
+        draft={collectionDraft}
+        dirty={false}
+        saving={false}
+        error={null}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onSend={vi.fn()}
+        sending={false}
+        sendError={null}
+        response={null}
+        runnerId="browser"
+        onRunnerChange={vi.fn()}
+        proxy={null}
+        onShowSnapshots={onShowSnapshots}
+        onShowVersionHistory={vi.fn()}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Snapshots' }))
+    expect(onShowSnapshots).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Version history' })).toBeInTheDocument()
+  })
+
   it('labels migrated null authorship as Unknown user', () => {
     const collection = collectionDraft as Extract<ResourceDraft, { kind: 'collection' }>
     renderEditor({

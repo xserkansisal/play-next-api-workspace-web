@@ -146,6 +146,45 @@ describe('workspace live update flow', () => {
     expect(workspaceApi.trash).not.toHaveBeenCalled()
   })
 
+  it('replaces the cached collection tree after restoring a whole-collection snapshot', async () => {
+    const user = userEvent.setup()
+    const restored: CollectionResource = {
+      ...collection,
+      name: 'Restored payments',
+      items: [{ ...request, url: '/restored-orders' }],
+    }
+    vi.spyOn(workspaceApi, 'collectionSnapshots').mockResolvedValue({
+      snapshots: [{ id: 'snapshot-1', itemCount: 1, createdAt: '2026-10-02T09:00:00.000Z', createdBy: 'ada@example.com' }],
+      nextOffset: null,
+    })
+    vi.spyOn(workspaceApi, 'collectionSnapshot').mockResolvedValue({
+      id: 'snapshot-1',
+      itemCount: 1,
+      createdAt: '2026-10-02T09:00:00.000Z',
+      createdBy: 'ada@example.com',
+      snapshot: { name: 'Restored payments', description: '', auth: null, items: [] },
+    })
+    vi.spyOn(workspaceApi, 'collectionSnapshotDiff').mockResolvedValue({
+      from: { id: 'snapshot-1', name: 'Restored payments', description: '', auth: null },
+      to: { id: 'current', name: 'Commerce API', description: '', auth: null },
+      collectionFields: ['name'],
+      items: { added: [], removed: [], moved: [], changed: [] },
+    })
+    const restore = vi.spyOn(workspaceApi, 'restoreCollectionSnapshot').mockResolvedValue(restored)
+
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'Commerce API' }))
+    await user.click(screen.getByRole('button', { name: 'Snapshots' }))
+    await user.click(await screen.findByRole('button', { name: 'Restore selected snapshot' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm restore' }))
+    await waitFor(() => expect(restore).toHaveBeenCalledWith(collection.id, 'snapshot-1'))
+    await user.click(screen.getByRole('button', { name: 'Close snapshots' }))
+    await user.click(screen.getByRole('button', { name: 'List orders' }))
+
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toHaveValue('/restored-orders')
+    expect(screen.getByRole('button', { name: 'Restored payments' })).toBeInTheDocument()
+  })
+
   it('opens a single import chooser for Postman and bulk imports', async () => {
     const user = userEvent.setup()
     render(<App />)

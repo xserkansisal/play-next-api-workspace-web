@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { RunConfirmDialog } from '@/components/RunConfirmDialog'
 import { CompareDiff } from '@/components/CompareDiff'
 import { CollectionRunHistoryDialog } from '@/components/CollectionRunHistoryDialog'
+import { CollectionSnapshotsDialog } from '@/components/CollectionSnapshotsDialog'
 import { EnvironmentPicker } from '@/components/EnvironmentPicker'
 import { HistoryView } from '@/components/HistoryView'
 import { TeamActivityView } from '@/components/TeamActivityView'
@@ -247,6 +248,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const [remoteUpdate, setRemoteUpdate] = useState<RemoteUpdate | null>(null)
   const [restoreState, setRestoreState] = useState<RestoreState | null>(null)
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false)
   const [runHistory, setRunHistory] = useState<RunHistoryState | null>(null)
   const [runPrompt, setRunPrompt] = useState<{ kind: 'collection' | 'folder'; name: string; items: WorkspaceItem[] } | null>(null)
   const [runStartingKey, setRunStartingKey] = useState<string | null>(null)
@@ -279,6 +281,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     setTrashPrompt(null)
     setImportFlow(null)
     setVersionHistoryOpen(false)
+    setSnapshotsOpen(false)
     if (view === 'trash' || view === 'members') setView('workspace')
   }, [canEditWorkspace, view])
   // Settles when the save in flight (if any) has finished. A change event for our own write can
@@ -862,6 +865,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       if ('type' in resource || resource.id !== activeDraft.resource.id) {
         throw new Error('The API returned a different resource while restoring collection history.')
       }
+
       restored = {
         kind: 'collection',
         resource: { ...activeDraft.resource, ...resource, items: activeDraft.resource.items },
@@ -888,6 +892,44 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     lastSavedRef.current[key] = jsonCopy(restored)
     setDrafts((current) => ({ ...current, [key]: restored }))
     setBaselines((current) => ({ ...current, [key]: jsonCopy(restored) }))
+    setRemoteUpdate(null)
+    setResourceError(null)
+  }
+
+  function applyRestoredSnapshot(collection: CollectionResource) {
+    if (!canEditWorkspace) return
+    if (activeDraft?.kind !== 'collection' || collection.id !== activeDraft.resource.id) {
+      throw new Error('The API returned a different collection while restoring a snapshot.')
+    }
+
+    setCollections((current) => sortByName(current.map((entry) => entry.id === collection.id ? collection : entry)))
+    const refreshedDrafts: Record<string, ResourceDraft> = {
+      [`collection:${collection.id}`]: { kind: 'collection', resource: collection },
+    }
+    for (const draft of Object.values(draftsRef.current)) {
+      if (draft.kind === 'collection' || draft.kind === 'environment' || draft.collectionId !== collection.id) continue
+      const item = findItem(collection, draft.resource.id)
+      if (!item) continue
+      const refreshed: ResourceDraft = item.type === 'folder'
+        ? { kind: 'folder', collectionId: collection.id, resource: item }
+        : { kind: 'request', collectionId: collection.id, resource: item }
+      refreshedDrafts[draftKey(refreshed)] = refreshed
+    }
+    const keepOtherCollections = (draft: ResourceDraft) =>
+      draft.kind === 'environment' ||
+      (draft.kind !== 'collection' && draft.collectionId !== collection.id) ||
+      (draft.kind === 'collection' && draft.resource.id !== collection.id)
+    setDrafts((current) => ({
+      ...Object.fromEntries(Object.entries(current).filter(([, draft]) => keepOtherCollections(draft))),
+      ...refreshedDrafts,
+    }))
+    setBaselines((current) => ({
+      ...Object.fromEntries(Object.entries(current).filter(([, draft]) => keepOtherCollections(draft))),
+      ...Object.fromEntries(Object.entries(refreshedDrafts).map(([key, draft]) => [key, jsonCopy(draft)])),
+    }))
+    for (const [key, draft] of Object.entries(refreshedDrafts)) lastSavedRef.current[key] = jsonCopy(draft)
+    setRequestTabs((current) => current.filter((tab) =>
+      tab.kind !== 'request' || tab.collectionId !== collection.id || !!findItem(collection, tab.itemId)))
     setRemoteUpdate(null)
     setResourceError(null)
   }
@@ -1761,6 +1803,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
                     onShowVersionHistory={activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew)
                       ? () => setVersionHistoryOpen(true)
                       : undefined}
+                    onShowSnapshots={activeDraft.kind === 'collection' ? () => setSnapshotsOpen(true) : undefined}
                     onRunSavedResources={activeDraft.kind === 'collection' || activeDraft.kind === 'folder' ? requestRunSavedResources : undefined}
                     onShowRunHistory={activeDraft.kind === 'collection' || activeDraft.kind === 'folder' ? showRunHistory : undefined}
                     onOpenResource={openResource}
@@ -1885,6 +1928,17 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           canRestore={canEditWorkspace}
           onClose={() => setVersionHistoryOpen(false)}
           onRestored={applyRestoredVersion}
+        />
+      )}
+
+      {snapshotsOpen && activeDraft?.kind === 'collection' && (
+        <CollectionSnapshotsDialog
+          collectionId={activeDraft.resource.id}
+          collectionName={activeDraft.resource.name}
+          dirty={dirty}
+          canRestore={canEditWorkspace}
+          onClose={() => setSnapshotsOpen(false)}
+          onRestored={applyRestoredSnapshot}
         />
       )}
 

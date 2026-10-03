@@ -2,6 +2,9 @@ import axios, { isAxiosError } from 'axios'
 
 import type {
   CollectionResource,
+  CollectionSnapshotDiff,
+  CollectionSnapshotDetail,
+  CollectionSnapshotSummary,
   CollectionVersionSnapshot,
   CreateItemInput,
   EnvironmentResource,
@@ -330,6 +333,32 @@ export const workspaceApi = {
   async restoreCollectionVersion(collectionId: string, versionId: string) {
     const { data } = await apiClient.post<CollectionResource>(
       `/collections/${collectionId}/versions/${versionId}/restore`,
+    )
+    return data
+  },
+  async collectionSnapshots(collectionId: string, limit = 25, offset = 0) {
+    const { data } = await apiClient.get<{
+      snapshots: CollectionSnapshotSummary[]
+      nextOffset: number | null
+    }>(`/collections/${collectionId}/snapshots`, { params: { limit, offset } })
+    return data
+  },
+  async collectionSnapshot(collectionId: string, snapshotId: string) {
+    const { data } = await apiClient.get<CollectionSnapshotDetail>(
+      `/collections/${collectionId}/snapshots/${snapshotId}`,
+    )
+    return data
+  },
+  async collectionSnapshotDiff(collectionId: string, from: string, to: string) {
+    const { data } = await apiClient.get<CollectionSnapshotDiff>(
+      `/collections/${collectionId}/snapshots/diff`,
+      { params: { from, to } },
+    )
+    return data
+  },
+  async restoreCollectionSnapshot(collectionId: string, snapshotId: string) {
+    const { data } = await apiClient.post<CollectionResource>(
+      `/collections/${collectionId}/snapshots/${snapshotId}/restore`,
     )
     return data
   },

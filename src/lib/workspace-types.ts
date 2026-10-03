@@ -102,6 +102,77 @@ export interface CollectionVersionSnapshot {
   auth?: ResourceAuth
 }
 
+export type CollectionSnapshotNode =
+  | {
+      id: string
+      type: 'folder'
+      name: string
+      description: string
+      auth: ResourceAuth
+      items: CollectionSnapshotNode[]
+    }
+  | {
+      id: string
+      type: 'request'
+      name: string
+      description: string
+      method: RequestMethod
+      url: string
+      queryParams: KeyValueEntry[]
+      headers: KeyValueEntry[]
+      body: RequestBody | null
+      auth: RequestAuth
+      preRequestScript: string
+      postResponseScript: string
+    }
+
+export interface CollectionSnapshot {
+  name: string
+  description: string
+  auth: ResourceAuth
+  items: CollectionSnapshotNode[]
+}
+
+export interface CollectionSnapshotSummary {
+  id: string
+  itemCount: number
+  createdAt: string
+  createdBy: string | null
+}
+
+export interface CollectionSnapshotDetail extends CollectionSnapshotSummary {
+  snapshot: CollectionSnapshot
+}
+
+export interface CollectionSnapshotDiffEntry {
+  id: string
+  path: string[]
+  node: CollectionSnapshotNode
+}
+
+export interface CollectionSnapshotDiff {
+  from: { id: string; name: string; description: string; auth: ResourceAuth }
+  to: { id: string; name: string; description: string; auth: ResourceAuth }
+  collectionFields: Array<'name' | 'description' | 'auth'>
+  items: {
+    added: CollectionSnapshotDiffEntry[]
+    removed: CollectionSnapshotDiffEntry[]
+    moved: Array<{
+      id: string
+      fromParentId: string | null
+      toParentId: string | null
+      fromPath: string[]
+      toPath: string[]
+    }>
+    changed: Array<{
+      id: string
+      fields: string[]
+      before: Record<string, unknown>
+      after: Record<string, unknown>
+    }>
+  }
+}
+
 export type ItemVersionSnapshot =
   | { type: 'folder'; name: string; description: string; auth?: ResourceAuth }
   | {

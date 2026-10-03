@@ -32,6 +32,7 @@ interface ResourceEditorProps {
   /** Reverts the draft to its last saved copy; offered only while there are unsaved changes. */
   onDiscard?: () => void
   onShowVersionHistory?: () => void
+  onShowSnapshots?: () => void
   onDelete: () => void
   canEdit?: boolean
   onSend: (methodOverride?: 'HEAD' | 'OPTIONS') => void
@@ -90,7 +91,7 @@ function suggestedContentType(type: RequestBody['type']): string {
   }
 }
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, onRunSavedResources, onShowRunHistory, onOpenResource, onCreateRequest, onCreateFolder, runStarting = false, runError, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onShowSnapshots, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, onRunSavedResources, onShowRunHistory, onOpenResource, onCreateRequest, onCreateFolder, runStarting = false, runError, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const [sendMethodOverride, setSendMethodOverride] = useState<'saved' | 'HEAD' | 'OPTIONS'>('saved')
@@ -211,6 +212,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 </>
               )}
               <SaveState dirty={dirty} />
+              {draft.kind === 'collection' && onShowSnapshots && <Button variant="outline" size="sm" onClick={onShowSnapshots}>Snapshots</Button>}
               {onShowVersionHistory && <Button variant="outline" size="sm" onClick={onShowVersionHistory}>Version history</Button>}
               {canEdit && !(draft.kind === 'environment' && draft.isNew) && <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>}
               {dirty && onDiscard && <Button variant="outline" size="sm" onClick={onDiscard} disabled={saving} title={`Discard changes (${shortcutLabel(DISCARD_SHORTCUT)})`}>Discard changes</Button>}
