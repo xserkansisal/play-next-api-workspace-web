@@ -74,7 +74,31 @@ describe('workspace live update flow', () => {
 
     expect(screen.getByRole('img', { name: 'Play Next' })).toHaveAttribute('src', '/assets/play-next-logo.png')
     expect(container.querySelector('.brand-logo-dark')).toHaveAttribute('src', '/assets/play-next-logo-dark.png')
-    expect(container.querySelector('.account-menu > .theme-toggle')).toBe(container.querySelector('.account-menu')?.lastElementChild)
+    expect(container.querySelector('.account-menu .profile-menu .account-avatar')).toBeInTheDocument()
+    expect(container.querySelector('.account-menu > .theme-toggle')).not.toBeInTheDocument()
+  })
+
+  it('switches between the sidebar and editor on compact screens', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App user={{ id: 'self', email: 'serkan.taghan@sisal.com' }} />)
+    const layout = container.querySelector('.main-layout')
+    const switcher = screen.getByRole('navigation', { name: 'Workspace panels' })
+    const collectionsButton = within(switcher).getByRole('button', { name: 'Collections' })
+    const requestButton = within(switcher).getByRole('button', { name: 'Request' })
+
+    expect(layout).toHaveClass('mobile-show-sidebar')
+    expect(collectionsButton).toHaveAttribute('aria-pressed', 'true')
+    expect(requestButton).toHaveAttribute('aria-pressed', 'false')
+    await user.click(requestButton)
+    expect(layout).toHaveClass('mobile-show-editor')
+    expect(requestButton).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(collectionsButton)
+    expect(layout).toHaveClass('mobile-show-sidebar')
+    expect(collectionsButton).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(await screen.findByRole('button', { name: /List orders/ }))
+    expect(layout).toHaveClass('mobile-show-editor')
   })
 
   it('shows the team switcher for multiple teams and scopes the live stream to the active team', async () => {

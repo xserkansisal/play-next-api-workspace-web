@@ -19,7 +19,6 @@ import { OpenApiCreateDialog } from '@/components/OpenApiCreateDialog'
 import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
 import { OpenApiSyncDialog } from '@/components/OpenApiSyncDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { TeamMembers } from '@/components/TeamMembers'
 import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
@@ -269,6 +268,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const [pendingVariableKey, setPendingVariableKey] = useState<string | null>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
+  const [mobilePanel, setMobilePanel] = useState<'sidebar' | 'editor'>('sidebar')
   const [selected, setSelected] = useState<OpenResource | null>(null)
   const lastOpenedLocation = useRef<RequestLocation | null>(null)
   const [drafts, setDrafts] = useState<Record<string, ResourceDraft>>({})
@@ -641,6 +641,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       lastOpenedLocation.current = { collectionId: resource.collectionId, ...(parentId ? { parentId } : {}) }
     }
     setSelected(resource)
+    setMobilePanel('editor')
     setResourceError(null)
     setRunStartError(null)
     setView(resource.kind === 'environment' ? 'environments' : 'workspace')
@@ -1760,7 +1761,6 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
             {currentTeam && canManageMembers && <Button variant="outline" size="sm" onClick={() => setView('members')}>Members</Button>}
             {user?.systemRole === 'admin' && <Button variant="outline" size="sm" onClick={onOpenAdmin}>Admin</Button>}
             {user && <UserProfileMenu user={user} onSignOut={onSignOut} />}
-            <ThemeToggle />
           </div>
         </div>
       </header>
@@ -1774,7 +1774,23 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       {presenceError && <div className="connection-notice presence-unavailable" role="status">{presenceError}</div>}
       {syncNotice && <div className="connection-notice" role="status"><span>{syncNotice}</span><button onClick={() => setSyncNotice(null)}>Dismiss</button></div>}
       {loadingError && <div className="global-error" role="alert">{loadingError}<button aria-label="Dismiss error" onClick={() => setLoadingError(null)}>×</button></div>}
-      <div className="main-layout">
+      <nav className="mobile-panel-switcher" aria-label="Workspace panels">
+        <button
+          type="button"
+          aria-pressed={mobilePanel === 'sidebar'}
+          onClick={() => setMobilePanel('sidebar')}
+        >
+          Collections
+        </button>
+        <button
+          type="button"
+          aria-pressed={mobilePanel === 'editor'}
+          onClick={() => setMobilePanel('editor')}
+        >
+          Request
+        </button>
+      </nav>
+      <div className={`main-layout mobile-show-${mobilePanel}`}>
         <WorkspaceTree
           collections={collections}
           selected={selected}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 
 import { UserAvatar } from '@/components/UserAvatar'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { describeApiError } from '@/lib/api'
 import { avatarColors, isAvatarColor, type AvatarColor } from '@/lib/avatar'
 import { authApi, nameFromEmail } from '@/lib/auth'
@@ -82,14 +83,13 @@ export function UserProfileMenu({ user, onSignOut }: UserProfileMenuProps) {
       <button
         className="account-email"
         type="button"
+        aria-label="User profile"
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls="user-profile-panel"
         onClick={() => setOpen((current) => !current)}
-        title={profile.email}
       >
         <UserAvatar {...profile} className="account-avatar" />
-        <span>{profile.email}</span>
         <svg className="profile-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="m4 6 4 4 4-4" />
         </svg>
@@ -116,10 +116,6 @@ export function UserProfileMenu({ user, onSignOut }: UserProfileMenuProps) {
             <label>
               Last name
               <input type="text" value={lastName} disabled />
-            </label>
-            <label>
-              Email
-              <input type="email" value={profile.email} disabled />
             </label>
           </div>
           <section className="profile-avatar-settings" aria-label="Profile photo and avatar">
@@ -168,6 +164,13 @@ export function UserProfileMenu({ user, onSignOut }: UserProfileMenuProps) {
           </section>
           <div className="profile-sound-setting">
             <div>
+              <h3>Appearance</h3>
+              <p>Switch between light and dark theme</p>
+            </div>
+            <ThemeToggle />
+          </div>
+          <div className="profile-sound-setting">
+            <div>
               <h3>Sounds</h3>
               <p>Short feedback sounds for saves, errors and updates</p>
             </div>
@@ -186,7 +189,7 @@ export function UserProfileMenu({ user, onSignOut }: UserProfileMenuProps) {
             </button>
           </div>
           <div className="profile-panel-footer">
-            <span>Names and email are read-only.</span>
+            <span>Names are read-only.</span>
             <span>Avatar: {saving ? 'Saving…' : 'Saved to profile'}</span>
           </div>
           {onSignOut && (

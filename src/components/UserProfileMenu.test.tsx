@@ -5,18 +5,33 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { authApi } from '@/lib/auth'
 import { isSoundEnabled, setSoundEnabled } from '@/lib/sound'
+import { getTheme, setTheme } from '@/lib/theme-storage'
 
 describe('UserProfileMenu', () => {
   afterEach(() => {
     setSoundEnabled(true)
+    setTheme('light')
+    delete document.documentElement.dataset.theme
     window.localStorage.clear()
+  })
+
+  it('switches themes from the profile panel', async () => {
+    const user = userEvent.setup()
+    render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)
+
+    await user.click(screen.getByRole('button', { name: 'User profile' }))
+    await user.click(screen.getByRole('button', { name: 'Switch to dark mode' }))
+
+    expect(getTheme()).toBe('dark')
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
+    expect(screen.getByRole('button', { name: 'Switch to light mode' })).toBeInTheDocument()
   })
 
   it('turns interface sounds off and on from the profile panel', async () => {
     const user = userEvent.setup()
     render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)
 
-    await user.click(screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: 'User profile' }))
     const toggle = screen.getByRole('switch', { name: 'Interface sounds' })
     expect(toggle).toBeChecked()
 
@@ -35,7 +50,7 @@ describe('UserProfileMenu', () => {
     render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} onSignOut={onSignOut} />)
 
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: 'User profile' }))
     await user.click(screen.getByRole('button', { name: 'Sign out' }))
 
     expect(onSignOut).toHaveBeenCalledOnce()
@@ -44,17 +59,18 @@ describe('UserProfileMenu', () => {
 
   it('opens read-only profile details and derives names from the email when the API omits them', async () => {
     const user = userEvent.setup()
-    render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)
+    const { container } = render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)
 
-    await user.click(screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: 'User profile' }))
 
     expect(screen.getByRole('dialog', { name: 'User profile' })).toBeInTheDocument()
+    expect(container.querySelector('.account-avatar')).toBeInTheDocument()
     expect(screen.getByText('Serkan Taghan')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'First name' })).toHaveValue('Serkan')
     expect(screen.getByRole('textbox', { name: 'Last name' })).toHaveValue('Taghan')
-    expect(screen.getByRole('textbox', { name: 'Email' })).toHaveValue('serkan.taghan@sisal.com')
     expect(screen.getByRole('textbox', { name: 'First name' })).toBeDisabled()
     expect(screen.getByRole('textbox', { name: 'Last name' })).toBeDisabled()
+    expect(screen.queryByText('serkan.taghan@sisal.com')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Upload photo' })).toBeEnabled()
     expect(screen.getByRole('group', { name: 'Avatar color' })).toBeInTheDocument()
   })
@@ -68,7 +84,7 @@ describe('UserProfileMenu', () => {
       lastName: 'Taghan',
     }} />)
 
-    await user.click(screen.getByRole('button', { name: /s\.taghan@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: 'User profile' }))
 
     expect(screen.getByRole('textbox', { name: 'First name' })).toHaveValue('Serkan')
     expect(screen.getByRole('textbox', { name: 'Last name' })).toHaveValue('Taghan')
@@ -82,7 +98,7 @@ describe('UserProfileMenu', () => {
         <button type="button">Outside</button>
       </>,
     )
-    const trigger = screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i })
+    const trigger = screen.getByRole('button', { name: 'User profile' })
 
     await user.click(trigger)
     await user.keyboard('{Escape}')
@@ -102,7 +118,7 @@ describe('UserProfileMenu', () => {
       avatarColor: 'violet',
     })
     const { container } = render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)
-    await user.click(screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: 'User profile' }))
     const image = new File(['image bytes'], 'avatar.png', { type: 'image/png' })
     await user.upload(screen.getByLabelText('Choose profile photo'), image)
 
@@ -120,7 +136,7 @@ describe('UserProfileMenu', () => {
       avatarColor: 'green',
     })
     render(<UserProfileMenu user={{ id: 'u1', email: 'serkan.taghan@sisal.com' }} />)
-    await user.click(screen.getByRole('button', { name: /serkan\.taghan@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: 'User profile' }))
     await user.click(screen.getByRole('button', { name: 'green avatar color' }))
 
     expect(authApi.setAvatarColor).toHaveBeenCalledWith('green')
