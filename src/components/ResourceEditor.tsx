@@ -10,7 +10,8 @@ import { copyVariableKey } from '@/lib/copy-key'
 import type { AuthSource } from '@/lib/auth-resolution'
 import type { RecordedResponse, RunnerId } from '@/lib/request-runner'
 import { parseMultipartFields, parseUrlEncodedFields, serializeUrlEncodedFields, type MultipartField } from '@/lib/request-body'
-import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type RequestAuth, type RequestBody, type RequestMethod, type ResourceAuth, type ResourceDraft } from '@/lib/workspace-types'
+import { MAX_REQUEST_BODY_LENGTH, type AuthCredentials, type EnvironmentResource, type EnvironmentVariable, type KeyValueEntry, type OpenResource, type RequestAuth, type RequestBody, type RequestMethod, type ResourceAuth, type ResourceDraft, type WorkspaceItem } from '@/lib/workspace-types'
+import { sortTreeItems } from '@/lib/workspace-ui'
 import type { PresenceUser } from '@/lib/presence'
 import { DISCARD_SHORTCUT, matchesShortcut, SAVE_SHORTCUT, shortcutLabel } from '@/lib/shortcuts'
 
@@ -18,7 +19,7 @@ const NO_VARIABLES: VariableLookup = {}
 
 const JsonEditor = lazy(() => import('@/components/JsonEditor').then(({ JsonEditor: Editor }) => ({ default: Editor })))
 
-type RequestTab = 'Params' | 'Headers' | 'Body' | 'Auth'
+type RequestTab = 'Params' | 'Headers' | 'Body' | 'Auth' | 'Scripts'
 
 interface ResourceEditorProps {
   draft: ResourceDraft
@@ -33,7 +34,7 @@ interface ResourceEditorProps {
   onShowVersionHistory?: () => void
   onDelete: () => void
   canEdit?: boolean
-  onSend: () => void
+  onSend: (methodOverride?: 'HEAD' | 'OPTIONS') => void
   sending: boolean
   sendError: string | null
   response: RecordedResponse | null
@@ -43,6 +44,13 @@ interface ResourceEditorProps {
   proxy: ProxySettings | null
   /** Present only when sending from the server is a genuine remedy for the failure now shown. */
   onRetryFromServer?: () => void
+  onRunSavedResources?: () => void
+  onShowRunHistory?: () => void
+  onOpenResource?: (resource: OpenResource) => void
+  onCreateRequest?: () => void
+  onCreateFolder?: () => void
+  runStarting?: boolean
+  runError?: string | null
   /** Identifies the open request, so a response-sync rule can be bound to it. */
   requestKey?: string | null
   /** Resolved variables, used to colour `{{name}}` references as defined or undefined. */
@@ -67,9 +75,10 @@ function describeRunnerChoice(proxy: ProxySettings | null): string {
   return `${browser}\nServer: the API sends it instead, so CORS does not apply. ${reach}`
 }
 
-const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth']
+const requestTabs: RequestTab[] = ['Params', 'Headers', 'Body', 'Auth', 'Scripts']
 const methods: RequestMethod[] = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
 const bodyTypes: RequestBody['type'][] = ['json', 'form-urlencoded', 'multipart', 'raw', 'graphql']
+const MAX_SCRIPT_LENGTH = 32_768
 
 function suggestedContentType(type: RequestBody['type']): string {
   switch (type) {
@@ -81,9 +90,10 @@ function suggestedContentType(type: RequestBody['type']): string {
   }
 }
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, onRunSavedResources, onShowRunHistory, onOpenResource, onCreateRequest, onCreateFolder, runStarting = false, runError, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
+  const [sendMethodOverride, setSendMethodOverride] = useState<'saved' | 'HEAD' | 'OPTIONS'>('saved')
   const isRequest = draft.kind === 'request'
   const bodyTooLong = draft.kind === 'request' && (draft.resource.body?.content.length ?? 0) > MAX_REQUEST_BODY_LENGTH
   const name = draft.resource.name
@@ -93,6 +103,9 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
   useEffect(() => {
     setTab('Params')
   }, [draft.kind, draft.resource.id])
+  useEffect(() => {
+    setSendMethodOverride('saved')
+  }, [draft.resource.id, draft.kind === 'request' ? draft.resource.method : null])
 
   const canSave = canEdit && dirty && !saving && !bodyTooLong
   const canDiscard = dirty && !saving && !!onDiscard
@@ -189,6 +202,14 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                   <span>{viewers.length} viewing</span>
                 </div>
               )}
+              {onRunSavedResources && (
+                <>
+                  <Button variant="outline" size="sm" onClick={onRunSavedResources} disabled={runStarting} title="Runs the saved server-side requests; unsaved editor changes are not included.">
+                    {runStarting ? 'Running…' : draft.kind === 'collection' ? 'Run collection' : 'Run folder'}
+                  </Button>
+                  {onShowRunHistory && <Button variant="outline" size="sm" onClick={onShowRunHistory}>Run history</Button>}
+                </>
+              )}
               <SaveState dirty={dirty} />
               {onShowVersionHistory && <Button variant="outline" size="sm" onClick={onShowVersionHistory}>Version history</Button>}
               {canEdit && !(draft.kind === 'environment' && draft.isNew) && <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>}
@@ -202,11 +223,24 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 <select
                   className="method-select"
                   aria-label="HTTP method"
-                  value={draft.resource.method}
-                  disabled={!canEdit}
-                  onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, method: event.target.value as RequestMethod } })}
+                  value={sendMethodOverride === 'saved' ? draft.resource.method : sendMethodOverride}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (value === 'HEAD' || value === 'OPTIONS') {
+                      setSendMethodOverride(value)
+                      return
+                    }
+                    if (!canEdit) {
+                      setSendMethodOverride('saved')
+                      return
+                    }
+                    setSendMethodOverride('saved')
+                    onChange({ ...draft, resource: { ...draft.resource, method: value as RequestMethod } })
+                  }}
                 >
                   {methods.map((method) => <option key={method}>{method}</option>)}
+                  <option value="HEAD">HEAD (send once)</option>
+                  <option value="OPTIONS">OPTIONS (send once)</option>
                 </select>
                 <VariableInput className="url-input" variables={variables} aria-label="Request URL" value={draft.resource.url} placeholder="{{baseUrl}}:{{port}}/path" disabled={!canEdit} onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, url: event.target.value } })} />
                 <select
@@ -221,8 +255,9 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                     {proxy !== null && !proxy.enabled ? 'Server (not enabled)' : 'Server'}
                   </option>
                 </select>
-                <Button className="send-button" onClick={onSend} disabled={sending}>{sending ? 'Sending…' : 'Send'}</Button>
+                <Button className="send-button" onClick={() => onSend(sendMethodOverride === 'saved' ? undefined : sendMethodOverride)} disabled={sending}>{sending ? 'Sending…' : 'Send'}</Button>
               </div>
+              {sendMethodOverride !== 'saved' && <p className="method-override-notice" role="status">{sendMethodOverride} will be used for this send only. The saved method remains {draft.resource.method}.</p>}
               {sendError && <p className="inline-error send-error" role="alert">{sendError}</p>}
               <label className="request-description">
                 <span>Description</span>
@@ -256,6 +291,34 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                       onChange={(auth) => onChange({ ...draft, resource: { ...draft.resource, auth: auth as RequestAuth } })}
                     />
                   )}
+                  {tab === 'Scripts' && (
+                    <div className="request-scripts">
+                      <label className="field-label">
+                        Pre-request script
+                        <textarea
+                          className="body-textarea"
+                          aria-label="Pre-request script"
+                          value={draft.resource.preRequestScript ?? ''}
+                          maxLength={MAX_SCRIPT_LENGTH}
+                          spellCheck={false}
+                          onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, preRequestScript: event.target.value } })}
+                        />
+                        <small>{(draft.resource.preRequestScript ?? '').length.toLocaleString()} / {MAX_SCRIPT_LENGTH.toLocaleString()} characters · runs before the request</small>
+                      </label>
+                      <label className="field-label">
+                        Post-response script
+                        <textarea
+                          className="body-textarea"
+                          aria-label="Post-response script"
+                          value={draft.resource.postResponseScript ?? ''}
+                          maxLength={MAX_SCRIPT_LENGTH}
+                          spellCheck={false}
+                          onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, postResponseScript: event.target.value } })}
+                        />
+                        <small>{(draft.resource.postResponseScript ?? '').length.toLocaleString()} / {MAX_SCRIPT_LENGTH.toLocaleString()} characters · runs after the response</small>
+                      </label>
+                    </div>
+                  )}
                 </fieldset>
               </div>
             </>
@@ -264,36 +327,83 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               <EnvironmentEditor draft={draft.resource} onChange={(resource) => onChange({ ...draft, resource })} canEdit={canEdit} />
             </fieldset>
           ) : (
-            <fieldset disabled={!canEdit} className="resource-fieldset resource-form">
-              <label className="field-label">Name<input className="text-field" value={name} onChange={(event) => updateName(event.target.value)} /></label>
+            <div className={draft.kind === 'collection' ? 'collection-editor-layout' : 'folder-editor-layout'}>
               {draft.kind === 'collection' && (
-                <>
-                  <label className="field-label">Description<textarea className="text-field description-field" value={draft.resource.description} onChange={(event) => onChange({ kind: 'collection', resource: { ...draft.resource, description: event.target.value } })} /></label>
-                  <h2 className="auth-section-heading">Authentication</h2>
-                  <AuthEditor
-                    mode="resource"
-                    auth={draft.resource.auth ?? null}
-                    variables={variables}
-                    onChange={(auth) => onChange({ kind: 'collection', resource: { ...draft.resource, auth: auth as ResourceAuth } })}
-                  />
-                </>
+                <fieldset disabled={!canEdit} className="resource-fieldset resource-form folder-details-form">
+                  <label className="field-label">Collection name<input className="text-field" value={name} onChange={(event) => updateName(event.target.value)} /></label>
+                  <label className="field-label">Description<textarea className="text-field description-field" value={draft.resource.description} placeholder="Describe this collection and what its requests cover." onChange={(event) => onChange({ kind: 'collection', resource: { ...draft.resource, description: event.target.value } })} /></label>
+                  <section className="folder-auth-section" aria-labelledby="collection-auth-title">
+                    <div>
+                      <h2 id="collection-auth-title">Authentication</h2>
+                      <p>Default authentication for requests in this collection.</p>
+                    </div>
+                    <AuthEditor
+                      mode="resource"
+                      auth={draft.resource.auth ?? null}
+                      variables={variables}
+                      onChange={(auth) => onChange({ kind: 'collection', resource: { ...draft.resource, auth: auth as ResourceAuth } })}
+                    />
+                  </section>
+                </fieldset>
+              )}
+              {draft.kind === 'collection' && (
+                <FolderContents
+                  collectionId={draft.resource.id}
+                  items={draft.resource.items}
+                  canEdit={canEdit}
+                  emptyLabel="This collection is empty"
+                  emptyDescription="Create a folder to organize related work, or add a request to get started."
+                  onOpenResource={onOpenResource}
+                  onCreateRequest={onCreateRequest}
+                  onCreateFolder={onCreateFolder}
+                />
               )}
               {draft.kind === 'folder' && (
-                <>
-                  <label className="field-label">Description<textarea className="text-field description-field" value={draft.resource.description} onChange={(event) => onChange({ kind: 'folder', collectionId: draft.collectionId, resource: { ...draft.resource, description: event.target.value } })} /></label>
-                  <h2 className="auth-section-heading">Authentication</h2>
-                  <AuthEditor
-                    mode="resource"
-                    auth={draft.resource.auth ?? null}
-                    variables={variables}
-                    effective={effectiveAuth}
-                    onChange={(auth) => onChange({ kind: 'folder', collectionId: draft.collectionId, resource: { ...draft.resource, auth: auth as ResourceAuth } })}
-                  />
-                </>
+                <fieldset disabled={!canEdit} className="resource-fieldset resource-form folder-details-form">
+                  <label className="field-label">
+                    Folder name
+                    <input className="text-field" value={name} onChange={(event) => updateName(event.target.value)} />
+                  </label>
+                  <label className="field-label">
+                    Description
+                    <textarea
+                      className="text-field description-field folder-description"
+                      value={draft.resource.description}
+                      placeholder="Describe what belongs in this folder and how its requests fit together."
+                      onChange={(event) => onChange({ kind: 'folder', collectionId: draft.collectionId, resource: { ...draft.resource, description: event.target.value } })}
+                    />
+                  </label>
+                  <section className="folder-auth-section" aria-labelledby="folder-auth-title">
+                    <div>
+                      <h2 id="folder-auth-title">Authentication</h2>
+                      <p>Overrides collection auth for requests in this folder.</p>
+                    </div>
+                    <AuthEditor
+                      mode="resource"
+                      auth={draft.resource.auth ?? null}
+                      variables={variables}
+                      effective={effectiveAuth}
+                      onChange={(auth) => onChange({ kind: 'folder', collectionId: draft.collectionId, resource: { ...draft.resource, auth: auth as ResourceAuth } })}
+                    />
+                  </section>
+                </fieldset>
               )}
-            </fieldset>
+              {draft.kind === 'folder' && (
+                <FolderContents
+                  collectionId={draft.collectionId}
+                  items={draft.resource.items}
+                  canEdit={canEdit}
+                  emptyLabel="This folder is empty"
+                  emptyDescription="Add requests here to keep related steps together, then run them as a sequence."
+                  onOpenResource={onOpenResource}
+                  onCreateRequest={onCreateRequest}
+                  onCreateFolder={onCreateFolder}
+                />
+              )}
+            </div>
           )}
           {error && <p className="inline-error" role="alert">{error}</p>}
+          {runError && <p className="inline-error" role="alert">{runError}</p>}
         </section>
         {isRequest && (
           <>
@@ -304,6 +414,95 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
       </div>
     </section>
   )
+}
+
+function FolderContents({
+  collectionId,
+  items,
+  canEdit,
+  emptyLabel,
+  emptyDescription,
+  onOpenResource,
+  onCreateRequest,
+  onCreateFolder,
+}: {
+  collectionId: string
+  items: WorkspaceItem[]
+  canEdit: boolean
+  emptyLabel: string
+  emptyDescription: string
+  onOpenResource?: (resource: OpenResource) => void
+  onCreateRequest?: () => void
+  onCreateFolder?: () => void
+}) {
+  const requests = items.reduce((count, item) => count + (item.type === 'request' ? 1 : countNestedRequests(item)), 0)
+  const folders = items.reduce((count, item) => count + (item.type === 'folder' ? 1 + countNestedFolders(item) : 0), 0)
+
+  return (
+    <section className="folder-contents" aria-labelledby="folder-contents-title">
+      <header className="folder-contents-heading">
+        <div>
+          <h2 id="folder-contents-title">Contents</h2>
+          <p>{requests} {requests === 1 ? 'request' : 'requests'} · {folders} {folders === 1 ? 'folder' : 'folders'}</p>
+        </div>
+        {canEdit && (
+          <div className="folder-contents-actions">
+            {onCreateRequest && <Button variant="outline" size="sm" onClick={onCreateRequest}>New request</Button>}
+            {onCreateFolder && <Button variant="outline" size="sm" onClick={onCreateFolder}>New folder</Button>}
+          </div>
+        )}
+      </header>
+      {items.length === 0 ? (
+        <div className="folder-contents-empty">
+          <strong>{emptyLabel}</strong>
+          <span>{emptyDescription}</span>
+        </div>
+      ) : (
+        <ul className="folder-contents-list">
+          {sortTreeItems(items).map((item) => {
+            const kind = item.type === 'folder' ? 'folder' : 'request'
+            const childRequests = item.type === 'folder' ? countNestedRequests(item) : 0
+            const childFolders = item.type === 'folder' ? countNestedFolders(item) : 0
+            const subtitle = item.type === 'request'
+              ? `${item.method} · ${item.url || 'No URL configured'}`
+              : `${childRequests} ${childRequests === 1 ? 'request' : 'requests'} · ${childFolders} nested ${childFolders === 1 ? 'folder' : 'folders'}`
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className="folder-content-item"
+                  aria-label={`Open ${kind} ${item.name}`}
+                  disabled={!onOpenResource}
+                  onClick={() => onOpenResource?.(
+                    kind === 'folder'
+                      ? { kind: 'folder', collectionId, itemId: item.id }
+                      : { kind: 'request', collectionId, itemId: item.id },
+                  )}
+                >
+                  <span className={`folder-content-icon ${kind}`} aria-hidden="true">{kind === 'folder' ? '▰' : item.type === 'request' ? item.method : ''}</span>
+                  <span className="folder-content-copy">
+                    <strong>{item.name || (kind === 'folder' ? 'Untitled folder' : 'Untitled request')}</strong>
+                    <small>{subtitle}</small>
+                  </span>
+                  <span className="folder-content-open" aria-hidden="true">›</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function countNestedRequests(folder: Extract<WorkspaceItem, { type: 'folder' }>): number {
+  return folder.items.reduce((count, item) =>
+    count + (item.type === 'request' ? 1 : countNestedRequests(item)), 0)
+}
+
+function countNestedFolders(folder: Extract<WorkspaceItem, { type: 'folder' }>): number {
+  return folder.items.reduce((count, item) =>
+    count + (item.type === 'folder' ? 1 + countNestedFolders(item) : 0), 0)
 }
 
 function RequestBodyEditor({

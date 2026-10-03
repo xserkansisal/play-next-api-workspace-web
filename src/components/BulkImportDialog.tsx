@@ -35,7 +35,7 @@ interface PreviewRow {
   method?: string
 }
 
-function folderOptions(items: WorkspaceItem[], prefix = '', depth = 0): FolderOption[] {
+export function folderOptions(items: WorkspaceItem[], prefix = '', depth = 0): FolderOption[] {
   return items.flatMap((item) => {
     if (item.type !== 'folder') return []
     const path = prefix ? `${prefix} / ${item.name}` : item.name

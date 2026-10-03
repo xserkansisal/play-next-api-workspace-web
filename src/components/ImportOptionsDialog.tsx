@@ -1,6 +1,14 @@
+import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 
-export type ImportSource = 'postman' | 'bulk'
+export type ImportSource = 'postman' | 'bulk' | 'openapi-create' | 'openapi-import' | 'openapi-sync'
+
+const OPENAPI_ACTIONS: Array<{ source: ImportSource; title: string; description: string }> = [
+  { source: 'openapi-create', title: 'Create a new collection', description: 'Creates a collection from the document immediately.' },
+  { source: 'openapi-import', title: 'Import once into a collection', description: 'Preview, then add requests to an existing collection. Not linked to the document.' },
+  { source: 'openapi-sync', title: 'Compare and sync a collection', description: 'Preview differences, choose how to resolve them, and keep the collection linked to the document.' },
+]
 
 interface ImportOptionsDialogProps {
   onCancel: () => void
@@ -8,6 +16,8 @@ interface ImportOptionsDialogProps {
 }
 
 export function ImportOptionsDialog({ onCancel, onSelect }: ImportOptionsDialogProps) {
+  const [openApiExpanded, setOpenApiExpanded] = useState(false)
+
   return (
     <div className="modal-backdrop">
       <section className="restore-dialog import-options-dialog" role="dialog" aria-modal="true" aria-labelledby="import-options-title">
@@ -48,7 +58,7 @@ export function ImportOptionsDialog({ onCancel, onSelect }: ImportOptionsDialogP
             </span>
             <span className="import-source-arrow" aria-hidden="true">→</span>
           </button>
-          <button className="import-source-card upcoming" disabled>
+          <button className="import-source-card" aria-expanded={openApiExpanded} onClick={() => setOpenApiExpanded((current) => !current)}>
             <span className="import-source-icon openapi" aria-hidden="true">
               <svg viewBox="0 0 40 40" focusable="false">
                 <path d="M20 5.5c-2.1 0-3.8 1.7-3.8 3.8 0 1 .4 1.9 1 2.6-5.1.8-8.9 5.2-8.9 10.5 0 5.9 4.8 10.7 10.7 10.7s10.7-4.8 10.7-10.7c0-5.3-3.8-9.7-8.9-10.5.6-.7 1-1.6 1-2.6 0-2.1-1.7-3.8-3.8-3.8Z" fill="none" stroke="currentColor" strokeWidth="2.2" />
@@ -56,11 +66,21 @@ export function ImportOptionsDialog({ onCancel, onSelect }: ImportOptionsDialogP
               </svg>
             </span>
             <span className="import-source-copy">
-              <strong>OpenAPI / Swagger</strong>
-              <span>Generate requests from an API definition.</span>
+              <strong>OpenAPI</strong>
+              <span>Create, import, or sync requests from an OpenAPI 3.0 / 3.1 document.</span>
             </span>
-            <span className="import-source-soon">Coming soon</span>
+            <span className={`import-source-arrow${openApiExpanded ? ' expanded' : ''}`} aria-hidden="true">→</span>
           </button>
+          {openApiExpanded && (
+            <div className="import-openapi-actions" role="group" aria-label="OpenAPI actions">
+              {OPENAPI_ACTIONS.map((action) => (
+                <button key={action.source} className="import-openapi-action" onClick={() => onSelect(action.source)}>
+                  <strong>{action.title}</strong>
+                  <span>{action.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <footer className="modal-actions">

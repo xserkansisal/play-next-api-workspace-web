@@ -27,7 +27,7 @@ const requestDraft = {
   resource: {
     id: 'r1', collectionId: 'c1', parentId: null, type: 'request', name: 'Charge',
     description: '', method: 'GET', url: 'https://example.com', queryParams: [], headers: [],
-    body: null, auth: { type: 'none' },
+    body: null, auth: { type: 'none' }, preRequestScript: '', postResponseScript: '',
   },
 } as unknown as ResourceDraft
 
@@ -144,6 +144,82 @@ describe('the response area belongs to a request', () => {
     const panel = container.querySelector('.request-panel') as HTMLElement
     expect(panel.style.flex).not.toBe('')
   })
+
+  it('shows collection contents and supports opening and creating its direct children', async () => {
+    const user = userEvent.setup()
+    const onOpenResource = vi.fn()
+    const onCreateRequest = vi.fn()
+    const onCreateFolder = vi.fn()
+    const collection = {
+      ...collectionDraft,
+      resource: {
+        ...collectionDraft.resource,
+        items: [
+          { id: 'request-1', collectionId: 'c1', parentId: null, type: 'request', name: 'Create', description: '', method: 'POST', url: '/items', queryParams: [], headers: [], body: null, auth: { type: 'inherit' } },
+          { id: 'folder-1', collectionId: 'c1', parentId: null, type: 'folder', name: 'Follow-up', description: '', items: [] },
+        ],
+      },
+    } as unknown as ResourceDraft
+
+    render(
+      <ResourceEditor
+        draft={collection}
+        dirty={false}
+        saving={false}
+        error={null}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onSend={vi.fn()}
+        sending={false}
+        sendError={null}
+        response={null}
+        runnerId="browser"
+        onRunnerChange={vi.fn()}
+        proxy={null}
+        onOpenResource={onOpenResource}
+        onCreateRequest={onCreateRequest}
+        onCreateFolder={onCreateFolder}
+      />,
+    )
+
+    expect(screen.getByText('1 request · 1 folder')).toBeInTheDocument()
+    expect(screen.getByText('POST · /items')).toBeInTheDocument()
+    expect(screen.getAllByLabelText(/Collection name/)).toHaveLength(1)
+    await user.click(screen.getByRole('button', { name: 'Open folder Follow-up' }))
+    expect(onOpenResource).toHaveBeenCalledWith({ kind: 'folder', collectionId: 'c1', itemId: 'folder-1' })
+    await user.click(screen.getByRole('button', { name: 'New request' }))
+    await user.click(screen.getByRole('button', { name: 'New folder' }))
+    expect(onCreateRequest).toHaveBeenCalledOnce()
+    expect(onCreateFolder).toHaveBeenCalledOnce()
+  })
+
+  it('shows a collection-specific empty state and hides creation actions from viewers', () => {
+    render(
+      <ResourceEditor
+        draft={collectionDraft}
+        dirty={false}
+        saving={false}
+        error={null}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        canEdit={false}
+        onSend={vi.fn()}
+        sending={false}
+        sendError={null}
+        response={null}
+        runnerId="browser"
+        onRunnerChange={vi.fn()}
+        proxy={null}
+      />,
+    )
+
+    expect(screen.getByText('This collection is empty')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New request' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New folder' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Collection name' })).toBeDisabled()
+  })
 })
 
 describe('what the runner tooltip says is reachable', () => {
@@ -168,6 +244,40 @@ describe('what the runner tooltip says is reachable', () => {
   })
 })
 
+describe('one-time proxy methods', () => {
+  it('allows a viewer to send HEAD without changing the saved method', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const onSend = vi.fn()
+    render(
+      <ResourceEditor
+        draft={requestDraft}
+        dirty={false}
+        saving={false}
+        error={null}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        canEdit={false}
+        onSend={onSend}
+        sending={false}
+        sendError={null}
+        response={null}
+        runnerId="browser"
+        onRunnerChange={vi.fn()}
+        proxy={null}
+      />,
+    )
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'HTTP method' }), 'HEAD')
+    expect(screen.getByText('HEAD will be used for this send only. The saved method remains GET.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(onSend).toHaveBeenCalledWith('HEAD')
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})
+
 describe('request body type selection', () => {
   async function openBodyTab() {
     const user = userEvent.setup()
@@ -187,6 +297,113 @@ describe('request body type selection', () => {
     expect(changed.resource.headers).toEqual([
       { key: 'Content-Type', value: 'application/json', description: '', enabled: true },
     ])
+  })
+
+  describe('request scripts', () => {
+    it('edits both script hooks and displays the API limit', async () => {
+      const user = userEvent.setup()
+      const onChange = vi.fn()
+      renderEditor({
+        ...requestDraft,
+        resource: {
+          ...requestDraft.resource,
+          preRequestScript: 'pm.environment.set("token", "abc")',
+          postResponseScript: 'pm.test("success", () => {})',
+        },
+      } as ResourceDraft, null, onChange)
+      await user.click(screen.getByRole('tab', { name: 'Scripts' }))
+
+      expect(screen.getByLabelText('Pre-request script')).toHaveValue('pm.environment.set("token", "abc")')
+      expect(screen.getByLabelText('Post-response script')).toHaveValue('pm.test("success", () => {})')
+      expect(screen.getAllByText(/32,768 characters/)).toHaveLength(2)
+
+      fireEvent.change(screen.getByLabelText('Pre-request script'), { target: { value: 'pm.environment.set("token", "new")' } })
+      const changed = onChange.mock.calls.at(-1)?.[0] as Extract<ResourceDraft, { kind: 'request' }>
+      expect(changed.resource.preRequestScript).toBe('pm.environment.set("token", "new")')
+      expect(changed.resource.postResponseScript).toBe('pm.test("success", () => {})')
+    })
+
+    describe('folder overview', () => {
+      it('summarizes nested contents and opens a child resource from the folder view', async () => {
+        const user = userEvent.setup()
+        const onOpenResource = vi.fn()
+        const onCreateRequest = vi.fn()
+        const onCreateFolder = vi.fn()
+        const folder = {
+          ...folderDraft,
+          resource: {
+            ...folderDraft.resource,
+            items: [
+              { id: 'request-1', collectionId: 'c1', parentId: 'f1', type: 'request', name: 'Create', description: '', method: 'POST', url: '/items', queryParams: [], headers: [], body: null, auth: { type: 'inherit' } },
+              { id: 'folder-2', collectionId: 'c1', parentId: 'f1', type: 'folder', name: 'Follow-up', description: '', items: [
+                { id: 'request-2', collectionId: 'c1', parentId: 'folder-2', type: 'request', name: 'Read', description: '', method: 'GET', url: '/items/1', queryParams: [], headers: [], body: null, auth: { type: 'inherit' } },
+                { id: 'folder-3', collectionId: 'c1', parentId: 'folder-2', type: 'folder', name: 'Nested', description: '', items: [
+                  { id: 'request-3', collectionId: 'c1', parentId: 'folder-3', type: 'request', name: 'Delete', description: '', method: 'DELETE', url: '/items/1', queryParams: [], headers: [], body: null, auth: { type: 'inherit' } },
+                ] },
+              ] },
+            ],
+          },
+        } as unknown as ResourceDraft
+
+        render(
+          <ResourceEditor
+            draft={folder}
+            dirty={false}
+            saving={false}
+            error={null}
+            onChange={vi.fn()}
+            onSave={vi.fn()}
+            onDelete={vi.fn()}
+            onSend={vi.fn()}
+            sending={false}
+            sendError={null}
+            response={null}
+            runnerId="browser"
+            onRunnerChange={vi.fn()}
+            proxy={null}
+            onOpenResource={onOpenResource}
+            onCreateRequest={onCreateRequest}
+            onCreateFolder={onCreateFolder}
+          />,
+        )
+
+        expect(screen.getByText('3 requests · 2 folders')).toBeInTheDocument()
+        expect(screen.getByText('POST · /items')).toBeInTheDocument()
+        await user.click(screen.getByRole('button', { name: 'Open folder Follow-up' }))
+        expect(onOpenResource).toHaveBeenCalledWith({ kind: 'folder', collectionId: 'c1', itemId: 'folder-2' })
+        await user.click(screen.getByRole('button', { name: 'New request' }))
+        await user.click(screen.getByRole('button', { name: 'New folder' }))
+        expect(onCreateRequest).toHaveBeenCalledOnce()
+        expect(onCreateFolder).toHaveBeenCalledOnce()
+      })
+
+      it('shows a useful empty state and only exposes creation actions to editors', () => {
+        render(
+          <ResourceEditor
+            draft={folderDraft}
+            dirty={false}
+            saving={false}
+            error={null}
+            onChange={vi.fn()}
+            onSave={vi.fn()}
+            onDelete={vi.fn()}
+            canEdit={false}
+            onSend={vi.fn()}
+            sending={false}
+            sendError={null}
+            response={null}
+            runnerId="browser"
+            onRunnerChange={vi.fn()}
+            proxy={null}
+            onOpenResource={vi.fn()}
+          />,
+        )
+
+        expect(screen.getByText('This folder is empty')).toBeInTheDocument()
+        expect(screen.getByText(/Add requests here to keep related steps together/)).toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'New request' })).not.toBeInTheDocument()
+      })
+    })
   })
 
   it('sets the raw default media type and keeps the raw editor available', async () => {

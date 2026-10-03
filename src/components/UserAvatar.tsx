@@ -26,7 +26,7 @@ export function UserAvatar({ email, firstName, lastName, avatarUrl, avatarColor,
       } as CSSProperties}
     >
       {avatarUrl
-        ? <img src={avatarUrl} alt="" />
+        ? <img src={avatarUrl} alt="" crossOrigin="use-credentials" />
         : initials.toUpperCase()}
     </span>
   )

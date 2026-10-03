@@ -13,6 +13,17 @@ import type {
   TreeNodeInput,
   WorkspaceItem,
 } from '@/lib/workspace-types'
+import {
+  contentDispositionFileName,
+  type OpenApiCreateInput,
+  type OpenApiCreateResult,
+  type OpenApiExportOptions,
+  type OpenApiImportInput,
+  type OpenApiImportResult,
+  type OpenApiSyncApplyInput,
+  type OpenApiSyncApplyResult,
+  type OpenApiSyncPreview,
+} from '@/lib/openapi'
 import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
 import type { VariableOrderPreferences } from '@/lib/variable-order'
 import { getActiveTeamId, notifyTeamContextError } from '@/lib/teams'
@@ -44,8 +55,12 @@ apiClient.interceptors.response.use(
       const code = error.response?.data?.error?.code
       const hasTeamContext = !!error.config?.headers?.get('X-Team-Id')
       const memberRoute = /^\/teams\/[^/]+\/members(?:\/|$)/.test(error.config?.url ?? '')
-      const teamScopedRoute = /^\/(?:collections|environments|variables|trash|presence)(?:\/|$)/.test(error.config?.url ?? '') || memberRoute
-      if (hasTeamContext && teamScopedRoute && (code === 'TEAM_NOT_FOUND' || code === 'TEAM_MEMBERSHIP_REQUIRED')) {
+      const teamScopedRoute = /^\/(?:activity|collections|environments|variables|trash|presence)(?:\/|$)/.test(error.config?.url ?? '') || memberRoute
+      if (teamScopedRoute && (
+        code === 'TEAM_CONTEXT_REQUIRED' ||
+        code === 'TEAM_MEMBERSHIP_REQUIRED' ||
+        (hasTeamContext && code === 'TEAM_NOT_FOUND')
+      )) {
         notifyTeamContextError(code)
       }
       if (error.response?.status === 403 && code === 'TEAM_ROLE_REQUIRED' && (hasTeamContext || memberRoute)) {
@@ -100,6 +115,55 @@ export interface BulkImportResult {
   changedAt: string
 }
 
+export interface CollectionRunResult {
+  id: string
+  position: number
+  itemId: string
+  itemName: string
+  status: 'passed' | 'failed' | 'error' | 'skipped'
+  httpStatus: number | null
+  durationMs: number
+  responseSizeBytes: number | null
+  responsePreview: string | null
+  responseTruncated: boolean
+  assertions: Array<{ name: string; passed: boolean; errorCode?: string }>
+  errorCode: string | null
+}
+
+export interface CollectionRunDetail {
+  id: string
+  collectionId: string
+  folderId: string | null
+  environmentId: string | null
+  status: 'passed' | 'failed'
+  requestCount: number
+  passedCount: number
+  failedCount: number
+  startedAt: string
+  finishedAt: string
+  durationMs: number
+  results: CollectionRunResult[]
+}
+
+export type CollectionRunSummary = Omit<CollectionRunDetail, 'results'>
+
+export interface ActivityEntry {
+  id: string
+  actor: string
+  action: string
+  resourceType: 'collection' | 'folder' | 'request' | 'environment' | 'variable'
+  resourceId: string
+  resourceName: string
+  collectionId: string | null
+  details: Record<string, unknown>
+  createdAt: string
+}
+
+export interface ActivityPage {
+  entries: ActivityEntry[]
+  nextCursor: string | null
+}
+
 export function apiErrorCode(error: unknown): string | undefined {
   if (!isAxiosError<{ error?: { code?: string } }>(error)) return undefined
   return error.response?.data?.error?.code
@@ -110,6 +174,33 @@ export function apiErrorDetails(error: unknown): Record<string, unknown> | undef
   const details = error.response?.data?.error?.details
   return details && typeof details === 'object' && !Array.isArray(details) ? details as Record<string, unknown> : undefined
 }
+
+/**
+ * Describes an OpenAPI create/import/sync failure. Those routes share the import rate limit, so a
+ * 429 also says how long to wait instead of only "too many requests".
+ */
+export function describeOpenApiError(error: unknown): string {
+  const description = describeApiError(error)
+  if (apiErrorCode(error) !== 'RATE_LIMITED') return description
+  const retryAfterSeconds = apiErrorDetails(error)?.retryAfterSeconds
+  return typeof retryAfterSeconds === 'number' && Number.isFinite(retryAfterSeconds)
+    ? `${description} OpenAPI imports and syncs are rate limited; try again in ${Math.ceil(retryAfterSeconds)} seconds.`
+    : `${description} OpenAPI imports and syncs are rate limited; try again in a minute.`
+}
+
+/** A blob response's error body is still a blob; turn it back into the normal JSON error envelope. */
+async function rethrowBlobError(error: unknown): Promise<never> {
+  if (isAxiosError(error) && error.response?.data instanceof Blob) {
+    try {
+      error.response.data = JSON.parse(await error.response.data.text())
+    } catch {
+      // Not JSON; leave the status-based description in place.
+    }
+  }
+  throw error
+}
+
+const OPENAPI_TIMEOUT = 120_000
 
 export const workspaceApi = {
   /**
@@ -136,6 +227,14 @@ export const workspaceApi = {
     // The key travels in the path, so it is encoded here rather than trusted: a key is free text
     // from a response and could hold a character that would otherwise change the route.
     const { data } = await apiClient.put<ScopedVariable>(`/variables/${scope}/${encodeURIComponent(key)}`, { value })
+    return data
+  },
+  async createVariable(scope: VariableScope, key: string, value: string): Promise<ScopedVariable> {
+    const { data } = await apiClient.post<ScopedVariable>(`/variables/${scope}`, { key, value })
+    return data
+  },
+  async updateVariable(scope: VariableScope, key: string, input: { key?: string; value?: string }): Promise<ScopedVariable> {
+    const { data } = await apiClient.patch<ScopedVariable>(`/variables/${scope}/${encodeURIComponent(key)}`, input)
     return data
   },
   async deleteVariable(scope: VariableScope, key: string): Promise<void> {
@@ -165,6 +264,49 @@ export const workspaceApi = {
       { timeout: 120_000 },
     )
     return data
+  },
+  async createCollectionFromOpenApi(input: OpenApiCreateInput) {
+    const { data } = await apiClient.post<OpenApiCreateResult>('/collections/openapi', input, { timeout: OPENAPI_TIMEOUT })
+    return { collection: data.collection, warnings: data.warnings ?? [] }
+  },
+  async importOpenApi(collectionId: string, input: OpenApiImportInput) {
+    const { data } = await apiClient.post<OpenApiImportResult>(
+      `/collections/${collectionId}/import/openapi`,
+      input,
+      { timeout: OPENAPI_TIMEOUT },
+    )
+    return { ...data, warnings: data.warnings ?? [] }
+  },
+  /** The document itself, not a JSON envelope; `fileName` is null when the header is not readable. */
+  async exportOpenApi(collectionId: string, options: OpenApiExportOptions) {
+    try {
+      const response = await apiClient.get<Blob>(`/collections/${collectionId}/export/openapi`, {
+        params: options,
+        responseType: 'blob',
+        headers: { Accept: options.format === 'yaml' ? 'application/yaml' : 'application/vnd.oai.openapi+json' },
+        timeout: OPENAPI_TIMEOUT,
+      })
+      const header = response.headers['content-disposition']
+      return { blob: response.data, fileName: contentDispositionFileName(typeof header === 'string' ? header : null) }
+    } catch (error) {
+      return rethrowBlobError(error)
+    }
+  },
+  async previewOpenApiSync(collectionId: string, spec: string) {
+    const { data } = await apiClient.post<OpenApiSyncPreview>(
+      `/collections/${collectionId}/sync/openapi/preview`,
+      { spec },
+      { timeout: OPENAPI_TIMEOUT },
+    )
+    return { ...data, warnings: data.warnings ?? [], changes: data.changes ?? [] }
+  },
+  async applyOpenApiSync(collectionId: string, input: OpenApiSyncApplyInput) {
+    const { data } = await apiClient.post<OpenApiSyncApplyResult>(
+      `/collections/${collectionId}/sync/openapi/apply`,
+      input,
+      { timeout: OPENAPI_TIMEOUT },
+    )
+    return { ...data, pending: data.pending ?? [], deletedItemIds: data.deletedItemIds ?? [] }
   },
   async createCollection(input: Pick<CollectionResource, 'name' | 'description' | 'auth'> & { items?: TreeNodeInput[] }) {
     // A Postman import can be tens of MB saved in one transaction; the default 10s timeout is too short.
@@ -243,6 +385,8 @@ export const workspaceApi = {
       headers: resource.headers,
       body: resource.body,
       auth: resource.auth,
+      preRequestScript: resource.preRequestScript ?? '',
+      postResponseScript: resource.postResponseScript ?? '',
     })
     return data
   },
@@ -267,6 +411,35 @@ export const workspaceApi = {
     )
     return data
   },
+  async runCollection(collectionId: string, environmentId?: string): Promise<CollectionRunDetail> {
+    const { data } = await apiClient.post<CollectionRunDetail>(
+      `/collections/${collectionId}/run`,
+      environmentId ? { environmentId } : {},
+      { timeout: 11 * 60 * 1000 },
+    )
+    return data
+  },
+  async runFolder(collectionId: string, folderId: string, environmentId?: string): Promise<CollectionRunDetail> {
+    const { data } = await apiClient.post<CollectionRunDetail>(
+      `/collections/${collectionId}/items/${folderId}/run`,
+      environmentId ? { environmentId } : {},
+      { timeout: 11 * 60 * 1000 },
+    )
+    return data
+  },
+  async collectionRuns(collectionId: string, limit = 25, offset = 0) {
+    const { data } = await apiClient.get<{
+      runs: CollectionRunSummary[]
+      total: number
+      limit: number
+      offset: number
+    }>(`/collections/${collectionId}/runs`, { params: { limit, offset } })
+    return data
+  },
+  async collectionRun(collectionId: string, runId: string): Promise<CollectionRunDetail> {
+    const { data } = await apiClient.get<CollectionRunDetail>(`/collections/${collectionId}/runs/${runId}`)
+    return data
+  },
   async environments() {
     const { data } = await apiClient.get<{ environments: EnvironmentResource[] }>('/environments')
     return data.environments
@@ -286,6 +459,10 @@ export const workspaceApi = {
     })
     return data
   },
+  async appendEnvironmentVariable(environmentId: string, input: { key: string; value: string; enabled?: boolean }): Promise<EnvironmentResource> {
+    const { data } = await apiClient.post<EnvironmentResource>(`/environments/${environmentId}/variables`, input)
+    return data
+  },
   async deleteEnvironment(id: string) {
     await apiClient.delete(`/environments/${id}`)
   },
@@ -296,6 +473,12 @@ export const workspaceApi = {
   async trash() {
     const { data } = await apiClient.get<{ entries: TrashEntry[] }>('/trash')
     return data.entries
+  },
+  async activity(limit = 50, cursor?: string): Promise<ActivityPage> {
+    const { data } = await apiClient.get<ActivityPage>('/activity', {
+      params: { limit, ...(cursor !== undefined ? { cursor } : {}) },
+    })
+    return data
   },
   async teamMembers(teamId: string) {
     const { data } = await apiClient.get<{ members: TeamMember[] }>(`/teams/${teamId}/members`)

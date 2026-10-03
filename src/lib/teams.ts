@@ -31,7 +31,7 @@ const activeTeamStoragePrefix = 'play-next-api-workspace.active-team.v1:'
 let activeTeamId: string | null = null
 export const teamContextEvents = new EventTarget()
 
-export type TeamContextErrorCode = 'TEAM_NOT_FOUND' | 'TEAM_MEMBERSHIP_REQUIRED' | 'TEAM_ROLE_REQUIRED'
+export type TeamContextErrorCode = 'TEAM_CONTEXT_REQUIRED' | 'TEAM_NOT_FOUND' | 'TEAM_MEMBERSHIP_REQUIRED' | 'TEAM_ROLE_REQUIRED'
 
 export function notifyTeamContextError(code: TeamContextErrorCode, teams?: Team[]): void {
   teamContextEvents.dispatchEvent(new CustomEvent('team-context-error', { detail: { code, teams } }))

@@ -44,6 +44,7 @@ function renderTree(props: Partial<React.ComponentProps<typeof WorkspaceTree>> =
     cloningId: null,
     onShowTrash: vi.fn(),
     onShowHistory: vi.fn(),
+    onShowActivity: vi.fn(),
     collapsed: false,
     environments: [],
     onActivateEnvironment: vi.fn(),
@@ -204,6 +205,7 @@ describe('WorkspaceTree expand/collapse all', () => {
         cloningId={null}
         onShowTrash={vi.fn()}
         onShowHistory={vi.fn()}
+        onShowActivity={vi.fn()}
         collapsed={false}
         environments={[]}
         onActivateEnvironment={vi.fn()}

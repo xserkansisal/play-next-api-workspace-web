@@ -9,7 +9,12 @@ import { CompareDiff } from '@/components/CompareDiff'
 import { CollectionRunHistoryDialog } from '@/components/CollectionRunHistoryDialog'
 import { EnvironmentPicker } from '@/components/EnvironmentPicker'
 import { HistoryView } from '@/components/HistoryView'
+import { TeamActivityView } from '@/components/TeamActivityView'
 import { ImportDialog } from '@/components/ImportDialog'
+import { CollectionExportDialog } from '@/components/CollectionExportDialog'
+import { OpenApiCreateDialog } from '@/components/OpenApiCreateDialog'
+import { OpenApiImportDialog } from '@/components/OpenApiImportDialog'
+import { OpenApiSyncDialog } from '@/components/OpenApiSyncDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { TeamMembers } from '@/components/TeamMembers'
@@ -27,6 +32,13 @@ import type { PresenceUser } from '@/lib/presence'
 import { appendHistoryEntry, loadHistory, clearHistory } from '@/lib/history'
 import type { HistoryEntry } from '@/lib/history'
 import { exportCollectionToPostman } from '@/lib/postman-export'
+import {
+  fallbackOpenApiFileName,
+  type OpenApiCreateInput,
+  type OpenApiExportOptions,
+  type OpenApiImportInput,
+  type OpenApiSyncApplyInput,
+} from '@/lib/openapi'
 import { exportEnvironmentToPostman } from '@/lib/postman-environment'
 import { createUuid } from '@/lib/uuid'
 import { buildAuthAncestry, resolveEffectiveAuth } from '@/lib/auth-resolution'
@@ -64,7 +76,7 @@ import type {
 import { applyMove, type MoveSource, type MoveTarget } from '@/lib/tree-move'
 import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName } from '@/lib/workspace-ui'
 
-type View = 'workspace' | 'environments' | 'variables' | 'trash' | 'history' | 'members'
+type View = 'workspace' | 'environments' | 'variables' | 'trash' | 'history' | 'activity' | 'members'
 
 interface RemoteUpdate {
   event: ChangeEvent | null
@@ -248,6 +260,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   const [sendErrors, setSendErrors] = useState<Record<string, string>>({})
   const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory())
   const [importFlow, setImportFlow] = useState<ImportSource | 'options' | null>(null)
+  const [exportCollectionId, setExportCollectionId] = useState<string | null>(null)
   const selectedRef = useRef(selected)
   const draftsRef = useRef(drafts)
   const baselinesRef = useRef(baselines)
@@ -555,7 +568,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     if (!activeCollectionId) return null
     const collection = collections.find(({ id }) => id === activeCollectionId)
     if (!collection) return null
-    return { title: `Export "${collection.name}" as a Postman v2.1 collection file`, run: () => exportCollection(collection.id) }
+    return { title: `Export "${collection.name}" as OpenAPI or Postman`, run: () => setExportCollectionId(collection.id) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, variableScope, selected, environments, collections, activeCollectionId, scopedVariables])
 
@@ -1135,7 +1148,12 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   async function importBulkItems(collectionId: string, input: BulkImportInput) {
     if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
     const result = await workspaceApi.bulkImport(collectionId, input)
-    let refreshError: string | undefined
+    const refreshError = await refreshCollection(collectionId, 'import')
+    return { result, refreshError }
+  }
+
+  /** Reloads one collection's tree after a server-side bulk change. Returns a message on failure. */
+  async function refreshCollection(collectionId: string, action: 'import' | 'sync'): Promise<string | undefined> {
     try {
       const refreshed = await workspaceApi.collection(collectionId)
       setCollections((current) => sortByName(current.map((entry) => entry.id === refreshed.id ? refreshed : entry)))
@@ -1152,11 +1170,58 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           ? { ...current, [key]: { ...baseline, resource: { ...baseline.resource, items: refreshed.items } } }
           : current
       })
+      return undefined
     } catch (error) {
-      refreshError = `The import succeeded, but the collection could not be refreshed: ${describeApiError(error)}`
+      const refreshError = `The ${action} succeeded, but the collection could not be refreshed: ${describeApiError(error)}`
       setLoadingError(refreshError)
+      return refreshError
     }
+  }
+
+  async function createOpenApiCollection(input: OpenApiCreateInput) {
+    if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
+    const created = await workspaceApi.createCollectionFromOpenApi(input)
+    setCollections((current) => sortByName([...current.filter(({ id }) => id !== created.collection.id), created.collection]))
+    return created
+  }
+
+  function openCollection(collectionId: string) {
+    setImportFlow(null)
+    setSelected({ kind: 'collection', collectionId })
+    setView('workspace')
+  }
+
+  async function previewOpenApiImport(collectionId: string, input: OpenApiImportInput) {
+    return workspaceApi.importOpenApi(collectionId, { ...input, dryRun: true })
+  }
+
+  async function importOpenApiItems(collectionId: string, input: OpenApiImportInput) {
+    if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
+    const result = await workspaceApi.importOpenApi(collectionId, { ...input, dryRun: false })
+    const refreshError = await refreshCollection(collectionId, 'import')
     return { result, refreshError }
+  }
+
+  async function previewOpenApiSync(collectionId: string, spec: string) {
+    return workspaceApi.previewOpenApiSync(collectionId, spec)
+  }
+
+  async function applyOpenApiSync(collectionId: string, input: OpenApiSyncApplyInput) {
+    if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
+    const result = await workspaceApi.applyOpenApiSync(collectionId, input)
+    // The user explicitly sent these to Trash, so their open tabs go with them.
+    if (result.deletedItemIds.length > 0) {
+      removeTabs(result.deletedItemIds.map((itemId) => resourceKey({ kind: 'request', collectionId, itemId })))
+    }
+    const refreshError = await refreshCollection(collectionId, 'sync')
+    return { result, refreshError }
+  }
+
+  async function exportOpenApi(collectionId: string, options: OpenApiExportOptions) {
+    const collection = collections.find(({ id }) => id === collectionId)
+    const { blob, fileName } = await workspaceApi.exportOpenApi(collectionId, options)
+    downloadBlob(blob, fileName ?? fallbackOpenApiFileName(collection?.name ?? '', options.format))
+    setExportCollectionId(null)
   }
 
   function finishBulkImport(collectionId: string, parentId: string | null) {
@@ -1166,7 +1231,10 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   function downloadJson(content: unknown, fileName: string) {
-    const blob = new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' })
+    downloadBlob(new Blob([JSON.stringify(content, null, 2)], { type: 'application/json' }), fileName)
+  }
+
+  function downloadBlob(blob: Blob, fileName: string) {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -1572,6 +1640,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           cloningId={cloningId}
           onShowTrash={() => { setView('trash'); void reloadTrash() }}
           onShowHistory={() => setView('history')}
+          onShowActivity={() => setView('activity')}
           collapsed={sidebarCollapsed}
           environments={environments}
           activeEnvironmentId={selectedEnvironmentId}
@@ -1598,6 +1667,14 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
               : <div className="empty-workspace"><h1>Members unavailable</h1><p>You do not have permission in this team.</p></div>
           ) : view === 'history' ? (
             <HistoryView entries={history} onClear={() => { clearHistory(); setHistory([]) }} />
+          ) : view === 'activity' ? (
+            <TeamActivityView
+              key={activeTeamId ?? ''}
+              teamId={activeTeamId}
+              collections={collections}
+              environments={environments}
+              onOpenResource={openResource}
+            />
           ) : view === 'variables' ? (
             <VariablesMenu
               resolved={resolvedVariables}
@@ -1770,6 +1847,46 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           onImport={importBulkItems}
         />
       )}
+
+      {importFlow === 'openapi-create' && (
+        <OpenApiCreateDialog onCancel={() => setImportFlow(null)} onCreate={createOpenApiCollection} onOpen={openCollection} />
+      )}
+
+      {importFlow === 'openapi-import' && (
+        <OpenApiImportDialog
+          collections={collections}
+          initialCollectionId={selected && selected.kind !== 'environment' ? selected.collectionId : undefined}
+          initialParentId={selected?.kind === 'folder' ? selected.itemId : undefined}
+          onCancel={() => setImportFlow(null)}
+          onComplete={finishBulkImport}
+          onPreview={previewOpenApiImport}
+          onImport={importOpenApiItems}
+        />
+      )}
+
+      {importFlow === 'openapi-sync' && (
+        <OpenApiSyncDialog
+          collections={collections}
+          initialCollectionId={selected && selected.kind !== 'environment' ? selected.collectionId : undefined}
+          onCancel={() => setImportFlow(null)}
+          onPreview={previewOpenApiSync}
+          onApply={applyOpenApiSync}
+          onComplete={openCollection}
+        />
+      )}
+
+      {exportCollectionId && (() => {
+        const collection = collections.find(({ id }) => id === exportCollectionId)
+        if (!collection) return null
+        return (
+          <CollectionExportDialog
+            collectionName={collection.name}
+            onCancel={() => setExportCollectionId(null)}
+            onExportPostman={() => { exportCollection(collection.id); setExportCollectionId(null) }}
+            onExportOpenApi={(options) => exportOpenApi(collection.id, options)}
+          />
+        )
+      })()}
 
       {versionHistoryOpen && activeDraft && activeDraft.kind !== 'environment' && !(activeDraft.kind === 'request' && activeDraft.isNew) && (
         <VersionHistoryDialog

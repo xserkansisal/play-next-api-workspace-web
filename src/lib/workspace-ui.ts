@@ -120,6 +120,8 @@ export function newRequest(id: string, name: string, collectionId: string, paren
     queryParams: [],
     headers: [],
     body: null,
+    preRequestScript: '',
+    postResponseScript: '',
     // New requests default to inherit: they pick up whatever auth is configured on their
     // collection/folder ancestry, and fall back to no auth only if nothing is configured anywhere.
     auth: { type: 'inherit' },

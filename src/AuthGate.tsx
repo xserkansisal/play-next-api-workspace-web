@@ -119,7 +119,7 @@ export function AuthGate() {
   useEffect(() => {
     const onTeamContextError = (event: Event) => {
       const { code, teams } = (event as CustomEvent<{ code: TeamContextErrorCode; teams?: Team[] }>).detail
-      if (code === 'TEAM_NOT_FOUND' || code === 'TEAM_MEMBERSHIP_REQUIRED') void refreshMembership(teams)
+      if (code === 'TEAM_CONTEXT_REQUIRED' || code === 'TEAM_NOT_FOUND' || code === 'TEAM_MEMBERSHIP_REQUIRED') void refreshMembership(teams)
       if (code === 'TEAM_ROLE_REQUIRED') {
         void refreshMembership().then(() => {
           setStatus((current) => current.stage === 'signed-in'

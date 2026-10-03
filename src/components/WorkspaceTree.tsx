@@ -30,6 +30,7 @@ interface WorkspaceTreeProps {
   cloningId: string | null
   onShowTrash: () => void
   onShowHistory: () => void
+  onShowActivity: () => void
   collapsed: boolean
   environments: EnvironmentResource[]
   /**
@@ -405,6 +406,7 @@ export function WorkspaceTree({
   cloningId,
   onShowTrash,
   onShowHistory,
+  onShowActivity,
   collapsed,
   environments,
   activeEnvironmentId,
@@ -703,6 +705,7 @@ export function WorkspaceTree({
         </div>
         <div className="sidebar-bottom">
           <button className="sidebar-link" onClick={onShowHistory}>▥ &nbsp; History</button>
+          <button className="sidebar-link" onClick={onShowActivity}>◷ &nbsp; Team activity</button>
           {canAccessTrash && <button className="sidebar-link" onClick={onShowTrash}>▱ &nbsp; Trash</button>}
         </div>
       </aside>

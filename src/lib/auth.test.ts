@@ -1,7 +1,7 @@
 import { AxiosError, AxiosHeaders } from 'axios'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { apiClient } from '@/lib/api'
+import { apiClient, workspaceApi } from '@/lib/api'
 import { authApi, authEvents, describeAuthError, nameFromEmail, onUnauthenticated } from '@/lib/auth'
 import { getActiveTeamId, setActiveTeamId, teamContextEvents } from '@/lib/teams'
 
@@ -42,6 +42,30 @@ describe('authApi', () => {
     expect(getActiveTeamId()).toBe('team-1')
   })
 
+  it('requests activity with the active team context and opaque cursor', async () => {
+    setActiveTeamId('team-1')
+    const originalAdapter = apiClient.defaults.adapter
+    const adapter = vi.fn(async (config) => ({
+      config,
+      data: { entries: [], nextCursor: null },
+      headers: new AxiosHeaders(),
+      status: 200,
+      statusText: 'OK',
+    }))
+    apiClient.defaults.adapter = adapter
+
+    try {
+      await workspaceApi.activity(25, 'opaque+/cursor==')
+    } finally {
+      apiClient.defaults.adapter = originalAdapter
+    }
+
+    const config = adapter.mock.calls[0]?.[0]
+    expect(config?.url).toBe('/activity')
+    expect(config?.params).toEqual({ limit: 25, cursor: 'opaque+/cursor==' })
+    expect(config?.headers.get('X-Team-Id')).toBe('team-1')
+  })
+
   it('announces team-context errors from API responses to the app shell', async () => {
     const listener = vi.fn()
     teamContextEvents.addEventListener('team-context-error', listener)
@@ -60,6 +84,25 @@ describe('authApi', () => {
 
     expect(listener).toHaveBeenCalledOnce()
     expect((listener.mock.calls[0]?.[0] as CustomEvent<{ code: string }>).detail.code).toBe('TEAM_NOT_FOUND')
+    teamContextEvents.removeEventListener('team-context-error', listener)
+  })
+
+  it('announces a missing team context even when no team header was sent', async () => {
+    const listener = vi.fn()
+    teamContextEvents.addEventListener('team-context-error', listener)
+    setActiveTeamId(null)
+    const config = { headers: new AxiosHeaders(), url: '/collections' }
+    const failure = new AxiosError('Bad request', '400', config, null, {
+      status: 400,
+      statusText: 'Bad Request',
+      data: { error: { code: 'TEAM_CONTEXT_REQUIRED', message: 'Choose a team' } },
+      headers: {},
+      config,
+    })
+
+    await expect(apiClient.get('/collections', { adapter: () => Promise.reject(failure) })).rejects.toBe(failure)
+
+    expect((listener.mock.calls[0]?.[0] as CustomEvent<{ code: string }>).detail.code).toBe('TEAM_CONTEXT_REQUIRED')
     teamContextEvents.removeEventListener('team-context-error', listener)
   })
 

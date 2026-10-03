@@ -207,13 +207,13 @@ describe('VariablesMenu adding', () => {
   afterEach(() => vi.restoreAllMocks())
 
   it('adds one of my variables through the API', async () => {
-    const setVariable = vi.spyOn(workspaceApi, 'setVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
+    const createVariable = vi.spyOn(workspaceApi, 'createVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
     const user = userEvent.setup()
     renderMenu()
     await user.click(screen.getByRole('button', { name: 'New Only me variable' }))
     await user.type(screen.getByRole('textbox', { name: 'New Only me variable key' }), 'apiKey')
     await user.type(screen.getByRole('textbox', { name: 'New Only me variable value' }), 'secret{Enter}')
-    expect(setVariable).toHaveBeenCalledWith('user', 'apiKey', 'secret')
+    expect(createVariable).toHaveBeenCalledWith('user', 'apiKey', 'secret')
     expect(screen.queryByRole('textbox', { name: 'New Only me variable key' })).toBeNull()
   })
 
@@ -246,7 +246,7 @@ describe('VariablesMenu adding', () => {
   })
 
   it('says when a new value is overridden by a higher-priority scope', async () => {
-    vi.spyOn(workspaceApi, 'setVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
+    vi.spyOn(workspaceApi, 'createVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
     const user = userEvent.setup()
     renderMenu()
     await user.click(screen.getByRole('button', { name: 'New Team variable' }))

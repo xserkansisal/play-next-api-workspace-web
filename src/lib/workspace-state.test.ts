@@ -2,7 +2,7 @@ import { AxiosError, AxiosHeaders } from 'axios'
 import { describe, expect, it, vi } from 'vitest'
 
 import { apiClient, checkHealth, describeApiError, workspaceApi } from '@/lib/api'
-import { applyChangeEvent, isDraftDirty, parseChangeEvent } from '@/lib/workspace-types'
+import { applyChangeEvent, isDraftDirty, parseChangeEvent, parseReadyEpoch } from '@/lib/workspace-types'
 import type { ChangeEvent, RequestResource } from '@/lib/workspace-types'
 
 const change: ChangeEvent = {
@@ -46,6 +46,12 @@ describe('SSE event handling', () => {
     })
     expect(parseChangeEvent('change', JSON.stringify(payloadWithoutEventId))).toBeNull()
   })
+
+  it('reads a server epoch from ready events so reconnects can detect restarts', () => {
+    expect(parseReadyEpoch('{"epoch":"epoch-1"}')).toBe('epoch-1')
+    expect(parseReadyEpoch('{"epoch":""}')).toBeNull()
+    expect(parseReadyEpoch('{')).toBeNull()
+  })
 })
 
 describe('API errors and save isolation', () => {
@@ -84,6 +90,8 @@ describe('API errors and save isolation', () => {
       headers: [],
       body: { type: 'json', content: '{"template":"{{value}}"}' },
       auth: { type: 'none' },
+      preRequestScript: 'pm.environment.set("x", "1")',
+      postResponseScript: 'pm.test("ok", () => pm.expect(pm.response.code).to.equal(200))',
     }
     const put = vi.spyOn(apiClient, 'put').mockResolvedValue({ data: request } as never)
     await workspaceApi.saveRequest('collection-1', request)
@@ -97,6 +105,8 @@ describe('API errors and save isolation', () => {
       headers: [],
       body: { type: 'json', content: '{"template":"{{value}}"}' },
       auth: { type: 'none' },
+      preRequestScript: 'pm.environment.set("x", "1")',
+      postResponseScript: 'pm.test("ok", () => pm.expect(pm.response.code).to.equal(200))',
     })
     expect(put.mock.calls[0]?.[1]).not.toHaveProperty('parentId')
     expect(put).toHaveBeenCalledTimes(1)
@@ -117,6 +127,44 @@ describe('API errors and save isolation', () => {
     expect(post).toHaveBeenNthCalledWith(1, '/collections/collection-1/versions/version-1/restore')
     expect(post).toHaveBeenNthCalledWith(2, '/collections/collection-1/items/request-1/versions/version-2/restore')
     get.mockRestore()
+    post.mockRestore()
+  })
+
+  it('runs saved collections and folders and pages through the caller run history', async () => {
+    const run = { id: 'run-1', collectionId: 'collection-1', results: [] }
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: run } as never)
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { runs: [], total: 0, limit: 25, offset: 0 } } as never)
+
+    await workspaceApi.runCollection('collection-1', 'environment-1')
+    await workspaceApi.runFolder('collection-1', 'folder-1')
+    await workspaceApi.collectionRuns('collection-1', 25, 25)
+    await workspaceApi.collectionRun('collection-1', 'run-1')
+
+    expect(post).toHaveBeenNthCalledWith(1, '/collections/collection-1/run', { environmentId: 'environment-1' }, { timeout: 660_000 })
+    expect(post).toHaveBeenNthCalledWith(2, '/collections/collection-1/items/folder-1/run', {}, { timeout: 660_000 })
+    expect(get).toHaveBeenNthCalledWith(1, '/collections/collection-1/runs', { params: { limit: 25, offset: 25 } })
+    expect(get).toHaveBeenNthCalledWith(2, '/collections/collection-1/runs/run-1')
+    post.mockRestore()
+    get.mockRestore()
+  })
+
+  it('uses API create and patch operations for variable add and rename', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { scope: 'user', key: 'token', value: 'abc' } } as never)
+    const patch = vi.spyOn(apiClient, 'patch').mockResolvedValue({ data: { scope: 'user', key: 'access token', value: 'abc' } } as never)
+
+    await workspaceApi.createVariable('user', 'token', 'abc')
+    await workspaceApi.updateVariable('user', 'token', { key: 'access token', value: 'abc' })
+
+    expect(post).toHaveBeenCalledWith('/variables/user', { key: 'token', value: 'abc' })
+    expect(patch).toHaveBeenCalledWith('/variables/user/token', { key: 'access token', value: 'abc' })
+    post.mockRestore()
+    patch.mockRestore()
+  })
+
+  it('appends an environment variable through the dedicated API endpoint', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { id: 'environment-1', name: 'Local', variables: [] } } as never)
+    await workspaceApi.appendEnvironmentVariable('environment-1', { key: 'token', value: 'abc' })
+    expect(post).toHaveBeenCalledWith('/environments/environment-1/variables', { key: 'token', value: 'abc' })
     post.mockRestore()
   })
 })

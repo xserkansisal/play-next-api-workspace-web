@@ -98,6 +98,22 @@ describe('workspace live update flow', () => {
     expect(onTeamChange).toHaveBeenCalledWith('team-2')
   })
 
+  it('opens the selected team activity view', async () => {
+    const activity = vi.spyOn(workspaceApi, 'activity').mockResolvedValue({ entries: [], nextCursor: null })
+    render(
+      <App
+        activeTeamId="team-1"
+        teams={[{ id: 'team-1', name: 'Game Studio', description: '', role: 'viewer', isMember: true }]}
+      />,
+    )
+
+    await userEvent.click(await screen.findByRole('button', { name: /Team activity/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Team activity' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No team activity yet' })).toBeInTheDocument()
+    expect(activity).toHaveBeenCalledOnce()
+  })
+
   it('labels non-member teams as admin access in the team switcher', async () => {
     render(
       <App
@@ -138,8 +154,18 @@ describe('workspace live update flow', () => {
 
     await user.click(screen.getByRole('button', { name: 'Import' }))
     expect(screen.getByRole('heading', { name: 'Bring your API into Play Next' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /OpenAPI \/ Swagger.*Coming soon/ })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /^OpenAPI Create, import, or sync/ }))
+    await user.click(screen.getByRole('button', { name: /Compare and sync a collection/ }))
+    expect(screen.getByRole('heading', { name: 'Sync a collection with OpenAPI' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
 
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+    await user.click(screen.getByRole('button', { name: /^OpenAPI Create, import, or sync/ }))
+    await user.click(screen.getByRole('button', { name: /Import once into a collection/ }))
+    expect(screen.getByRole('heading', { name: 'Import OpenAPI into a collection' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    await user.click(screen.getByRole('button', { name: 'Import' }))
     await user.click(screen.getByRole('button', { name: /Play Next bulk import/ }))
     expect(screen.getByRole('heading', { name: 'Import into a collection' })).toBeInTheDocument()
     expect(screen.getByLabelText('Bulk import JSON file')).toBeInTheDocument()
@@ -299,6 +325,23 @@ describe('workspace live update flow', () => {
     await waitFor(() => expect(workspaceApi.collections).toHaveBeenCalledTimes(2))
     expect(workspaceApi.environments).toHaveBeenCalledTimes(2)
     expect(workspaceApi.trash).toHaveBeenCalledTimes(2)
+  })
+
+  it('refetches workspace data when the ready event reports a new server epoch', async () => {
+    const user = userEvent.setup()
+    const collections = vi.mocked(workspaceApi.collections)
+    render(<App />)
+    await screen.findByRole('button', { name: 'List orders' })
+    const previousStream = MockEventSource.current
+    previousStream.emit('ready', '{"epoch":"epoch-1"}')
+    await user.click(screen.getByRole('button', { name: 'Reconnect' }))
+    await waitFor(() => expect(MockEventSource.current).not.toBe(previousStream))
+
+    const callsBeforeRestart = collections.mock.calls.length
+    MockEventSource.current.emit('ready', '{"epoch":"epoch-2"}')
+
+    await waitFor(() => expect(collections.mock.calls.length).toBeGreaterThan(callsBeforeRestart))
+    expect(await screen.findByText(/API restarted/i)).toBeInTheDocument()
   })
 
   it('publishes the selected resource and renders live viewers from presence events', async () => {
@@ -880,8 +923,7 @@ describe('which scope a {{name}} resolves from', () => {
 
   it('edits one of my variables from the Variables menu, renaming it on the server', async () => {
     vi.spyOn(workspaceApi, 'variables').mockResolvedValue([{ scope: 'user', key: 'token', value: 'old' }])
-    const setVariable = vi.spyOn(workspaceApi, 'setVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
-    const deleteVariable = vi.spyOn(workspaceApi, 'deleteVariable').mockResolvedValue()
+    const updateVariable = vi.spyOn(workspaceApi, 'updateVariable').mockImplementation(async (scope, key, input) => ({ scope, key: input.key ?? key, value: input.value ?? '' }))
     const user = userEvent.setup()
     render(<App />)
     await user.click(await screen.findByRole('button', { name: 'Open Only me variables' }))
@@ -891,8 +933,7 @@ describe('which scope a {{name}} resolves from', () => {
     await user.clear(screen.getByRole('textbox', { name: 'Value for token' }))
     await user.type(screen.getByRole('textbox', { name: 'Value for token' }), 'new{Enter}')
 
-    await waitFor(() => expect(deleteVariable).toHaveBeenCalledWith('user', 'token'))
-    expect(setVariable).toHaveBeenCalledWith('user', 'authToken', 'new')
+    await waitFor(() => expect(updateVariable).toHaveBeenCalledWith('user', 'token', { key: 'authToken', value: 'new' }))
     expect(await screen.findByRole('button', { name: 'Edit authToken' })).toBeTruthy()
   })
 

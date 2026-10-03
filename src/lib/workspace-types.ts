@@ -47,6 +47,8 @@ export interface RequestResource {
   headers: KeyValueEntry[]
   body: RequestBody | null
   auth: RequestAuth
+  preRequestScript?: string
+  postResponseScript?: string
   /**
    * The resolved auth this request actually runs with, computed server-side from its own setting
    * and its ancestors. Response-only - never send this back in a create/update payload.
@@ -112,6 +114,8 @@ export type ItemVersionSnapshot =
       headers: KeyValueEntry[]
       body: RequestBody | null
       auth: RequestAuth
+      preRequestScript?: string
+      postResponseScript?: string
     }
 
 export interface ResourceVersion<TSnapshot> {
@@ -242,4 +246,16 @@ export function parseChangeEvent(
   const eventId = typeof value.eventId === 'string' ? value.eventId : lastEventId
   if (typeof eventId !== 'string') return null
   return { ...value, eventId } as ChangeEvent
+}
+
+export function parseReadyEpoch(data: string): string | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(data)
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const epoch = (parsed as { epoch?: unknown }).epoch
+  return typeof epoch === 'string' && epoch.length > 0 ? epoch : null
 }

@@ -12,7 +12,7 @@
 // - Values are stored in the API's database in plain text, exactly as environment variables
 //   already are. Anything genuinely secret is no safer here than it is there.
 
-import { describeApiError, workspaceApi } from '@/lib/api'
+import { workspaceApi } from '@/lib/api'
 import { getActiveTeamId } from '@/lib/teams'
 import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
 
@@ -84,12 +84,17 @@ export async function updateScopedVariable(scope: VariableScope, oldKey: string,
   if (newKey !== oldKey && cache.some((entry) => entry.scope === scope && entry.key === newKey)) {
     throw new Error(`"${newKey}" already exists in this scope.`)
   }
-  await saveScopedVariable(scope, newKey, value)
-  if (newKey === oldKey) return
+  const before = cache
+  publish(withVariable(before.filter((entry) => !(entry.scope === scope && entry.key === oldKey)), scope, newKey, value))
   try {
-    await removeScopedVariable(scope, oldKey)
+    const saved = await workspaceApi.updateVariable(scope, oldKey, {
+      ...(newKey !== oldKey ? { key: newKey } : {}),
+      value,
+    })
+    publish(withVariable(cache, scope, saved.key, saved.value))
   } catch (error) {
-    throw new Error(`Saved "${newKey}", but "${oldKey}" could not be removed: ${describeApiError(error)}`)
+    publish(before)
+    throw error
   }
 }
 
@@ -104,7 +109,15 @@ export async function addScopedVariable(scope: VariableScope, key: string, value
   if (cache.some((entry) => entry.scope === scope && entry.key === key)) {
     throw new Error(`"${key}" already exists in this scope.`)
   }
-  await saveScopedVariable(scope, key, value)
+  const before = cache
+  publish(withVariable(before, scope, key, value))
+  try {
+    const saved = await workspaceApi.createVariable(scope, key, value)
+    publish(withVariable(cache, scope, saved.key, saved.value))
+  } catch (error) {
+    publish(before)
+    throw error
+  }
 }
 
 export async function removeScopedVariable(scope: VariableScope, key: string): Promise<void> {

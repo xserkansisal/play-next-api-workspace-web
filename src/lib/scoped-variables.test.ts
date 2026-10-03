@@ -4,12 +4,14 @@ import { workspaceApi } from '@/lib/api'
 import { setActiveTeamId } from '@/lib/teams'
 import type { ScopedVariable } from '@/lib/variable-scopes'
 import {
+  addScopedVariable,
   getScopedVariables,
   loadScopedVariables,
   migrateLegacyRuntimeVariables,
   removeScopedVariable,
   resetScopedVariables,
   saveScopedVariable,
+  updateScopedVariable,
 } from '@/lib/scoped-variables'
 
 const LEGACY_KEY = 'play-next-api-workspace.runtime-variables.v1'
@@ -19,6 +21,8 @@ beforeEach(() => {
   resetScopedVariables()
   vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
   vi.spyOn(workspaceApi, 'setVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
+  vi.spyOn(workspaceApi, 'createVariable').mockImplementation(async (scope, key, value) => ({ scope, key, value }))
+  vi.spyOn(workspaceApi, 'updateVariable').mockImplementation(async (scope, key, input) => ({ scope, key: input.key ?? key, value: input.value ?? '' }))
   vi.spyOn(workspaceApi, 'deleteVariable').mockResolvedValue(undefined)
 })
 
@@ -71,6 +75,26 @@ describe('removeScopedVariable', () => {
 
     await expect(removeScopedVariable('user', 'token')).rejects.toThrow('nope')
     expect(getScopedVariables()).toEqual([{ scope: 'user', key: 'token', value: 'mine' }])
+  })
+})
+
+describe('variable creation and rename', () => {
+  it('creates a variable through the API create endpoint and rolls back on failure', async () => {
+    await addScopedVariable('user', 'token', 'abc')
+    expect(workspaceApi.createVariable).toHaveBeenCalledWith('user', 'token', 'abc')
+    expect(getScopedVariables()).toEqual([{ scope: 'user', key: 'token', value: 'abc' }])
+
+    vi.mocked(workspaceApi.createVariable).mockRejectedValueOnce(new Error('conflict'))
+    await expect(addScopedVariable('user', 'second', 'value')).rejects.toThrow('conflict')
+    expect(getScopedVariables()).toEqual([{ scope: 'user', key: 'token', value: 'abc' }])
+  })
+
+  it('renames and updates a variable atomically with PATCH', async () => {
+    await saveScopedVariable('global', 'old', 'before')
+    await updateScopedVariable('global', 'old', 'new', 'after')
+
+    expect(workspaceApi.updateVariable).toHaveBeenCalledWith('global', 'old', { key: 'new', value: 'after' })
+    expect(getScopedVariables()).toEqual([{ scope: 'global', key: 'new', value: 'after' }])
   })
 })
 
