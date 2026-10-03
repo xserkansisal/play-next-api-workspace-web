@@ -14,6 +14,7 @@ interface JsonEditorProps {
   value: string
   onChange: (value: string) => void
   variables?: VariableLookup
+  readOnly?: boolean
 }
 
 const refreshVariables = StateEffect.define<null>()
@@ -110,7 +111,7 @@ export function variableCompletionSource(lookup: () => VariableLookup, creation?
 
 const NO_VARIABLES: VariableLookup = {}
 
-export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEditorProps) {
+export function JsonEditor({ value, onChange, variables = NO_VARIABLES, readOnly = false }: JsonEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -129,6 +130,8 @@ export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEd
         extensions: [
           lineNumbers(),
           json(),
+          EditorState.readOnly.of(readOnly),
+          EditorView.editable.of(!readOnly),
           EditorView.lineWrapping,
           variableHighlighter(() => variablesRef.current),
           autocompletion({
@@ -154,7 +157,7 @@ export function JsonEditor({ value, onChange, variables = NO_VARIABLES }: JsonEd
       editor.destroy()
       view.current = null
     }
-  }, [])
+  }, [readOnly])
 
   useEffect(() => {
     const editor = view.current

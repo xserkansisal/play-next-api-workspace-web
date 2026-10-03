@@ -10,7 +10,7 @@ import { authApi, authEvents, teamsApi } from '@/lib/auth'
 import { notifyTeamContextError } from '@/lib/teams'
 import type { Team } from '@/lib/teams'
 
-const team: Team = { id: 'team-1', name: 'Game Studio', description: '', role: 'member' }
+const team: Team = { id: 'team-1', name: 'Game Studio', description: '', role: 'member', isMember: true }
 
 function unauthenticatedError() {
   const config = { headers: new AxiosHeaders() }
@@ -52,8 +52,8 @@ describe('AuthGate', () => {
 
   it('shows sign-in when there is no valid session, and mounts the app after verifying a code', async () => {
     vi.spyOn(authApi, 'me').mockRejectedValueOnce(unauthenticatedError())
-    vi.spyOn(authApi, 'requestCode').mockResolvedValue(undefined)
-    vi.spyOn(authApi, 'verifyCode').mockResolvedValue({ id: 'u1', email: 'a@sisal.com' })
+    vi.spyOn(authApi, 'requestCode').mockResolvedValue('a@fluttersea.com')
+    vi.spyOn(authApi, 'verifyCode').mockResolvedValue({ id: 'u1', email: 'a@fluttersea.com' })
     vi.spyOn(workspaceApi, 'collections').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
     vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
@@ -67,9 +67,9 @@ describe('AuthGate', () => {
     await user.type(await screen.findByLabelText('6-digit code'), '123456')
     await user.click(screen.getByRole('button', { name: 'Verify code' }))
 
-    expect(await screen.findByText('a@sisal.com')).toBeInTheDocument()
+    expect(await screen.findByText('a@fluttersea.com')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /a@sisal\.com/i }))
+    await user.click(screen.getByRole('button', { name: /a@fluttersea\.com/i }))
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument()
   })
 
@@ -188,7 +188,7 @@ describe('AuthGate', () => {
     vi.spyOn(authApi, 'me').mockResolvedValue({ id: 'u1', email: 'a@sisal.com' })
     vi.mocked(teamsApi.list).mockResolvedValue([
       team,
-      { id: 'team-2', name: 'Mobile Gaming', description: '', role: 'owner' },
+      { id: 'team-2', name: 'Mobile Gaming', description: '', role: 'owner', isMember: true },
     ])
     const user = userEvent.setup()
     render(<AuthGate />)
@@ -208,7 +208,7 @@ describe('AuthGate', () => {
     vi.spyOn(authApi, 'me').mockResolvedValue({ id: 'u1', email: 'a@sisal.com' })
     vi.mocked(teamsApi.list)
       .mockResolvedValueOnce([team])
-      .mockResolvedValueOnce([{ id: 'team-2', name: 'Mobile Gaming', description: '', role: 'member' }])
+      .mockResolvedValueOnce([{ id: 'team-2', name: 'Mobile Gaming', description: '', role: 'member', isMember: true }])
     render(<AuthGate />)
     await screen.findByRole('combobox', { name: 'Team' })
 
@@ -228,6 +228,24 @@ describe('AuthGate', () => {
     notifyTeamContextError('TEAM_MEMBERSHIP_REQUIRED')
 
     expect(await screen.findByText('No team yet')).toBeInTheDocument()
+  })
+
+  it('refreshes per-team roles after TEAM_ROLE_REQUIRED and shows the permission message', async () => {
+    vi.spyOn(authApi, 'me').mockResolvedValue({ id: 'u1', email: 'a@sisal.com' })
+    vi.mocked(teamsApi.list)
+      .mockResolvedValueOnce([team])
+      .mockResolvedValueOnce([{ ...team, role: 'viewer' }])
+    vi.spyOn(workspaceApi, 'collections').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'environments').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'trash').mockResolvedValue([])
+    vi.spyOn(workspaceApi, 'variables').mockResolvedValue([])
+    render(<AuthGate />)
+    await screen.findByRole('combobox', { name: 'Team' })
+
+    notifyTeamContextError('TEAM_ROLE_REQUIRED')
+
+    expect(await screen.findByText('You do not have permission in this team.')).toBeInTheDocument()
+    expect(teamsApi.list).toHaveBeenCalledTimes(2)
   })
 
   it('uses the team-list probe from a failed SSE connection without issuing a duplicate refresh', async () => {

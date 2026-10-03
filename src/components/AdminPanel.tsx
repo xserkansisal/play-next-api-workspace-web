@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { apiErrorCode, describeApiError } from '@/lib/api'
+import { UserAvatar } from '@/components/UserAvatar'
+import { apiErrorCode, apiErrorDetails, describeApiError } from '@/lib/api'
 import {
   adminApi,
   type AdminUser,
@@ -13,8 +14,30 @@ import {
 import type { TeamRole } from '@/lib/teams'
 
 type Section = 'teams' | 'users' | 'audit'
+type AdminErrorField = 'team-name' | 'member-email' | 'system-role' | 'user-delete'
+interface PerformOptions {
+  field?: AdminErrorField
+  keepNotice?: boolean
+  /** Background refreshes keep the error that triggered them visible. */
+  keepError?: boolean
+  /** Returns a friendlier message for codes specific to one action; falls back to the shared mapping. */
+  describeError?: (code: string | undefined, cause: unknown) => string | undefined
+}
+
+const auditActionLabels: Record<AuditLogEntry['action'], string> = {
+  'team.created': 'Team created',
+  'team.updated': 'Team updated',
+  'team.archived': 'Team archived',
+  'team.unarchived': 'Team restored',
+  'team.deleted': 'Team deleted',
+  'team.member_added': 'Member added',
+  'team.member_role_changed': 'Member role changed',
+  'team.member_removed': 'Member removed',
+  'user.system_role_changed': 'System role changed',
+  'user.deleted': 'User deleted',
+}
 const pageSize = 50
-const roles: TeamRole[] = ['owner', 'admin', 'member']
+const roles: TeamRole[] = ['owner', 'member', 'viewer']
 
 interface AdminPanelProps {
   currentUserId?: string
@@ -48,15 +71,19 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
   const [memberRole, setMemberRole] = useState<TeamRole>('member')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [fieldError, setFieldError] = useState<{ field: 'team-name' | 'member-email' | 'system-role'; message: string } | null>(null)
+  const [fieldError, setFieldError] = useState<{ field: AdminErrorField; message: string } | null>(null)
   const [missingTargetCode, setMissingTargetCode] = useState<string | null>(null)
+  const [deleteBlocker, setDeleteBlocker] = useState<{ teamId: string; teamName: string; archived: boolean } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const teamOwnerCount = teamDetail?.members.filter(({ role }) => role === 'owner').length ?? 0
 
-  const perform = useCallback(async <T,>(action: () => Promise<T>): Promise<T | null> => {
+  const perform = useCallback(async <T,>(action: () => Promise<T>, options: PerformOptions = {}): Promise<T | null> => {
     setBusy(true)
-    setError(null)
-    setFieldError(null)
-    setNotice(null)
+    if (!options.keepError) {
+      setError(null)
+      setFieldError(null)
+    }
+    if (!options.keepNotice) setNotice(null)
     try {
       return await action()
     } catch (cause) {
@@ -66,14 +93,16 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
         if (code === 'TEAM_NOT_FOUND' || code === 'TEAM_MEMBER_NOT_FOUND' || code === 'USER_NOT_FOUND') {
           setMissingTargetCode(code)
         }
-        const message = describeApiError(cause)
-        const field = code === 'TEAM_NAME_CONFLICT'
+        const message = options.describeError?.(code, cause) ?? (code === 'LAST_SYSTEM_ADMIN'
+          ? 'At least one system admin must remain. The last system admin cannot remove their own admin role.'
+          : describeApiError(cause))
+        const field = options.field ?? (code === 'TEAM_NAME_CONFLICT'
           ? 'team-name'
           : code === 'EMAIL_DOMAIN_NOT_ALLOWED' || code === 'TEAM_MEMBER_EXISTS'
             ? 'member-email'
             : code === 'LAST_SYSTEM_ADMIN'
               ? 'system-role'
-              : null
+              : null)
         setError(message)
         if (field) setFieldError({ field, message })
       }
@@ -107,8 +136,8 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
     if (section === 'teams' && selectedTeamId) void refreshTeam(selectedTeamId)
   }, [refreshTeam, section, selectedTeamId])
 
-  const loadUsers = useCallback(async (query: string, offset: number) => {
-    const result = await perform(() => adminApi.users({ query, limit: pageSize, offset }))
+  const loadUsers = useCallback(async (query: string, offset: number, keepError = false) => {
+    const result = await perform(() => adminApi.users({ query, limit: pageSize, offset }), { keepNotice: true, keepError })
     if (!result) return
     setUsers(result.users)
     setUserTotal(result.total)
@@ -141,7 +170,7 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
       void refreshTeams()
       if (code === 'TEAM_MEMBER_NOT_FOUND' && selectedTeamId) void refreshTeam(selectedTeamId)
     } else if (section === 'users') {
-      void loadUsers(submittedQuery, userOffset)
+      void loadUsers(submittedQuery, userOffset, true)
     }
   }, [loadUsers, missingTargetCode, refreshTeam, refreshTeams, section, selectedTeamId, submittedQuery, userOffset])
 
@@ -192,12 +221,25 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
 
   async function changeMemberRole(userId: string, role: TeamRole) {
     if (!teamDetail) return
+    const member = teamDetail.members.find(({ userId: memberId }) => memberId === userId)
+    const ownerCount = teamDetail.members.filter(({ role: currentRole }) => currentRole === 'owner').length
+    if (member?.role === 'owner' && role !== 'owner' && ownerCount === 1) {
+      setError('The last team owner cannot be demoted. Add another owner first.')
+      return
+    }
     const updated = await perform(() => adminApi.updateMember(teamDetail.id, userId, role))
     if (updated) await refreshTeam(teamDetail.id)
   }
 
   async function removeMember(userId: string) {
-    if (!teamDetail || !window.confirm('Remove this member from the team?')) return
+    if (!teamDetail) return
+    const member = teamDetail.members.find(({ userId: memberId }) => memberId === userId)
+    const ownerCount = teamDetail.members.filter(({ role: currentRole }) => currentRole === 'owner').length
+    if (member?.role === 'owner' && ownerCount === 1) {
+      setError('The last team owner cannot be removed. Add another owner first.')
+      return
+    }
+    if (!window.confirm('Remove this member from the team?')) return
     const removed = await perform(() => adminApi.removeMember(teamDetail.id, userId))
     if (removed !== null) {
       setNotice('Member removed.')
@@ -232,6 +274,7 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
   }
 
   async function openUser(user: AdminUser) {
+    setDeleteBlocker(null)
     const detail = await perform(() => adminApi.user(user.id))
     if (detail) setSelectedUser(detail)
   }
@@ -245,6 +288,64 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
       setNotice('System role updated.')
       if (updated.id === currentUserId && systemRole === 'user') onAdminRequired()
     }
+  }
+
+  async function deleteUser() {
+    if (!selectedUser || selectedUser.id === currentUserId) return
+    const user = selectedUser
+    const label = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
+    const confirmed = window.confirm(
+      `Permanently delete ${label} (${user.email})?\n\n`
+      + 'Their sessions, team memberships, run history, personal variables, preferences and avatar will be removed. '
+      + 'Shared content they authored will remain but show "Unknown user". This cannot be undone.',
+    )
+    if (!confirmed) return
+    setDeleteBlocker(null)
+    const deleted = await perform(async () => {
+      await adminApi.deleteUser(user.id)
+      return true
+    }, {
+      field: 'user-delete',
+      describeError: (code, cause) => {
+        if (code === 'CANNOT_DELETE_SELF') return 'You cannot delete your own account. Ask another system admin to do it.'
+        if (code === 'LAST_SYSTEM_ADMIN') return `${label} is the only system admin. Promote another admin first.`
+        if (code === 'USER_NOT_FOUND') {
+          setSelectedUser(null)
+          return 'This user no longer exists. The user list was refreshed.'
+        }
+        if (code === 'TEAM_LAST_OWNER') {
+          const teamId = apiErrorDetails(cause)?.teamId
+          const team = typeof teamId === 'string'
+            ? user.teams.find(({ id }) => id === teamId) ?? teams.find(({ id }) => id === teamId)
+            : undefined
+          if (team) setDeleteBlocker({ teamId: team.id, teamName: team.name, archived: !!team.archivedAt })
+          const teamLabel = team?.name ?? 'one of their teams'
+          return `${label} is the only owner of ${teamLabel}. Assign another owner to ${teamLabel} first.`
+        }
+        return undefined
+      },
+    })
+    if (!deleted) return
+    setSelectedUser(null)
+    setUsers((current) => current.filter(({ id }) => id !== user.id))
+    const nextOffset = users.length === 1 && userOffset > 0 ? Math.max(0, userOffset - pageSize) : userOffset
+    if (nextOffset !== userOffset) setUserOffset(nextOffset)
+    else await loadUsers(submittedQuery, userOffset)
+    await refreshTeams()
+    if (selectedTeamIdRef.current && user.teams.some(({ id }) => id === selectedTeamIdRef.current)) {
+      await refreshTeam(selectedTeamIdRef.current)
+    }
+    setNotice(`${label} was deleted.`)
+  }
+
+  function openBlockingTeam() {
+    if (!deleteBlocker) return
+    if (deleteBlocker.archived) setIncludeArchived(true)
+    setSelectedTeamId(deleteBlocker.teamId)
+    setSection('teams')
+    setError(null)
+    setNotice(null)
+    setDeleteBlocker(null)
   }
 
   function submitUserSearch(event: FormEvent) {
@@ -322,16 +423,25 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
                 </form>
                 <div className="admin-members">
                   <h3>Members <span>{teamDetail.members.length}</span></h3>
+                  {teamOwnerCount === 1 && <p className="admin-invariant-note">The last team owner cannot be demoted or removed. Add another owner first.</p>}
                   <div className="admin-table-wrap">
                     <table className="admin-table">
                       <thead><tr><th>Member</th><th>Role</th><th>Joined</th><th /></tr></thead>
                       <tbody>
                         {teamDetail.members.map((member) => (
                           <tr key={member.userId}>
-                            <td><strong>{[member.firstName, member.lastName].filter(Boolean).join(' ') || member.email}</strong><small>{member.email}</small></td>
-                            <td><select aria-label={`Role for ${member.email}`} disabled={busy || !!teamDetail.archivedAt} value={member.role} onChange={(event) => void changeMemberRole(member.userId, event.target.value as TeamRole)}>{roles.map((role) => <option key={role}>{role}</option>)}</select></td>
+                            <td>
+                              <div className="admin-user-cell">
+                                <UserAvatar {...member} className="admin-user-avatar" />
+                                <div>
+                                  <strong>{[member.firstName, member.lastName].filter(Boolean).join(' ') || member.email}</strong>
+                                  <small>{member.email}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td><select aria-label={`Role for ${member.email}`} disabled={busy || !!teamDetail.archivedAt} value={member.role} onChange={(event) => void changeMemberRole(member.userId, event.target.value as TeamRole)}>{roles.map((role) => <option key={role} value={role} disabled={member.role === 'owner' && role !== 'owner' && teamOwnerCount === 1}>{role[0]!.toUpperCase() + role.slice(1)}</option>)}</select></td>
                             <td>{new Date(member.joinedAt).toLocaleDateString()}</td>
-                            <td><button className="admin-danger-link" type="button" disabled={busy || !!teamDetail.archivedAt} onClick={() => void removeMember(member.userId)}>Remove</button></td>
+                            <td><button className="admin-danger-link" type="button" disabled={busy || !!teamDetail.archivedAt || (member.role === 'owner' && teamOwnerCount === 1)} title={member.role === 'owner' && teamOwnerCount === 1 ? 'Add another owner before removing this member.' : undefined} onClick={() => void removeMember(member.userId)}>Remove</button></td>
                           </tr>
                         ))}
                         {teamDetail.members.length === 0 && <tr><td colSpan={4} className="admin-empty-cell">No members yet.</td></tr>}
@@ -341,7 +451,7 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
                   <form className="admin-form admin-add-member" onSubmit={(event) => void addMember(event)}>
                     <h4>Add member</h4>
                     <label>Email<input required type="email" aria-invalid={fieldError?.field === 'member-email' || undefined} value={memberEmail} disabled={busy || !!teamDetail.archivedAt} onChange={(event) => { setMemberEmail(event.target.value); setFieldError(null) }} />{fieldError?.field === 'member-email' && <small className="admin-field-error" role="alert">{fieldError.message}</small>}</label>
-                    <label>Role<select value={memberRole} disabled={busy || !!teamDetail.archivedAt} onChange={(event) => setMemberRole(event.target.value as TeamRole)}>{roles.map((role) => <option key={role}>{role}</option>)}</select></label>
+                    <label>Role<select value={memberRole} disabled={busy || !!teamDetail.archivedAt} onChange={(event) => setMemberRole(event.target.value as TeamRole)}>{roles.map((role) => <option key={role} value={role}>{role[0]!.toUpperCase() + role.slice(1)}</option>)}</select></label>
                     <Button disabled={busy || !!teamDetail.archivedAt || !memberEmail.trim()}>Add member</Button>
                   </form>
                 </div>
@@ -356,44 +466,80 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
       )}
 
       {section === 'users' && (
-        <div className="admin-card">
+        <div className="admin-card admin-users-card">
           <div className="admin-card-heading">
-            <div><h2>Users</h2><p>{userTotal} matching accounts</p></div>
+            <div><h2>Users</h2><p aria-live="polite">{userTotal} {userTotal === 1 ? 'matching account' : 'matching accounts'}</p></div>
             <form className="admin-search" onSubmit={submitUserSearch}>
               <label htmlFor="admin-user-search">Search users</label>
               <input id="admin-user-search" type="search" placeholder="Name or email" value={userQuery} onChange={(event) => setUserQuery(event.target.value)} />
-              <Button variant="outline">Search</Button>
+              <Button variant="outline" disabled={busy}>Search</Button>
             </form>
           </div>
-          <div className="admin-users-layout">
+          <div className={`admin-users-layout${selectedUser ? ' has-selection' : ''}`}>
             <div className="admin-table-wrap">
-              <table className="admin-table">
-                <thead><tr><th>User</th><th>System role</th><th>Account</th></tr></thead>
+              <table className="admin-table admin-users-table" aria-label="User accounts">
+                <thead><tr><th scope="col">User</th><th scope="col">System role</th><th scope="col">Account</th></tr></thead>
                 <tbody>
                   {users.map((user) => (
                     <tr key={user.id} className={selectedUser?.id === user.id ? 'selected' : ''}>
-                      <td><button type="button" className="admin-link" onClick={() => void openUser(user)}>{[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}</button><small>{user.email}</small></td>
-                      <td>{user.systemRole}</td>
-                      <td>{user.hasSignedIn ? 'Active' : <span className="admin-badge">Not signed in yet</span>}</td>
+                      <td>
+                        <div className="admin-user-cell">
+                          <UserAvatar {...user} className="admin-user-avatar" />
+                          <div>
+                            <button type="button" className="admin-link" aria-label={`Manage ${[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}`} onClick={() => void openUser(user)}>{[user.firstName, user.lastName].filter(Boolean).join(' ') || user.email}</button>
+                            <small>{user.email}</small>
+                          </div>
+                        </div>
+                      </td>
+                      <td><span className={`admin-role-badge${user.systemRole === 'admin' ? ' is-admin' : ''}`}>{user.systemRole === 'admin' ? 'Admin' : 'User'}</span></td>
+                      <td>{user.hasSignedIn
+                        ? <span className="admin-account-status is-active"><span aria-hidden="true" />Active</span>
+                        : <span className="admin-account-status is-pending"><span aria-hidden="true" />Not signed in</span>}</td>
                     </tr>
                   ))}
-                  {users.length === 0 && <tr><td colSpan={3} className="admin-empty-cell">No users found.</td></tr>}
+                  {users.length === 0 && <tr><td colSpan={3} className="admin-empty-cell">
+                    <strong>{submittedQuery ? 'No matching users' : 'No users yet'}</strong>
+                    <span>{submittedQuery ? 'Try a different name or email address.' : 'User accounts will appear here.'}</span>
+                  </td></tr>}
                 </tbody>
               </table>
               <div className="admin-pagination">
-                <span>{userTotal === 0 ? 0 : userOffset + 1}–{Math.min(userOffset + users.length, userTotal)} of {userTotal}</span>
-                <Button variant="outline" size="sm" disabled={busy || userOffset === 0} onClick={() => setUserOffset((offset) => Math.max(0, offset - pageSize))}>Previous</Button>
-                <Button variant="outline" size="sm" disabled={busy || userOffset + pageSize >= userTotal} onClick={() => setUserOffset((offset) => offset + pageSize)}>Next</Button>
+                <span>Showing {userTotal === 0 ? 0 : userOffset + 1}–{Math.min(userOffset + users.length, userTotal)} of {userTotal}</span>
+                <div>
+                  <Button variant="outline" size="sm" disabled={busy || userOffset === 0} onClick={() => setUserOffset((offset) => Math.max(0, offset - pageSize))}>Previous</Button>
+                  <Button variant="outline" size="sm" disabled={busy || userOffset + pageSize >= userTotal} onClick={() => setUserOffset((offset) => offset + pageSize)}>Next</Button>
+                </div>
               </div>
             </div>
             {selectedUser && (
               <aside className="admin-user-detail">
-                <h3>{[selectedUser.firstName, selectedUser.lastName].filter(Boolean).join(' ') || selectedUser.email}</h3>
-                <p>{selectedUser.email}</p>
-                <label>System role<select disabled={busy} aria-invalid={fieldError?.field === 'system-role' || undefined} value={selectedUser.systemRole} onChange={(event) => void changeSystemRole(event.target.value as 'user' | 'admin')}><option value="user">User</option><option value="admin">Admin</option></select>{fieldError?.field === 'system-role' && <small className="admin-field-error" role="alert">{fieldError.message}</small>}</label>
+                <div className="admin-user-profile">
+                  <UserAvatar {...selectedUser} className="admin-user-avatar admin-user-detail-avatar" />
+                  <div>
+                    <h3>{[selectedUser.firstName, selectedUser.lastName].filter(Boolean).join(' ') || selectedUser.email}</h3>
+                    <p>{selectedUser.email}</p>
+                  </div>
+                </div>
+                <div className="admin-system-role-field">
+                  <label htmlFor="admin-system-role">System role</label>
+                  <select id="admin-system-role" disabled={busy} aria-invalid={fieldError?.field === 'system-role' || undefined} value={selectedUser.systemRole} onChange={(event) => void changeSystemRole(event.target.value as 'user' | 'admin')}><option value="user">User</option><option value="admin">Admin</option></select>
+                  {fieldError?.field === 'system-role' && <small className="admin-field-error" role="alert">{fieldError.message}</small>}
+                  {selectedUser.id === currentUserId && selectedUser.systemRole === 'admin' && <small className="admin-role-hint">If you are the last system admin, you cannot remove your own admin role.</small>}
+                </div>
                 {!selectedUser.hasSignedIn && <span className="admin-badge">Not signed in yet</span>}
                 <h4>Teams</h4>
                 {selectedUser.teams.length ? <ul>{selectedUser.teams.map((team) => <li key={team.id}>{team.name} · {team.role}{team.archivedAt ? ' · archived' : ''}</li>)}</ul> : <p>Not a member of any team.</p>}
+                <section className="admin-danger-zone" aria-labelledby="admin-delete-user-heading">
+                  <h4 id="admin-delete-user-heading">Delete user</h4>
+                  <p>Permanently removes sessions, team memberships, run history, personal variables, preferences and avatar. Shared content they authored will show as “Unknown user”.</p>
+                  {selectedUser.id !== currentUserId && selectedUser.teams.some((team) => team.role === 'owner') && (
+                    <small className="admin-role-hint">Owns {selectedUser.teams.filter((team) => team.role === 'owner').map((team) => team.name).join(', ')}. If they are the last owner of any of these teams, assign another owner first.</small>
+                  )}
+                  {selectedUser.id === currentUserId && <small className="admin-role-hint">You cannot delete your own account.</small>}
+                  <Button variant="destructive" size="sm" disabled={busy || selectedUser.id === currentUserId} aria-invalid={fieldError?.field === 'user-delete' || undefined} onClick={() => void deleteUser()}>Delete user</Button>
+                  {fieldError?.field === 'user-delete' && <small className="admin-field-error" role="alert">{fieldError.message}</small>}
+                  {deleteBlocker && <Button variant="outline" size="sm" onClick={openBlockingTeam}>Open {deleteBlocker.teamName}</Button>}
+                </section>
               </aside>
             )}
           </div>
@@ -401,7 +547,7 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
       )}
 
       {section === 'audit' && (
-        <div className="admin-card">
+        <div className="admin-card admin-audit-card">
           <div className="admin-card-heading">
             <div><h2>Audit log</h2><p>{auditTotal} entries</p></div>
             <label className="admin-filter">Filter by team<select value={auditTeamId} onChange={(event) => changeAuditTeam(event.target.value)}><option value="">All teams</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
@@ -414,7 +560,7 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
                   <tr key={entry.id}>
                     <td>{new Date(entry.createdAt).toLocaleString()}</td>
                     <td>{entry.actor ?? 'System'}</td>
-                    <td><code>{entry.action}</code></td>
+                    <td><span className="admin-audit-action">{auditActionLabels[entry.action] ?? entry.action}<code>{entry.action}</code></span></td>
                     <td>{entry.targetType}{entry.teamId ? <small>{teams.find(({ id }) => id === entry.teamId)?.name ?? entry.teamId}</small> : null}</td>
                     <td>{Object.keys(entry.details).length ? JSON.stringify(entry.details) : '—'}</td>
                   </tr>

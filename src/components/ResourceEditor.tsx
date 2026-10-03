@@ -32,6 +32,7 @@ interface ResourceEditorProps {
   onDiscard?: () => void
   onShowVersionHistory?: () => void
   onDelete: () => void
+  canEdit?: boolean
   onSend: () => void
   sending: boolean
   sendError: string | null
@@ -80,7 +81,7 @@ function suggestedContentType(type: RequestBody['type']): string {
   }
 }
 
-export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onDelete, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
+export function ResourceEditor({ draft, collectionName: parentCollectionName, dirty, saving, error, onChange, onSave, onDiscard, onShowVersionHistory, onDelete, canEdit = true, onSend, sending, sendError, response, runnerId, onRunnerChange, proxy, onRetryFromServer, requestKey = null, variables = NO_VARIABLES, viewers = [], effectiveAuth }: ResourceEditorProps) {
   const [tab, setTab] = useState<RequestTab>('Params')
   const [requestHeight, setRequestHeight] = useState(56)
   const isRequest = draft.kind === 'request'
@@ -93,7 +94,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
     setTab('Params')
   }, [draft.kind, draft.resource.id])
 
-  const canSave = dirty && !saving && !bodyTooLong
+  const canSave = canEdit && dirty && !saving && !bodyTooLong
   const canDiscard = dirty && !saving && !!onDiscard
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -176,7 +177,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
           <header className="resource-heading">
             <div className="resource-heading-copy">
               {draft.kind === 'request'
-                ? <input className="resource-title-input" aria-label="Request name" value={draft.resource.name} onChange={(event) => updateName(event.target.value)} placeholder="Request name" />
+                ? <input className="resource-title-input" aria-label="Request name" value={draft.resource.name} disabled={!canEdit} onChange={(event) => updateName(event.target.value)} placeholder="Request name" />
                 : <h1>{draft.kind === 'environment' ? 'Environment' : draft.kind === 'collection' ? 'Collection' : 'Folder'}</h1>}
               <p>{draft.kind === 'environment' ? 'Shared variables for request URLs and ports' : draft.kind === 'collection' ? 'Collection metadata' : draft.kind === 'request' ? 'Changes are saved only to this request.' : 'Folder settings'}</p>
               <AttributionLine createdBy={draft.resource.createdBy} updatedBy={draft.resource.updatedBy} />
@@ -190,9 +191,9 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               )}
               <SaveState dirty={dirty} />
               {onShowVersionHistory && <Button variant="outline" size="sm" onClick={onShowVersionHistory}>Version history</Button>}
-              {!(draft.kind === 'environment' && draft.isNew) && <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>}
+              {canEdit && !(draft.kind === 'environment' && draft.isNew) && <Button variant="outline" size="sm" onClick={onDelete}>Move to Trash</Button>}
               {dirty && onDiscard && <Button variant="outline" size="sm" onClick={onDiscard} disabled={saving} title={`Discard changes (${shortcutLabel(DISCARD_SHORTCUT)})`}>Discard changes</Button>}
-              <Button size="sm" onClick={onSave} disabled={!canSave} title={`Save (${shortcutLabel(SAVE_SHORTCUT)})`}>{saving ? 'Saving…' : 'Save'}</Button>
+              {canEdit && <Button size="sm" onClick={onSave} disabled={!canSave} title={`Save (${shortcutLabel(SAVE_SHORTCUT)})`}>{saving ? 'Saving…' : 'Save'}</Button>}
             </div>
           </header>
           {draft.kind === 'request' ? (
@@ -202,11 +203,12 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                   className="method-select"
                   aria-label="HTTP method"
                   value={draft.resource.method}
+                  disabled={!canEdit}
                   onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, method: event.target.value as RequestMethod } })}
                 >
                   {methods.map((method) => <option key={method}>{method}</option>)}
                 </select>
-                <VariableInput className="url-input" variables={variables} aria-label="Request URL" value={draft.resource.url} placeholder="{{baseUrl}}:{{port}}/path" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, url: event.target.value } })} />
+                <VariableInput className="url-input" variables={variables} aria-label="Request URL" value={draft.resource.url} placeholder="{{baseUrl}}:{{port}}/path" disabled={!canEdit} onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, url: event.target.value } })} />
                 <select
                   className="runner-select"
                   aria-label="Send from"
@@ -224,7 +226,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
               {sendError && <p className="inline-error send-error" role="alert">{sendError}</p>}
               <label className="request-description">
                 <span>Description</span>
-                <input aria-label="Request description" value={draft.resource.description} placeholder="Add a description" onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, description: event.target.value } })} />
+                <input aria-label="Request description" value={draft.resource.description} placeholder="Add a description" disabled={!canEdit} onChange={(event) => onChange({ ...draft, resource: { ...draft.resource, description: event.target.value } })} />
               </label>
               {bodyTooLong && <p className="inline-error" role="alert">Request body content exceeds the {MAX_REQUEST_BODY_LENGTH.toLocaleString()} character limit.</p>}
               <div className="editor-tabs" role="tablist" aria-label="Request editor">
@@ -233,31 +235,36 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                 ))}
               </div>
               <div className="editor-body">
-                {tab === 'Params' && <KeyValueEditor label="Query parameters" entries={draft.resource.queryParams} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, queryParams: entries } })} />}
-                {tab === 'Headers' && <KeyValueEditor label="Headers" entries={draft.resource.headers} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, headers: entries } })} />}
-                {tab === 'Body' && (
-                  <RequestBodyEditor
-                    body={draft.resource.body}
-                    variables={variables}
-                    onBodyTypeChange={updateBodyType}
-                    onBodyChange={(body) => onChange({ ...draft, resource: { ...draft.resource, body } })}
-                  />
-                )}
-                {tab === 'Auth' && (
-                  <AuthEditor
-                    mode="request"
-                    auth={draft.resource.auth}
-                    variables={variables}
-                    effective={effectiveAuth}
-                    onChange={(auth) => onChange({ ...draft, resource: { ...draft.resource, auth: auth as RequestAuth } })}
-                  />
-                )}
+                <fieldset disabled={!canEdit} className="resource-fieldset">
+                  {tab === 'Params' && <KeyValueEditor label="Query parameters" entries={draft.resource.queryParams} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, queryParams: entries } })} />}
+                  {tab === 'Headers' && <KeyValueEditor label="Headers" entries={draft.resource.headers} variables={variables} onChange={(entries) => onChange({ ...draft, resource: { ...draft.resource, headers: entries } })} />}
+                  {tab === 'Body' && (
+                    <RequestBodyEditor
+                      body={draft.resource.body}
+                      variables={variables}
+                      canEdit={canEdit}
+                      onBodyTypeChange={updateBodyType}
+                      onBodyChange={(body) => onChange({ ...draft, resource: { ...draft.resource, body } })}
+                    />
+                  )}
+                  {tab === 'Auth' && (
+                    <AuthEditor
+                      mode="request"
+                      auth={draft.resource.auth}
+                      variables={variables}
+                      effective={effectiveAuth}
+                      onChange={(auth) => onChange({ ...draft, resource: { ...draft.resource, auth: auth as RequestAuth } })}
+                    />
+                  )}
+                </fieldset>
               </div>
             </>
           ) : draft.kind === 'environment' ? (
-            <EnvironmentEditor draft={draft.resource} onChange={(resource) => onChange({ ...draft, resource })} />
+            <fieldset disabled={!canEdit} className="resource-fieldset">
+              <EnvironmentEditor draft={draft.resource} onChange={(resource) => onChange({ ...draft, resource })} canEdit={canEdit} />
+            </fieldset>
           ) : (
-            <div className="resource-form">
+            <fieldset disabled={!canEdit} className="resource-fieldset resource-form">
               <label className="field-label">Name<input className="text-field" value={name} onChange={(event) => updateName(event.target.value)} /></label>
               {draft.kind === 'collection' && (
                 <>
@@ -284,7 +291,7 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
                   />
                 </>
               )}
-            </div>
+            </fieldset>
           )}
           {error && <p className="inline-error" role="alert">{error}</p>}
         </section>
@@ -302,11 +309,13 @@ export function ResourceEditor({ draft, collectionName: parentCollectionName, di
 function RequestBodyEditor({
   body,
   variables,
+  canEdit,
   onBodyTypeChange,
   onBodyChange,
 }: {
   body: RequestBody | null
   variables: VariableLookup
+  canEdit: boolean
   onBodyTypeChange: (type: RequestBody['type'] | null) => void
   onBodyChange: (body: RequestBody) => void
 }) {
@@ -347,8 +356,10 @@ function RequestBodyEditor({
           {(body.type === 'json' || body.type === 'graphql') && (
             <Suspense fallback={<div className="editor-loading">Loading JSON editor…</div>}>
               <JsonEditor
+                key={canEdit ? 'editable' : 'read-only'}
                 value={body.content}
                 variables={variables}
+                readOnly={!canEdit}
                 onChange={(content) => onBodyChange({ ...body, content })}
               />
             </Suspense>
@@ -456,8 +467,8 @@ function AttributionLine({ createdBy, updatedBy }: { createdBy?: string | null; 
   // Rows created before sign-in existed have no attribution recorded - that
   // is deliberate history, not a bug, so we say so plainly rather than
   // leaving it blank or guessing a name.
-  const created = createdBy ?? 'unknown'
-  const updated = updatedBy ?? 'unknown'
+  const created = createdBy ?? 'Unknown user'
+  const updated = updatedBy ?? 'Unknown user'
   return <p className="attribution-line">Created by {created} · Last updated by {updated}</p>
 }
 
@@ -489,7 +500,7 @@ const ENV_MOVE_OPTIONS: { target: MoveTarget; label: string }[] = [
   { target: 'bottom', label: 'Move to bottom' },
 ]
 
-function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; onChange: (resource: EnvironmentResource) => void }) {
+function EnvironmentEditor({ draft, onChange, canEdit = true }: { draft: EnvironmentResource; onChange: (resource: EnvironmentResource) => void; canEdit?: boolean }) {
   const add = () => onChange({ ...draft, variables: [...draft.variables, { key: '', value: '', enabled: true }] })
   const change = (index: number, patch: Partial<EnvironmentVariable>) => onChange({
     ...draft,
@@ -531,6 +542,7 @@ function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; on
     moveTo(index, target === 'top' ? 0 : target === 'bottom' ? last : target === 'up' ? index - 1 : index + 1)
 
   const handleKeyboardMove = (event: ReactKeyboardEvent, index: number) => {
+    if (!canEdit) return
     const target = event.key === 'ArrowUp' ? 'up' : event.key === 'ArrowDown' ? 'down' : event.key === 'Home' ? 'top' : event.key === 'End' ? 'bottom' : null
     if (!target) return
     event.preventDefault()
@@ -539,7 +551,7 @@ function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; on
     if (next !== undefined) requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>(`[data-handle="${next}"]`)?.focus())
   }
   const handleDragOver = (event: ReactDragEvent<HTMLDivElement>, index: number) => {
-    if (dragIndex === null) return
+    if (!canEdit || dragIndex === null) return
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     const box = event.currentTarget.getBoundingClientRect()
@@ -549,7 +561,7 @@ function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; on
   const endDrag = () => { setDragIndex(null); setDropHint(null) }
   const handleDrop = (event: ReactDragEvent) => {
     event.preventDefault()
-    if (dragIndex !== null && dropHint && dropHint.index !== dragIndex) {
+    if (canEdit && dragIndex !== null && dropHint && dropHint.index !== dragIndex) {
       const insertAt = dropHint.index + (dropHint.position === 'after' ? 1 : 0)
       moveTo(dragIndex, insertAt > dragIndex ? insertAt - 1 : insertAt)
     }
@@ -576,11 +588,12 @@ function EnvironmentEditor({ draft, onChange }: { draft: EnvironmentResource; on
           <button
             type="button"
             className="runtime-vars-handle"
-            draggable
+            draggable={canEdit}
             data-handle={index}
             aria-label={`Reorder ${name}`}
             title="Drag to reorder (or focus and use ↑ ↓ Home End)"
             onDragStart={(event) => {
+              if (!canEdit) return
               event.dataTransfer.effectAllowed = 'move'
               event.dataTransfer.setData('text/plain', variable.key)
               const row = event.currentTarget.parentElement

@@ -19,6 +19,7 @@ type VersionEntry =
 interface VersionHistoryDialogProps {
   draft: Exclude<ResourceDraft, { kind: 'environment' }>
   dirty: boolean
+  canRestore?: boolean
   onClose: () => void
   onRestored: (resource: CollectionResource | WorkspaceItem) => void
 }
@@ -39,7 +40,7 @@ function applySnapshot(draft: VersionHistoryDialogProps['draft'], snapshot: Vers
   return { ...draft, resource: { ...draft.resource, ...snapshot } }
 }
 
-export function VersionHistoryDialog({ draft, dirty, onClose, onRestored }: VersionHistoryDialogProps) {
+export function VersionHistoryDialog({ draft, dirty, canRestore = true, onClose, onRestored }: VersionHistoryDialogProps) {
   const [versions, setVersions] = useState<VersionEntry[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -94,7 +95,7 @@ export function VersionHistoryDialog({ draft, dirty, onClose, onRestored }: Vers
   )
 
   async function restoreSelected() {
-    if (!selected) return
+    if (!canRestore || !selected) return
     setRestoring(true)
     setError(null)
     setNotice(null)
@@ -144,7 +145,7 @@ export function VersionHistoryDialog({ draft, dirty, onClose, onRestored }: Vers
                   }}
                 >
                   <strong>{new Date(version.createdAt).toLocaleString()}</strong>
-                  <span>Saved by {version.createdBy || 'unknown'}</span>
+                  <span>Saved by {version.createdBy || 'Unknown user'}</span>
                 </button>
               ))}
             </nav>
@@ -161,7 +162,7 @@ export function VersionHistoryDialog({ draft, dirty, onClose, onRestored }: Vers
                   />
                 </>
               )}
-              {confirming && (
+              {canRestore && confirming && (
                 <p className="version-history-confirm" role="alert">
                   Restore this snapshot?{dirty ? ' This will replace your unsaved editor changes.' : ''}
                 </p>
@@ -171,18 +172,18 @@ export function VersionHistoryDialog({ draft, dirty, onClose, onRestored }: Vers
         )}
         <footer className="modal-actions">
           <Button variant="outline" onClick={onClose} disabled={restoring}>Close</Button>
-          {confirming ? (
+          {canRestore && confirming ? (
             <>
               <Button variant="outline" onClick={() => setConfirming(false)} disabled={restoring}>Cancel restore</Button>
               <Button onClick={() => void restoreSelected()} disabled={restoring || !selected}>
                 {restoring ? 'Restoring…' : 'Confirm restore'}
               </Button>
             </>
-          ) : (
+          ) : canRestore ? (
             <Button onClick={() => setConfirming(true)} disabled={loading || restoring || !selected}>
               Restore selected version
             </Button>
-          )}
+          ) : null}
         </footer>
       </section>
     </div>

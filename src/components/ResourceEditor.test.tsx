@@ -74,6 +74,34 @@ function renderEditor(draft: ResourceDraft, proxy: ProxySettings | null = null, 
 }
 
 describe('the response area belongs to a request', () => {
+  it('keeps Send available to viewers while disabling content editing and hiding writes', () => {
+    render(
+      <ResourceEditor
+        draft={requestDraft}
+        dirty={false}
+        saving={false}
+        error={null}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        canEdit={false}
+        onSend={vi.fn()}
+        sending={false}
+        sendError={null}
+        response={null}
+        runnerId="browser"
+        onRunnerChange={vi.fn()}
+        proxy={null}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    expect(screen.getByRole('textbox', { name: 'Request URL' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: 'Request name' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Move to Trash' })).not.toBeInTheDocument()
+  })
+
   it('shows the response for a request', () => {
     const { container } = renderEditor(requestDraft)
     expect(container.querySelector('.response-panel')).toBeTruthy()
@@ -91,6 +119,16 @@ describe('the response area belongs to a request', () => {
   it('does not show a response under a collection either', () => {
     const { container } = renderEditor(collectionDraft)
     expect(container.querySelector('.response-panel')).toBeNull()
+  })
+
+  it('labels migrated null authorship as Unknown user', () => {
+    const collection = collectionDraft as Extract<ResourceDraft, { kind: 'collection' }>
+    renderEditor({
+      kind: 'collection',
+      resource: { ...collection.resource, createdBy: null, updatedBy: null },
+    })
+
+    expect(screen.getByText('Created by Unknown user · Last updated by Unknown user')).toBeInTheDocument()
   })
 
   it('drops the splitter along with it, so the form is not pinned to half the height', () => {

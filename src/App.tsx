@@ -9,6 +9,7 @@ import { HistoryView } from '@/components/HistoryView'
 import { ImportDialog } from '@/components/ImportDialog'
 import { ResourceEditor } from '@/components/ResourceEditor'
 import { ThemeToggle } from '@/components/ThemeToggle'
+import { TeamMembers } from '@/components/TeamMembers'
 import { UserProfileMenu } from '@/components/UserProfileMenu'
 import { VersionHistoryDialog } from '@/components/VersionHistoryDialog'
 import { VariablesMenu } from '@/components/VariablesMenu'
@@ -34,6 +35,7 @@ import { getScopedVariables, loadScopedVariables, saveScopedVariable, subscribeS
 import { exportScopedVariables } from '@/lib/scoped-variable-export'
 import { loadVariableOrder } from '@/lib/variable-order-storage'
 import { notifyTeamContextError } from '@/lib/teams'
+import { canEditTeam, canManageTeamMembers } from '@/lib/teams'
 import type { Team } from '@/lib/teams'
 import { resolveVariables, toVariableMap, validateVariableName, type VariableOrigin } from '@/lib/variable-scopes'
 import { addEnvironmentVariable, editEnvironmentVariable, removeEnvironmentVariable, type VariableEditResult } from '@/lib/variable-editing'
@@ -59,7 +61,7 @@ import type {
 import { applyMove, type MoveSource, type MoveTarget } from '@/lib/tree-move'
 import { findItem, locateOpenResource, newRequest, replaceItemInTree, sortByName } from '@/lib/workspace-ui'
 
-type View = 'workspace' | 'environments' | 'variables' | 'trash' | 'history'
+type View = 'workspace' | 'environments' | 'variables' | 'trash' | 'history' | 'members'
 
 interface RemoteUpdate {
   event: ChangeEvent | null
@@ -174,9 +176,16 @@ interface AppProps {
   onTeamChange?: (teamId: string) => void
   onOpenAdmin?: () => void
   onSignOut?: () => void
+  onRefreshTeams?: () => Promise<void>
 }
 
-function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamChange, onOpenAdmin, onSignOut }: AppProps = {}) {
+function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamChange, onOpenAdmin, onSignOut, onRefreshTeams }: AppProps = {}) {
+  const currentTeam = teams.find(({ id }) => id === activeTeamId)
+  const canEditWorkspace = user === undefined || canEditTeam(currentTeam?.role, user.systemRole === 'admin')
+  const canManageMembers = canManageTeamMembers(currentTeam?.role, user?.systemRole === 'admin')
+  const editableVariableOrigins: VariableOrigin[] = canEditWorkspace
+    ? ['user', 'environment', 'global']
+    : ['user']
   const [collections, setCollections] = useState<CollectionResource[]>([])
   const [environments, setEnvironments] = useState<EnvironmentResource[]>([])
   const [trash, setTrash] = useState<TrashEntry[]>([])
@@ -234,6 +243,16 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   selectedRef.current = selected
   draftsRef.current = drafts
   baselinesRef.current = baselines
+
+  useEffect(() => {
+    if (canEditWorkspace) return
+    setRestoreState(null)
+    setTrashPrompt(null)
+    setImportOpen(false)
+    setBulkImportOpen(false)
+    setVersionHistoryOpen(false)
+    if (view === 'trash' || view === 'members') setView('workspace')
+  }, [canEditWorkspace, view])
   // Settles when the save in flight (if any) has finished. A change event for our own write can
   // arrive before the PUT response does, so the echo check waits for it.
   const pendingSaveRef = useRef<Promise<void>>(Promise.resolve())
@@ -247,7 +266,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
       const [collectionSummaries, nextEnvironments, nextTrash] = await Promise.all([
         workspaceApi.collections(),
         workspaceApi.environments(),
-        workspaceApi.trash(),
+        canEditWorkspace ? workspaceApi.trash() : Promise.resolve([]),
         // Captured values live on the server now, so they are part of loading the workspace
         // rather than something this tab happens to be holding. A failure here is reported with
         // the rest: a request that silently loses its variables fails in a far more confusing way.
@@ -269,7 +288,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canEditWorkspace])
 
   useEffect(() => {
     void reloadAll()
@@ -740,6 +759,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   function applyRestoredVersion(resource: CollectionResource | WorkspaceItem) {
+    if (!canEditWorkspace) return
     if (!activeDraft || activeDraft.kind === 'environment') return
     let restored: ResourceDraft
     if (activeDraft.kind === 'collection') {
@@ -778,6 +798,10 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
 
   /** Saves any open draft, not only the active one, so a tab can be saved while it is being closed. */
   async function saveDraft(target: ResourceDraft | undefined = activeDraft): Promise<SaveOutcome | null> {
+    if (!canEditWorkspace) {
+      setResourceError('You do not have permission in this team.')
+      return { error: 'You do not have permission in this team.' }
+    }
     if (!target) return null
     const targetKey = draftKey(target)
     if (!hasUnsavedChanges(target, baselines[targetKey])) return null
@@ -900,6 +924,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
    * user is told to save or discard it first.
    */
   async function mutateSelectedEnvironmentVariables(mutate: (variables: EnvironmentVariable[]) => VariableEditResult) {
+    if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
     if (!selectedEnvironmentId) throw new Error('No environment is selected.')
     const key = resourceKey({ kind: 'environment', environmentId: selectedEnvironmentId })
     const openDraft = draftsRef.current[key]
@@ -921,16 +946,18 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   const startCreatingVariable = useCallback((rawName: string, origin: VariableOrigin) => {
+    if (!canEditWorkspace && origin !== 'user') return
     const validation = validateVariableName(rawName)
     if (!validation.ok) return
     setVariableScope(origin)
     setVariableFilter('')
     setPendingVariableKey(validation.name)
     setView('variables')
-  }, [])
+  }, [canEditWorkspace])
   const clearPendingVariableKey = useCallback(() => setPendingVariableKey(null), [])
 
   async function createCollection() {
+    if (!canEditWorkspace) return
     const name = window.prompt('Collection name')
     if (!name?.trim()) return
     try {
@@ -955,6 +982,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     items: TreeNodeInput[]
     environment?: { name: string; variables: EnvironmentVariable[] }
   }): Promise<string | void> {
+    if (!canEditWorkspace) return 'You do not have permission in this team.'
     const { environment, ...collectionPayload } = payload
     let resource: CollectionResource
     try {
@@ -986,6 +1014,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   async function importEnvironment(payload: { name: string; variables: EnvironmentVariable[] }): Promise<string | void> {
+    if (!canEditWorkspace) return 'You do not have permission in this team.'
     try {
       const resource = await workspaceApi.createEnvironment(payload)
       setEnvironments((current) => sortByName([...current, resource]))
@@ -1002,6 +1031,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   async function importBulkItems(collectionId: string, input: BulkImportInput) {
+    if (!canEditWorkspace) throw new Error('You do not have permission in this team.')
     const result = await workspaceApi.bulkImport(collectionId, input)
     let refreshError: string | undefined
     try {
@@ -1065,6 +1095,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   async function createFolder() {
+    if (!canEditWorkspace) return
     const collectionId = selected && selected.kind !== 'environment' ? selected.collectionId : collections[0]?.id
     if (!collectionId) {
       setLoadingError('Create a collection before adding a folder.')
@@ -1091,6 +1122,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   function createRequest() {
+    if (!canEditWorkspace) return
     const collectionId = selected && selected.kind !== 'environment' ? selected.collectionId : collections[0]?.id
     if (!collectionId) {
       setLoadingError('Create a collection before adding a request.')
@@ -1110,6 +1142,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   function createEnvironment() {
+    if (!canEditWorkspace) return
     const draft: ResourceDraft = {
       kind: 'environment',
       resource: { id: `draft-${createUuid()}`, name: '', variables: [] },
@@ -1130,6 +1163,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
    * collection state it reads from has not re-rendered yet at this point.
    */
   async function cloneResource(resource: OpenResource) {
+    if (!canEditWorkspace) return
     const id = resource.kind === 'environment'
       ? resource.environmentId
       : resource.kind === 'collection'
@@ -1187,6 +1221,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
    * a move that never happened.
    */
   async function moveItem(source: MoveSource, target: MoveTarget) {
+    if (!canEditWorkspace) return
     const previous = collections
     const next = applyMove(previous, source, target)
     if (next === previous) return
@@ -1211,6 +1246,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
 
   /** Asks first; the item is only moved once the user confirms in the dialog. */
   function deleteResource(resource: OpenResource) {
+    if (!canEditWorkspace) return
     const name = resource.kind === 'environment'
       ? environments.find(({ id }) => id === resource.environmentId)?.name
       : resource.kind === 'collection'
@@ -1220,6 +1256,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   async function moveToTrash(resource: OpenResource) {
+    if (!canEditWorkspace) return
     setTrashPrompt(null)
     const removedIds = resource.kind === 'collection'
       ? collections.find(({ id }) => id === resource.collectionId)?.items.flatMap(collectItemIds) ?? []
@@ -1270,6 +1307,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   async function reloadTrash() {
+    if (!canEditWorkspace) return
     try {
       setTrash(await workspaceApi.trash())
     } catch (error) {
@@ -1282,6 +1320,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
     nameOverrides: Record<string, string> = {},
     collectionName = entry.name,
   ) {
+    if (!canEditWorkspace) return
     setRestoreState((current) => current?.entry.id === entry.id
       ? { ...current, loading: true, error: undefined }
       : { entry, conflicts: [], nameOverrides: {}, collectionName: entry.name, loading: true })
@@ -1314,6 +1353,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
   }
 
   async function confirmRestore() {
+    if (!canEditWorkspace) return
     if (!restoreState) return
     setRestoreState((current) => current ? { ...current, loading: true, error: undefined } : current)
     try {
@@ -1379,7 +1419,9 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
                 onChange={(event) => onTeamChange?.(event.target.value)}
               >
                 {teams.map((team) => (
-                  <option key={team.id} value={team.id}>{team.name} · {team.role}</option>
+                  <option key={team.id} value={team.id}>
+                    {team.name} · {team.isMember ? `${team.role[0]!.toUpperCase()}${team.role.slice(1)}` : 'Admin access'}
+                  </option>
                 ))}
               </select>
             </label>
@@ -1392,10 +1434,11 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
             value={selectedEnvironmentId}
             onChange={setSelectedEnvironmentId}
           />
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>
-          <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>
+          {canEditWorkspace && <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>Import</Button>}
+          {canEditWorkspace && <Button variant="outline" size="sm" onClick={() => setBulkImportOpen(true)}>Bulk import</Button>}
           <Button variant="outline" size="sm" disabled={!exportTarget} title={exportTarget?.title ?? 'Select a collection or environment to export'} onClick={() => exportTarget?.run()}>Export</Button>
           <div className="account-menu">
+            {currentTeam && canManageMembers && <Button variant="outline" size="sm" onClick={() => setView('members')}>Members</Button>}
             {user?.systemRole === 'admin' && <Button variant="outline" size="sm" onClick={onOpenAdmin}>Admin</Button>}
             {user && <UserProfileMenu user={user} onSignOut={onSignOut} />}
             <ThemeToggle />
@@ -1422,7 +1465,9 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
           onCreateRequest={createRequest}
           onDelete={deleteResource}
           onClone={(resource) => void cloneResource(resource)}
-          onMove={(source, target) => void moveItem(source, target)}
+          onMove={canEditWorkspace ? (source, target) => void moveItem(source, target) : undefined}
+          canEdit={canEditWorkspace}
+          canAccessTrash={canEditWorkspace}
           cloningId={cloningId}
           onShowTrash={() => { setView('trash'); void reloadTrash() }}
           onShowHistory={() => setView('history')}
@@ -1443,7 +1488,13 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         />
         <div className="main-content">
           {view === 'trash' ? (
-            <TrashView entries={trash} onRestore={(entry) => void beginRestore(entry)} />
+            canEditWorkspace
+              ? <TrashView entries={trash} onRestore={(entry) => void beginRestore(entry)} />
+              : <div className="empty-workspace"><h1>Trash unavailable</h1><p>You do not have permission in this team.</p></div>
+          ) : view === 'members' ? (
+            currentTeam && canManageMembers
+              ? <TeamMembers teamId={currentTeam.id} teamName={currentTeam.name} onChanged={onRefreshTeams ?? (() => Promise.resolve())} />
+              : <div className="empty-workspace"><h1>Members unavailable</h1><p>You do not have permission in this team.</p></div>
           ) : view === 'history' ? (
             <HistoryView entries={history} onClear={() => { clearHistory(); setHistory([]) }} />
           ) : view === 'variables' ? (
@@ -1454,6 +1505,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
               environmentId={selectedEnvironment?.id ?? null}
               filter={variableFilter}
               selectedOrigin={variableScope}
+              editableOrigins={editableVariableOrigins}
               initialAddKey={pendingVariableKey}
               onInitialAddHandled={clearPendingVariableKey}
               standalone
@@ -1466,7 +1518,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
               <span className="response-symbol">◉</span>
               <h1>Environments</h1>
               <p>Create shared variables for request URLs, such as <code>baseUrl</code> and <code>port</code>.</p>
-              <Button onClick={() => void createEnvironment()}>Create environment</Button>
+              {canEditWorkspace && <Button onClick={() => void createEnvironment()}>Create environment</Button>}
               {environments.length > 0 && <div className="environment-shortcuts">{sortByName(environments).map((entry) => <button key={entry.id} onClick={() => openResource({ kind: 'environment', environmentId: entry.id })}>{entry.name}</button>)}</div>}
             </div>
           ) : view === 'workspace' && activeDraft || view === 'environments' && activeDraft?.kind === 'environment' ? (
@@ -1493,7 +1545,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
                       </div>
                     )
                   })}
-                  <button className="tab-add" title="New request" aria-label="New request" onClick={createRequest}>＋</button>
+                  {canEditWorkspace && <button className="tab-add" title="New request" aria-label="New request" onClick={createRequest}>＋</button>}
                 </div>
               )}
               <div className="editor-workarea">
@@ -1542,6 +1594,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
                       ? () => setVersionHistoryOpen(true)
                       : undefined}
                     onDelete={() => deleteResource(selected!)}
+                    canEdit={canEditWorkspace}
                     onSend={() => void sendActiveRequest()}
                     sending={activeSending}
                     sendError={activeSendError}
@@ -1570,7 +1623,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
               <span className="response-symbol">◉</span>
               <h1>Environments</h1>
               <p>Create shared variables for request URLs, such as <code>baseUrl</code> and <code>port</code>.</p>
-              <Button onClick={() => void createEnvironment()}>Create environment</Button>
+              {canEditWorkspace && <Button onClick={() => void createEnvironment()}>Create environment</Button>}
               {environments.length > 0 && <div className="environment-shortcuts">{sortByName(environments).map((entry) => <button key={entry.id} onClick={() => openResource({ kind: 'environment', environmentId: entry.id })}>{entry.name}</button>)}</div>}
             </div>
           ) : loading ? (
@@ -1580,8 +1633,8 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
               <span className="response-symbol">↗</span>
               <h1>Choose a request to get started</h1>
               <p>Select an item from a collection, or create a new request.</p>
-              <Button onClick={createRequest} disabled={collections.length === 0}>New request</Button>
-              {collections.length === 0 && <Button variant="outline" onClick={() => void createCollection()}>Create a collection</Button>}
+              {canEditWorkspace && <Button onClick={createRequest} disabled={collections.length === 0}>New request</Button>}
+              {canEditWorkspace && collections.length === 0 && <Button variant="outline" onClick={() => void createCollection()}>Create a collection</Button>}
             </div>
           )}
         </div>
@@ -1607,6 +1660,7 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
         <VersionHistoryDialog
           draft={activeDraft}
           dirty={dirty}
+          canRestore={canEditWorkspace}
           onClose={() => setVersionHistoryOpen(false)}
           onRestored={applyRestoredVersion}
         />

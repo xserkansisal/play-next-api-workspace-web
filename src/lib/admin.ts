@@ -16,6 +16,7 @@ export interface TeamMember {
   email: string
   firstName: string
   lastName: string
+  avatarUrl?: string | null
   avatarColor: string
   role: TeamRole
   joinedAt: string
@@ -30,6 +31,7 @@ export interface AdminUser {
   email: string
   firstName: string
   lastName: string
+  avatarUrl?: string | null
   avatarColor: string
   systemRole: 'user' | 'admin'
   createdAt: string
@@ -53,6 +55,7 @@ export interface AuditLogEntry {
     | 'team.member_role_changed'
     | 'team.member_removed'
     | 'user.system_role_changed'
+    | 'user.deleted'
   targetType: 'team' | 'team_member' | 'user'
   targetId: string
   teamId: string | null
@@ -116,6 +119,9 @@ export const adminApi = {
   async updateUser(userId: string, systemRole: 'user' | 'admin'): Promise<AdminUserDetail> {
     const { data } = await apiClient.patch<AdminUserDetail>(`/admin/users/${userId}`, { systemRole })
     return data
+  },
+  async deleteUser(userId: string): Promise<void> {
+    await apiClient.delete(`/admin/users/${userId}`)
   },
   async auditLog(input: { teamId?: string; limit: number; offset: number }): Promise<{ entries: AuditLogEntry[]; total: number }> {
     const { data } = await apiClient.get<{ entries: AuditLogEntry[]; total: number }>('/admin/audit-log', { params: input })

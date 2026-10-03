@@ -73,6 +73,15 @@ function renderTree(props: Partial<React.ComponentProps<typeof WorkspaceTree>> =
 }
 
 describe('WorkspaceTree expand/collapse all', () => {
+  it('hides write actions and Trash for a viewer while keeping resources readable', () => {
+    renderTree({ canEdit: false, canAccessTrash: false })
+
+    expect(screen.getByRole('button', { name: 'Payments' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New collection' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Duplicate Payments' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Trash' })).not.toBeInTheDocument()
+  })
+
   it('shows each viewer beside the collection, folder, and request they have open', () => {
     renderTree({
       presenceByResource: {

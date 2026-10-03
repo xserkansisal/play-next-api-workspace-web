@@ -83,8 +83,8 @@ describe('workspace live update flow', () => {
       <App
         activeTeamId="team-1"
         teams={[
-          { id: 'team-1', name: 'Game Studio', description: '', role: 'member' },
-          { id: 'team-2', name: 'Mobile Gaming', description: '', role: 'owner' },
+          { id: 'team-1', name: 'Game Studio', description: '', role: 'member', isMember: true },
+          { id: 'team-2', name: 'Mobile Gaming', description: '', role: 'owner', isMember: true },
         ]}
         onTeamChange={onTeamChange}
       />,
@@ -98,11 +98,41 @@ describe('workspace live update flow', () => {
     expect(onTeamChange).toHaveBeenCalledWith('team-2')
   })
 
+  it('labels non-member teams as admin access in the team switcher', async () => {
+    render(
+      <App
+        user={{ id: 'admin-1', email: 'admin@fluttersea.com', systemRole: 'admin' }}
+        activeTeamId="team-1"
+        teams={[{ id: 'team-1', name: 'External Team', description: '', role: 'owner', isMember: false }]}
+      />,
+    )
+
+    expect(await screen.findByRole('option', { name: 'External Team · Admin access' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Members' })).toBeInTheDocument()
+  })
+
+  it('keeps viewers read-only and does not load Trash', async () => {
+    render(
+      <App
+        user={{ id: 'viewer-1', email: 'viewer@fluttersea.com' }}
+        activeTeamId="team-viewer"
+        teams={[{ id: 'team-viewer', name: 'Read Only', description: '', role: 'viewer', isMember: true }]}
+      />,
+    )
+
+    await screen.findByRole('heading', { name: 'Choose a request to get started' })
+    expect(screen.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Bulk import' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New collection' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Trash/ })).not.toBeInTheDocument()
+    expect(workspaceApi.trash).not.toHaveBeenCalled()
+  })
+
   it('shows the active team name when the user belongs to only one team', async () => {
     render(
       <App
         activeTeamId="team-1"
-        teams={[{ id: 'team-1', name: 'Game Studio', description: '', role: 'member' }]}
+        teams={[{ id: 'team-1', name: 'Game Studio', description: '', role: 'member', isMember: true }]}
       />,
     )
 

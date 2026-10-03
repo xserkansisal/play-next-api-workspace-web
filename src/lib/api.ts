@@ -16,6 +16,7 @@ import type {
 import type { ScopedVariable, VariableScope } from '@/lib/variable-scopes'
 import type { VariableOrderPreferences } from '@/lib/variable-order'
 import { getActiveTeamId, notifyTeamContextError } from '@/lib/teams'
+import type { TeamMember, TeamRole } from '@/lib/teams'
 
 const apiOrigin = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 
@@ -42,9 +43,13 @@ apiClient.interceptors.response.use(
     if (isAxiosError<{ error?: { code?: string } }>(error)) {
       const code = error.response?.data?.error?.code
       const hasTeamContext = !!error.config?.headers?.get('X-Team-Id')
-      const teamScopedRoute = /^\/(?:collections|environments|variables|trash|presence)(?:\/|$)/.test(error.config?.url ?? '')
+      const memberRoute = /^\/teams\/[^/]+\/members(?:\/|$)/.test(error.config?.url ?? '')
+      const teamScopedRoute = /^\/(?:collections|environments|variables|trash|presence)(?:\/|$)/.test(error.config?.url ?? '') || memberRoute
       if (hasTeamContext && teamScopedRoute && (code === 'TEAM_NOT_FOUND' || code === 'TEAM_MEMBERSHIP_REQUIRED')) {
         notifyTeamContextError(code)
+      }
+      if (error.response?.status === 403 && code === 'TEAM_ROLE_REQUIRED' && (hasTeamContext || memberRoute)) {
+        notifyTeamContextError('TEAM_ROLE_REQUIRED')
       }
     }
     return Promise.reject(error)
@@ -98,6 +103,12 @@ export interface BulkImportResult {
 export function apiErrorCode(error: unknown): string | undefined {
   if (!isAxiosError<{ error?: { code?: string } }>(error)) return undefined
   return error.response?.data?.error?.code
+}
+
+export function apiErrorDetails(error: unknown): Record<string, unknown> | undefined {
+  if (!isAxiosError<{ error?: { details?: unknown } }>(error)) return undefined
+  const details = error.response?.data?.error?.details
+  return details && typeof details === 'object' && !Array.isArray(details) ? details as Record<string, unknown> : undefined
 }
 
 export const workspaceApi = {
@@ -285,6 +296,19 @@ export const workspaceApi = {
   async trash() {
     const { data } = await apiClient.get<{ entries: TrashEntry[] }>('/trash')
     return data.entries
+  },
+  async teamMembers(teamId: string) {
+    const { data } = await apiClient.get<{ members: TeamMember[] }>(`/teams/${teamId}/members`)
+    return data.members
+  },
+  async addTeamMember(teamId: string, input: { email: string; role: TeamRole }) {
+    await apiClient.post(`/teams/${teamId}/members`, input)
+  },
+  async updateTeamMember(teamId: string, userId: string, role: TeamRole) {
+    await apiClient.patch(`/teams/${teamId}/members/${userId}`, { role })
+  },
+  async removeTeamMember(teamId: string, userId: string) {
+    await apiClient.delete(`/teams/${teamId}/members/${userId}`)
   },
   async checkRestore(
     id: string,

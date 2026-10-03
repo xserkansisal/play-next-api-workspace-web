@@ -45,10 +45,10 @@ export function SignIn({ onSignedIn }: SignInProps) {
     setError(null)
     setNotice(null)
     try {
-      await authApi.requestCode(targetEmail)
-      setStep({ stage: 'code', email: targetEmail, attempts: 0, codeDead: false })
+      const canonicalEmail = await authApi.requestCode(targetEmail)
+      setStep({ stage: 'code', email: canonicalEmail, attempts: 0, codeDead: false })
       setCode('')
-      setNotice(resend ? 'A new code has been sent. The previous code no longer works.' : 'If that address is eligible, a 6-digit code has been sent. It is valid for 15 minutes.')
+      setNotice(resend ? 'A new code has been sent. The previous code no longer works.' : `We sent a code to ${canonicalEmail}. It is valid for 15 minutes.`)
     } catch (submitError) {
       setError(authErrorMessage(submitError))
     } finally {

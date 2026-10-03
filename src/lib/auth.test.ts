@@ -63,6 +63,24 @@ describe('authApi', () => {
     teamContextEvents.removeEventListener('team-context-error', listener)
   })
 
+  it('announces TEAM_ROLE_REQUIRED from team member-management endpoints', async () => {
+    const listener = vi.fn()
+    teamContextEvents.addEventListener('team-context-error', listener)
+    const config = { headers: new AxiosHeaders({ 'X-Team-Id': 'team-1' }), url: '/teams/team-1/members/user-1' }
+    const failure = new AxiosError('Forbidden', '403', config, null, {
+      status: 403,
+      statusText: 'Forbidden',
+      data: { error: { code: 'TEAM_ROLE_REQUIRED', message: 'Owner required' } },
+      headers: {},
+      config,
+    })
+
+    await expect(apiClient.patch('/teams/team-1/members/user-1', { role: 'viewer' }, { adapter: () => Promise.reject(failure) })).rejects.toBe(failure)
+
+    expect((listener.mock.calls[0]?.[0] as CustomEvent<{ code: string }>).detail.code).toBe('TEAM_ROLE_REQUIRED')
+    teamContextEvents.removeEventListener('team-context-error', listener)
+  })
+
   it('does not treat an admin target 404 as loss of the selected workspace team', async () => {
     const listener = vi.fn()
     teamContextEvents.addEventListener('team-context-error', listener)
@@ -94,6 +112,12 @@ describe('authApi', () => {
     const user = await authApi.verifyCode('a@sisal.com', '123456')
     expect(post).toHaveBeenCalledWith('/auth/verify-code', { email: 'a@sisal.com', code: '123456' })
     expect(user).toEqual({ id: 'u1', email: 'a@sisal.com' })
+  })
+
+  it('returns the canonical email from the request-code response', async () => {
+    const post = vi.spyOn(apiClient, 'post').mockResolvedValue({ data: { message: 'Code sent', email: 'ada@fluttersea.com' } })
+    await expect(authApi.requestCode('ada@sisal.com')).resolves.toBe('ada@fluttersea.com')
+    expect(post).toHaveBeenCalledWith('/auth/request-code', { email: 'ada@sisal.com' })
   })
 
   it('reads the signed-in user from GET /auth/me', async () => {

@@ -46,6 +46,8 @@ interface WorkspaceTreeProps {
   onOpenVariableScope: (origin: VariableResolution['origin']) => void
   selectedVariableScope?: VariableResolution['origin']
   onCreateEnvironment: () => void
+  canEdit?: boolean
+  canAccessTrash?: boolean
   /** Width in pixels; owned by the caller so it can be persisted and applied to the layout. */
   width: number
   onResize: (width: number) => void
@@ -251,6 +253,7 @@ function TreeItem({
   drag,
   presenceByResource,
   nestedPresence,
+  canEdit,
 }: {
   collectionId: string
   item: WorkspaceItem
@@ -265,6 +268,7 @@ function TreeItem({
   drag: DragState
   presenceByResource?: Record<string, PresenceUser[]>
   nestedPresence: Record<string, NestedPresence[]>
+  canEdit: boolean
 }) {
   const expanded = !expansion.isCollapsed(item.id)
   const childMatch = item.type === 'folder' && item.items.some((child) => containsMatch(child, filter))
@@ -294,8 +298,9 @@ function TreeItem({
           isOver ? 'drop-into' : '',
         ].filter(Boolean).join(' ')}
         style={{ '--indent': depth } as CSSProperties}
-        draggable
+        draggable={canEdit}
         onDragStart={(event) => {
+          if (!canEdit) return
           event.stopPropagation()
           event.dataTransfer.effectAllowed = 'move'
           // Firefox starts no drag at all unless some data is set.
@@ -332,8 +337,8 @@ function TreeItem({
         {/* Once open, the children carry their own avatars, so repeating them here is just noise. */}
         {!expanded && !filter && <NestedPresenceAvatars entries={nestedPresence[resourceKey(resource)] ?? []} />}
         <PresenceAvatars users={presenceByResource?.[resourceKey(resource)] ?? []} compact />
-        <button className="tree-clone" title={`Duplicate ${item.name}`} aria-label={`Duplicate ${item.name}`} disabled={cloningId === item.id} onClick={() => onClone(resource)}>⧉</button>
-        <button className="tree-delete" title={`Move ${item.name} to Trash`} aria-label={`Move ${item.name} to Trash`} onClick={() => onDelete(resource)}>×</button>
+        {canEdit && <button className="tree-clone" title={`Duplicate ${item.name}`} aria-label={`Duplicate ${item.name}`} disabled={cloningId === item.id} onClick={() => onClone(resource)}>⧉</button>}
+        {canEdit && <button className="tree-delete" title={`Move ${item.name} to Trash`} aria-label={`Move ${item.name} to Trash`} onClick={() => onDelete(resource)}>×</button>}
       </div>
       {item.type === 'folder' && (expanded || !!filter) && sortTreeItems(item.items).map((child) => (
         <TreeItem
@@ -351,6 +356,7 @@ function TreeItem({
           drag={drag}
           presenceByResource={presenceByResource}
           nestedPresence={nestedPresence}
+          canEdit={canEdit}
         />
       ))}
     </>
@@ -414,6 +420,8 @@ export function WorkspaceTree({
   onResize,
   onMove,
   presenceByResource,
+  canEdit = true,
+  canAccessTrash = true,
 }: WorkspaceTreeProps) {
   const search = variableFilter
   const nestedPresence = useMemo(
@@ -548,9 +556,11 @@ export function WorkspaceTree({
             onClick={() => setCollapsedIds(new Set(expandableIds))}
           ><FoldIcon expand={false} /></button>
           <span className="sidebar-tools-divider" aria-hidden="true" />
-          <button title="New request" aria-label="New request" onClick={onCreateRequest}><NewRequestIcon /></button>
-          <button title="New folder" aria-label="New folder" onClick={onCreateFolder}><NewFolderIcon /></button>
-          <button title="New collection" aria-label="New collection" onClick={onCreateCollection}><NewCollectionIcon /></button>
+          {canEdit && <>
+            <button title="New request" aria-label="New request" onClick={onCreateRequest}><NewRequestIcon /></button>
+            <button title="New folder" aria-label="New folder" onClick={onCreateFolder}><NewFolderIcon /></button>
+            <button title="New collection" aria-label="New collection" onClick={onCreateCollection}><NewCollectionIcon /></button>
+          </>}
         </SectionHeader>
         {collectionsOpen && (
           <nav
@@ -577,6 +587,7 @@ export function WorkspaceTree({
                 drag={drag}
                 presenceByResource={presenceByResource}
                 nestedPresence={nestedPresence}
+                canEdit={canEdit}
               />
             ))}
             {sorted.length === 0 && <p className="empty-tree">No collections yet.</p>}
@@ -585,7 +596,7 @@ export function WorkspaceTree({
         )}
         <div className="sidebar-section environments-section">
           <SectionHeader label="Environments" count={environments.length} expanded={environmentsOpen} onToggle={() => toggle(ENVIRONMENTS_SECTION)}>
-            <button title="New environment" aria-label="New environment" onClick={onCreateEnvironment}><PlusIcon /></button>
+            {canEdit && <button title="New environment" aria-label="New environment" onClick={onCreateEnvironment}><PlusIcon /></button>}
           </SectionHeader>
           {environmentsOpen && (
             <>
@@ -617,19 +628,19 @@ export function WorkspaceTree({
                       disabled={isActive}
                       onClick={() => onActivateEnvironment(environment.id)}
                     >{isActive ? 'Active' : 'Use'}</button>
-                    <button
+                    {canEdit && <button
                       className="tree-clone"
                       title={`Duplicate ${environment.name}`}
                       aria-label={`Duplicate ${environment.name}`}
                       disabled={cloningId === environment.id}
                       onClick={() => onClone({ kind: 'environment', environmentId: environment.id })}
-                    >⧉</button>
-                    <button
+                    >⧉</button>}
+                    {canEdit && <button
                       className="tree-delete"
                       title={`Move ${environment.name} to Trash`}
                       aria-label={`Move ${environment.name} to Trash`}
                       onClick={() => onDelete({ kind: 'environment', environmentId: environment.id })}
-                    >×</button>
+                    >×</button>}
                   </div>
                 )
               })}
@@ -692,7 +703,7 @@ export function WorkspaceTree({
         </div>
         <div className="sidebar-bottom">
           <button className="sidebar-link" onClick={onShowHistory}>▥ &nbsp; History</button>
-          <button className="sidebar-link" onClick={onShowTrash}>▱ &nbsp; Trash</button>
+          {canAccessTrash && <button className="sidebar-link" onClick={onShowTrash}>▱ &nbsp; Trash</button>}
         </div>
       </aside>
       {!collapsed && <div
@@ -719,6 +730,7 @@ function CollectionTree({
   drag,
   presenceByResource,
   nestedPresence,
+  canEdit,
 }: {
   collection: CollectionResource
   selected: OpenResource | null
@@ -732,6 +744,7 @@ function CollectionTree({
   drag: DragState
   presenceByResource?: Record<string, PresenceUser[]>
   nestedPresence: Record<string, NestedPresence[]>
+  canEdit: boolean
 }) {
   const expanded = !expansion.isCollapsed(collection.id)
   const isSelected = selected?.kind === 'collection' && selected.collectionId === collection.id
@@ -766,11 +779,11 @@ function CollectionTree({
         </button>
         {!expanded && !filter && <NestedPresenceAvatars entries={nestedPresence[resourceKey({ kind: 'collection', collectionId: collection.id })] ?? []} />}
         <PresenceAvatars users={presenceByResource?.[resourceKey({ kind: 'collection', collectionId: collection.id })] ?? []} compact />
-        <button className="tree-clone" title={`Duplicate ${collection.name}`} aria-label={`Duplicate ${collection.name}`} disabled={cloningId === collection.id} onClick={() => onClone({ kind: 'collection', collectionId: collection.id })}>⧉</button>
-        <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>
+        {canEdit && <button className="tree-clone" title={`Duplicate ${collection.name}`} aria-label={`Duplicate ${collection.name}`} disabled={cloningId === collection.id} onClick={() => onClone({ kind: 'collection', collectionId: collection.id })}>⧉</button>}
+        {canEdit && <button className="tree-delete" title={`Move ${collection.name} to Trash`} aria-label={`Move ${collection.name} to Trash`} onClick={() => onDelete({ kind: 'collection', collectionId: collection.id })}>×</button>}
       </div>
       {(expanded || !!filter) && sortTreeItems(children).map((item) => (
-        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onSelect={onSelect} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} drag={drag} presenceByResource={presenceByResource} nestedPresence={nestedPresence} />
+        <TreeItem key={item.id} collectionId={collection.id} item={item} depth={1} selected={selected} onDelete={onDelete} onClone={onClone} cloningId={cloningId} filter={filter} expansion={expansion} drag={drag} presenceByResource={presenceByResource} nestedPresence={nestedPresence} canEdit={canEdit} onSelect={onSelect} />
       ))}
       {collection.id === selectedCollectionId && expanded && !filter && collection.items.length === 0 && (
         <p className="empty-tree nested">No requests yet.</p>

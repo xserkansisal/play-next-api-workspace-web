@@ -120,6 +120,13 @@ export function AuthGate() {
     const onTeamContextError = (event: Event) => {
       const { code, teams } = (event as CustomEvent<{ code: TeamContextErrorCode; teams?: Team[] }>).detail
       if (code === 'TEAM_NOT_FOUND' || code === 'TEAM_MEMBERSHIP_REQUIRED') void refreshMembership(teams)
+      if (code === 'TEAM_ROLE_REQUIRED') {
+        void refreshMembership().then(() => {
+          setStatus((current) => current.stage === 'signed-in'
+            ? { ...current, teamAccessNotice: 'You do not have permission in this team.' }
+            : current)
+        })
+      }
     }
     teamContextEvents.addEventListener('team-context-error', onTeamContextError)
     return () => teamContextEvents.removeEventListener('team-context-error', onTeamContextError)
@@ -192,7 +199,7 @@ export function AuthGate() {
     saveActiveTeamId(status.user.id, teamId)
     resetScopedVariables()
     setActiveTeamId(teamId)
-    setStatus((current) => current.stage === 'signed-in' ? { ...current, activeTeamId: teamId } : current)
+    setStatus((current) => current.stage === 'signed-in' ? { ...current, activeTeamId: teamId, teamAccessNotice: undefined } : current)
   }
 
   return (
@@ -204,6 +211,7 @@ export function AuthGate() {
         activeTeamId={status.activeTeamId}
         teamAccessNotice={status.teamAccessNotice}
         onTeamChange={changeTeam}
+        onRefreshTeams={() => refreshMembership()}
         onOpenAdmin={status.user.systemRole === 'admin' ? () => setAdminPanelOpen(true) : undefined}
         onSignOut={handleSignOut}
       />

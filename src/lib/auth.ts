@@ -97,8 +97,9 @@ export const authApi = {
     return data.user
   },
   /** POST /api/v1/auth/request-code. Always 202 for an allowed domain, regardless of whether the address has an account - the API deliberately keeps this response uniform. A disallowed domain is the one case it rejects outright (400 EMAIL_DOMAIN_NOT_ALLOWED), since the domain rule is public anyway. */
-  async requestCode(email: string): Promise<void> {
-    await apiClient.post('/auth/request-code', { email })
+  async requestCode(email: string): Promise<string> {
+    const { data } = await apiClient.post<{ message: string; email: string }>('/auth/request-code', { email })
+    return data.email
   },
   /**
    * POST /api/v1/auth/verify-code. On success, the API sets the session

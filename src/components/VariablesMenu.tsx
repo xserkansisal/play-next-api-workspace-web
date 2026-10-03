@@ -37,7 +37,7 @@ type DropHint = { origin: VariableOrigin; name: string; position: 'before' | 'af
 
 const icon = { viewBox: '0 0 24 24', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true } as const
 
-export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, environmentId, filter = '', selectedOrigin, initialAddKey, onInitialAddHandled, standalone = false, onAddEnvironmentVariable, onEditEnvironmentVariable, onRemoveEnvironmentVariable }: {
+export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, environmentId, filter = '', selectedOrigin, initialAddKey, onInitialAddHandled, standalone = false, editableOrigins = ['user', 'environment', 'global'], onAddEnvironmentVariable, onEditEnvironmentVariable, onRemoveEnvironmentVariable }: {
   resolved: Record<string, VariableResolution>
   variablesByScope: Record<VariableOrigin, VariableDefinition[]>
   hasEnvironment: boolean
@@ -47,10 +47,12 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   initialAddKey?: string | null
   onInitialAddHandled?: () => void
   standalone?: boolean
+  editableOrigins?: VariableOrigin[]
   onAddEnvironmentVariable: (key: string, value: string) => Promise<void>
   onEditEnvironmentVariable: (oldKey: string, newKey: string, value: string) => Promise<void>
   onRemoveEnvironmentVariable: (name: string) => Promise<void>
 }) {
+  const canEditOrigin = (origin: VariableOrigin) => editableOrigins.includes(origin)
   const order = useSyncExternalStore(subscribeVariableOrder, getVariableOrder, getVariableOrder)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<EditingVariable | null>(null)
@@ -76,6 +78,12 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   })) as Record<VariableOrigin, Map<string, VariableDefinition>>
   const names = [...new Set(SCOPE_GROUPS.flatMap(({ origin }) => [...filteredByGroup[origin].keys()]))]
   const shadowed = shadowedNames(resolved)
+
+  useEffect(() => {
+    if (adding && !canEditOrigin(adding.origin)) setAdding(null)
+    if (editing && !canEditOrigin(editing.origin)) setEditing(null)
+    if (pendingRemoval && !canEditOrigin(pendingRemoval.origin)) setPendingRemoval(null)
+  }, [editableOrigins, adding, editing, pendingRemoval])
 
   const visibleByGroup = Object.fromEntries(SCOPE_GROUPS.map(({ origin }) => [
     origin,
@@ -149,7 +157,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   }
 
   async function saveAdd() {
-    if (!adding) return
+    if (!adding || !canEditOrigin(adding.origin)) return
     const validation = validateVariableName(adding.key)
     if (!validation.ok) {
       setError(validation.error)
@@ -185,7 +193,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   }
 
   async function saveEdit() {
-    if (!editing) return
+    if (!editing || !canEditOrigin(editing.origin)) return
     const validation = validateVariableName(editing.key)
     if (!validation.ok) {
       setError(validation.error)
@@ -205,6 +213,10 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
   }
 
   async function remove(name: string, origin: VariableOrigin) {
+    if (!canEditOrigin(origin)) {
+      setPendingRemoval(null)
+      return
+    }
     setPendingRemoval(null)
     await run(() => origin === 'environment' ? onRemoveEnvironmentVariable(name) : removeScopedVariable(origin, name))
     if (editing?.name === name && editing.origin === origin) setEditing(null)
@@ -315,7 +327,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
               <span className="variables-detail-usable">{standaloneActiveCount} usable in requests</span>
               {standaloneOverriddenCount > 0 && <span className="variables-detail-overridden">{standaloneOverriddenCount} overridden</span>}
               {standaloneDisabledCount > 0 && <span className="variables-detail-overridden">{standaloneDisabledCount} disabled</span>}
-              <button
+              {selectedOrigin && canEditOrigin(selectedOrigin) && <button
                 type="button"
                 className="variables-add-button"
                 disabled={busy || (selectedOrigin === 'environment' && !hasEnvironment)}
@@ -327,7 +339,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
               >
                 <svg {...icon} strokeWidth={2.5}><path d="M12 5v14" /><path d="M5 12h14" /></svg>
                 Add variable
-              </button>
+              </button>}
             </div>
             <aside className="variables-guidance" aria-label="Variable usage information">
               <div className="variables-guidance-item">
@@ -362,7 +374,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
         {SCOPE_GROUPS.filter(({ origin }) => selectedOrigin === undefined || selectedOrigin === origin).map(({ origin, label }) => {
             const groupNames = visibleByGroup[origin]
             const activeGroupCount = groupNames.filter((name) => resolved[name]?.origin === origin).length
-            const isAdding = adding?.origin === origin
+            const isAdding = canEditOrigin(origin) && adding?.origin === origin
             const canAdd = origin !== 'environment' || !!environmentId
             const addRow = isAdding && (
               <tr className="runtime-vars-editing runtime-vars-adding">
@@ -397,7 +409,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                     <span className="runtime-vars-count" title={`${activeGroupCount} usable in requests`}>
                       {groupNames.length} <span>({activeGroupCount})</span>
                     </span>
-                    <button
+                    {canEditOrigin(origin) && <button
                       type="button"
                       className="runtime-vars-icon runtime-vars-add"
                       aria-label={`New ${label} variable`}
@@ -409,7 +421,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                       }}
                     >
                       <svg {...icon} strokeWidth={2.5}><path d="M12 5v14" /><path d="M5 12h14" /></svg>
-                    </button>
+                    </button>}
                   </div>
                 )}
                 {groupNames.length === 0 && !isAdding ? (
@@ -448,7 +460,7 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                         ? SCOPE_GROUPS.find(({ origin: candidate }) => candidate === resolution.origin)?.label
                         : undefined
                       const overrides = !disabled && resolution?.origin === origin ? resolution.shadowed : []
-                      const isEditing = editing?.origin === origin && editing.name === name
+                      const isEditing = canEditOrigin(origin) && editing?.origin === origin && editing.name === name
                       const isDragging = dragging?.origin === origin && dragging.name === name
                       const hint = dropHint?.origin === origin && dropHint.name === name && !isDragging ? dropHint.position : null
                       const handle = (
@@ -519,12 +531,14 @@ export function VariablesMenu({ resolved, variablesByScope, hasEnvironment, envi
                             )}
                           </td>
                           <td className="runtime-vars-actions">
-                            <button type="button" className="runtime-vars-icon" aria-label={`Edit ${name}`} title="Edit" disabled={busy} onClick={() => startEdit(name, origin)}>
-                              <svg {...icon}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
-                            </button>
-                            <button type="button" className="runtime-vars-icon runtime-vars-icon-danger" aria-label={`Remove ${name}`} title="Delete" disabled={busy} onClick={() => setPendingRemoval({ name, origin })}>
-                              <svg {...icon}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
-                            </button>
+                            {canEditOrigin(origin) && <>
+                              <button type="button" className="runtime-vars-icon" aria-label={`Edit ${name}`} title="Edit" disabled={busy} onClick={() => startEdit(name, origin)}>
+                                <svg {...icon}><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                              </button>
+                              <button type="button" className="runtime-vars-icon runtime-vars-icon-danger" aria-label={`Remove ${name}`} title="Delete" disabled={busy} onClick={() => setPendingRemoval({ name, origin })}>
+                                <svg {...icon}><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /></svg>
+                              </button>
+                            </>}
                             <span className="runtime-vars-move">
                               <button type="button" className="runtime-vars-icon runtime-vars-move-trigger" aria-label={`Move ${name}`} title="Move" aria-haspopup="menu" aria-expanded={menuOpen}
                                 onClick={() => setMoveMenu(menuOpen ? null : { origin, name })}>

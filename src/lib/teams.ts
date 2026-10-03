@@ -1,17 +1,37 @@
-export type TeamRole = 'owner' | 'admin' | 'member'
+export type TeamRole = 'owner' | 'member' | 'viewer'
 
 export interface Team {
   id: string
   name: string
   description: string
   role: TeamRole
+  isMember: boolean
+}
+
+export interface TeamMember {
+  userId: string
+  email: string
+  firstName: string
+  lastName: string
+  avatarUrl?: string | null
+  avatarColor: string
+  role: TeamRole
+  joinedAt: string
+}
+
+export function canEditTeam(role: TeamRole | undefined, isSystemAdmin = false): boolean {
+  return isSystemAdmin || role === 'owner' || role === 'member'
+}
+
+export function canManageTeamMembers(role: TeamRole | undefined, isSystemAdmin = false): boolean {
+  return isSystemAdmin || role === 'owner'
 }
 
 const activeTeamStoragePrefix = 'play-next-api-workspace.active-team.v1:'
 let activeTeamId: string | null = null
 export const teamContextEvents = new EventTarget()
 
-export type TeamContextErrorCode = 'TEAM_NOT_FOUND' | 'TEAM_MEMBERSHIP_REQUIRED'
+export type TeamContextErrorCode = 'TEAM_NOT_FOUND' | 'TEAM_MEMBERSHIP_REQUIRED' | 'TEAM_ROLE_REQUIRED'
 
 export function notifyTeamContextError(code: TeamContextErrorCode, teams?: Team[]): void {
   teamContextEvents.dispatchEvent(new CustomEvent('team-context-error', { detail: { code, teams } }))

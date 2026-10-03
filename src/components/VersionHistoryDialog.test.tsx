@@ -86,4 +86,20 @@ describe('resource version history', () => {
     expect(await screen.findByText('Name conflict (409)', { exact: true })).toBeInTheDocument()
     expect(onRestored).not.toHaveBeenCalled()
   })
+
+  it('lets viewers inspect versions without offering restore actions', async () => {
+    vi.spyOn(workspaceApi, 'itemVersions').mockResolvedValue([version])
+    render(
+      <VersionHistoryDialog
+        draft={{ kind: 'request', collectionId: 'collection-1', resource: request }}
+        dirty={false}
+        canRestore={false}
+        onClose={vi.fn()}
+        onRestored={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByText(/ada@example\.com/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Restore/ })).not.toBeInTheDocument()
+  })
 })
