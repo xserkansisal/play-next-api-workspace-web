@@ -197,7 +197,8 @@ describe('AuthGate', () => {
     expect(MockEventSource.current.url).toContain('?teamId=team-1')
     const previousStream = MockEventSource.current
 
-    await user.selectOptions(picker, 'team-2')
+    await user.click(picker)
+    await user.click(screen.getByRole('option', { name: /Mobile Gaming/ }))
 
     await waitFor(() => expect(MockEventSource.current.url).toContain('?teamId=team-2'))
     expect(previousStream.close).toHaveBeenCalled()
@@ -214,7 +215,7 @@ describe('AuthGate', () => {
 
     notifyTeamContextError('TEAM_NOT_FOUND')
 
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Team' })).toHaveValue('team-2'))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Team' })).toHaveAttribute('aria-valuetext', 'Mobile Gaming'))
     expect(await screen.findByText(/no longer have access to Game Studio/i)).toBeInTheDocument()
     expect(MockEventSource.current.url).toContain('?teamId=team-2')
   })

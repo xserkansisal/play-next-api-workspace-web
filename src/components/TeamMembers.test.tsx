@@ -43,6 +43,7 @@ describe('team member management', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Role for ada@fluttersea.com' }), 'owner')
     expect(update).toHaveBeenCalledWith('team-1', 'user-2', 'owner')
     await user.click(screen.getByRole('button', { name: 'Remove ada@fluttersea.com' }))
+    await user.click(screen.getByRole('button', { name: 'Confirm removing ada@fluttersea.com' }))
     expect(remove).toHaveBeenCalledWith('team-1', 'user-2')
     expect(list).toHaveBeenCalledTimes(4)
     expect(onChanged).toHaveBeenCalledTimes(3)

@@ -146,7 +146,7 @@ export function JsonEditor({ value, onChange, variables = NO_VARIABLES, readOnly
             '&': { minHeight: '220px', fontSize: '13px', color: 'var(--foreground)', backgroundColor: 'var(--editor-bg)' },
             '.cm-content': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
             '.cm-gutters': { backgroundColor: 'var(--editor-gutter-bg)', borderRight: '1px solid var(--editor-gutter-border)', color: 'var(--editor-gutter-text)' },
-            '&.cm-focused': { outline: '2px solid #c4b5fd', outlineOffset: '1px' },
+            '&.cm-focused': { outline: '2px solid #fbb02d', outlineOffset: '1px' },
           }),
         ],
       }),

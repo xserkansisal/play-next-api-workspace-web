@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { Button } from '@/components/ui/button'
 import { BulkImportDialog } from '@/components/BulkImportDialog'
+import { TeamPicker } from '@/components/TeamPicker'
+import { GlassBackdrop } from '@/components/GlassBackdrop'
 import { ImportOptionsDialog, type ImportSource } from '@/components/ImportOptionsDialog'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { RunConfirmDialog } from '@/components/RunConfirmDialog'
@@ -1575,26 +1577,14 @@ function App({ user, teams = [], activeTeamId = null, teamAccessNotice, onTeamCh
 
   return (
     <main className="app-shell">
+      <GlassBackdrop />
       <header className="topbar">
         <div className="brand">
           <button className="sidebar-toggle" aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}>☰</button>
           <img className="brand-logo brand-logo-light" src="/assets/play-next-logo.png" alt="Play Next" />
           <img className="brand-logo brand-logo-dark" src="/assets/play-next-logo-dark.png" alt="" aria-hidden="true" />
           {teams.length > 0 && (
-            <label className="team-picker">
-              <span>Team</span>
-              <select
-                aria-label="Team"
-                value={activeTeamId ?? ''}
-                onChange={(event) => onTeamChange?.(event.target.value)}
-              >
-                {teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name} · {team.isMember ? `${team.role[0]!.toUpperCase()}${team.role.slice(1)}` : 'Admin access'}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <TeamPicker teams={teams} value={activeTeamId} onChange={onTeamChange} />
           )}
           <span className="workspace-label">API Workspace</span>
         </div>

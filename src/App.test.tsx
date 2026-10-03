@@ -91,10 +91,11 @@ describe('workspace live update flow', () => {
     )
 
     const picker = await screen.findByRole('combobox', { name: 'Team' })
-    expect(picker).toHaveValue('team-1')
+    expect(picker).toHaveAttribute('aria-valuetext', 'Game Studio')
     expect(picker.closest('.brand')).not.toBeNull()
     expect(MockEventSource.current.url).toContain('?teamId=team-1')
-    await userEvent.selectOptions(picker, 'team-2')
+    await userEvent.click(picker)
+    await userEvent.click(screen.getByRole('option', { name: /Mobile Gaming/ }))
     expect(onTeamChange).toHaveBeenCalledWith('team-2')
   })
 
@@ -123,7 +124,8 @@ describe('workspace live update flow', () => {
       />,
     )
 
-    expect(await screen.findByRole('option', { name: 'External Team · Admin access' })).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Team' }))
+    expect(screen.getByRole('option', { name: /External Team\s*Admin access/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Members' })).toBeInTheDocument()
   })
 
@@ -185,10 +187,11 @@ describe('workspace live update flow', () => {
     )
 
     const picker = await screen.findByRole('combobox', { name: 'Team' })
-    expect(picker).toHaveValue('team-1')
+    expect(picker).toHaveAttribute('aria-valuetext', 'Game Studio')
     expect(picker).toBeEnabled()
     expect(picker).toHaveTextContent('Game Studio')
-    expect(within(picker).getAllByRole('option')).toHaveLength(1)
+    await userEvent.click(picker)
+    expect(within(screen.getByRole('listbox', { name: 'Teams' })).getAllByRole('option')).toHaveLength(1)
   })
 
   it('lets the active environment be changed from the top bar', async () => {

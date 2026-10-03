@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
+import { GlassBackdrop } from '@/components/GlassBackdrop'
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { UserAvatar } from '@/components/UserAvatar'
 import { apiErrorCode, apiErrorDetails, describeApiError } from '@/lib/api'
 import {
@@ -362,13 +364,17 @@ export function AdminPanel({ currentUserId, onClose, onAdminRequired }: AdminPan
 
   return (
     <section className="admin-panel" aria-labelledby="admin-title">
+      <GlassBackdrop />
       <header className="admin-heading">
         <div>
           <span className="admin-eyebrow">SYSTEM ADMINISTRATION</span>
           <h1 id="admin-title">Admin panel</h1>
           <p>Manage teams, memberships, user access and administrative activity.</p>
         </div>
-        <Button variant="outline" onClick={onClose}>Back to workspace</Button>
+        <div className="admin-heading-actions">
+          <ThemeToggle />
+          <Button variant="outline" onClick={onClose}>Back to workspace</Button>
+        </div>
       </header>
       <nav className="admin-nav" aria-label="Admin sections">
         {(['teams', 'users', 'audit'] as const).map((item) => (

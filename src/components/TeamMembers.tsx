@@ -6,6 +6,15 @@ import { describeApiError, workspaceApi } from '@/lib/api'
 import type { TeamMember, TeamRole } from '@/lib/teams'
 
 const roles: TeamRole[] = ['owner', 'member', 'viewer']
+const roleHints: Record<TeamRole, string> = {
+  owner: 'Full control, including members',
+  member: 'Can view and edit the workspace',
+  viewer: 'Read-only access',
+}
+
+function displayName(member: TeamMember): string {
+  return [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email
+}
 
 export function TeamMembers({ teamId, teamName, onChanged }: {
   teamId: string
@@ -19,7 +28,14 @@ export function TeamMembers({ teamId, teamName, onChanged }: {
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [confirmingUserId, setConfirmingUserId] = useState<string | null>(null)
   const ownerCount = members.filter(({ role: currentRole }) => currentRole === 'owner').length
+  const normalizedQuery = query.trim().toLowerCase()
+  const visibleMembers = normalizedQuery
+    ? members.filter((member) => `${displayName(member)} ${member.email}`.toLowerCase().includes(normalizedQuery))
+    : members
+  const roleCounts = roles.map((option) => ({ role: option, count: members.filter((member) => member.role === option).length }))
 
   const reload = useCallback(async () => {
     setError(null)
@@ -75,6 +91,7 @@ export function TeamMembers({ teamId, teamName, onChanged }: {
       setError('The last team owner cannot be removed. Add another owner first.')
       return
     }
+    setConfirmingUserId(null)
     setBusyUserId(member.userId)
     setError(null)
     try {
@@ -96,9 +113,14 @@ export function TeamMembers({ teamId, teamName, onChanged }: {
           <p>Manage access to {teamName}.</p>
         </div>
         {!loading && !error && (
-          <span className="team-members-count" aria-live="polite">
-            {members.length} {members.length === 1 ? 'member' : 'members'}
-          </span>
+          <div className="team-members-summary">
+            {roleCounts.filter(({ count }) => count > 0).map(({ role: summaryRole, count }) => (
+              <span key={summaryRole} className={`team-role-chip role-${summaryRole}`}>{count} {summaryRole}{count === 1 ? '' : 's'}</span>
+            ))}
+            <span className="team-members-count" aria-live="polite">
+              {members.length} {members.length === 1 ? 'member' : 'members'}
+            </span>
+          </div>
         )}
       </header>
       <form className="team-member-add" onSubmit={(event) => void addMember(event)}>
@@ -122,49 +144,66 @@ export function TeamMembers({ teamId, teamName, onChanged }: {
           </select>
         </label>
         <Button type="submit" disabled={busy || !email.trim()}>{busy ? 'Saving…' : 'Add member'}</Button>
+        <p className="team-member-hint">{roleHints[role]}. The person must already have signed in once.</p>
       </form>
       {error && <p className="inline-error" role="alert">{error}</p>}
       {loading ? <p role="status">Loading members…</p> : error ? null : members.length === 0 ? (
         <p>No members in this team.</p>
       ) : (
         <div className="team-members-table-wrap">
+          <div className="team-members-toolbar">
+            <label className="team-members-search">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5" /><path d="m10.5 10.5 3 3" /></svg>
+              <input type="search" aria-label="Search members" placeholder="Search by name or email…" value={query} onChange={(event) => setQuery(event.target.value)} />
+            </label>
+          </div>
           {ownerCount === 1 && (
             <p className="team-owner-note">The last team owner cannot be demoted or removed. Add another owner first.</p>
           )}
           <table className="team-members-table">
             <thead><tr><th>Member</th><th>Role</th><th>Joined</th><th><span className="sr-only">Actions</span></th></tr></thead>
             <tbody>
-              {members.map((member) => (
+              {visibleMembers.map((member) => (
                 <tr key={member.userId}>
                   <td>
                     <div className="team-member-identity">
                       <UserAvatar {...member} className="admin-user-avatar" />
                       <div className="team-member-copy">
-                        <strong>{[member.firstName, member.lastName].filter(Boolean).join(' ') || member.email}</strong>
+                        <strong>{displayName(member)}</strong>
                         {member.firstName || member.lastName ? <span>{member.email}</span> : null}
                       </div>
                     </div>
                   </td>
                   <td>
-                    <select aria-label={`Role for ${member.email}`} value={member.role} disabled={busy || busyUserId !== null} onChange={(event) => void changeRole(member, event.target.value as TeamRole)}>
+                    <select className={`team-role-select role-${member.role}`} title={roleHints[member.role]} aria-label={`Role for ${member.email}`} value={member.role} disabled={busy || busyUserId !== null} onChange={(event) => void changeRole(member, event.target.value as TeamRole)}>
                       {roles.map((option) => <option key={option} value={option} disabled={member.role === 'owner' && option !== 'owner' && ownerCount === 1}>{option[0]!.toUpperCase() + option.slice(1)}</option>)}
                     </select>
                   </td>
                   <td><time dateTime={member.joinedAt}>{new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(member.joinedAt))}</time></td>
                   <td>
-                    <button
-                      type="button"
-                      className="admin-danger-link"
-                      aria-label={`Remove ${member.email}`}
-                      disabled={busy || busyUserId !== null || (member.role === 'owner' && ownerCount === 1)}
-                      title={member.role === 'owner' && ownerCount === 1 ? 'Add another owner before removing this member.' : undefined}
-                      onClick={() => void removeMember(member)}
-                    >
-                      Remove
-                    </button>
+                    {confirmingUserId === member.userId ? (
+                      <span className="team-remove-confirm">
+                        <button type="button" className="team-remove-yes" aria-label={`Confirm removing ${member.email}`} disabled={busy || busyUserId !== null} onClick={() => void removeMember(member)}>Remove</button>
+                        <button type="button" className="team-remove-cancel" onClick={() => setConfirmingUserId(null)}>Cancel</button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="team-remove-button"
+                        aria-label={`Remove ${member.email}`}
+                        disabled={busy || busyUserId !== null || (member.role === 'owner' && ownerCount === 1)}
+                        title={member.role === 'owner' && ownerCount === 1 ? 'Add another owner before removing this member.' : undefined}
+                        onClick={() => setConfirmingUserId(member.userId)}
+                      >
+                        Remove
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
+              {visibleMembers.length === 0 && (
+                <tr><td colSpan={4} className="team-members-empty">No members match “{query}”.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
