@@ -6,6 +6,27 @@ import type { CollectionRunDetail, CollectionRunSummary } from '@/lib/api'
 
 const PAGE_SIZE = 25
 
+function assertionErrorMessage(errorCode?: string): string {
+  switch (errorCode) {
+    case 'CONTRACT_STATUS_UNEXPECTED':
+      return 'Response status does not match the OpenAPI contract'
+    case 'CONTRACT_CONTENT_TYPE_UNEXPECTED':
+      return 'Response content type does not match the OpenAPI contract'
+    case 'CONTRACT_INVALID_JSON':
+      return 'Response is not valid JSON'
+    case 'CONTRACT_RESPONSE_TRUNCATED':
+      return 'Response was truncated and could not be validated'
+    case 'CONTRACT_SCHEMA_MISMATCH':
+      return 'Response body does not match the OpenAPI schema'
+    case 'CONTRACT_SCHEMA_INVALID':
+      return 'OpenAPI response schema is invalid'
+    case 'ASSERTION_FAILED':
+      return 'Assertion failed'
+    default:
+      return errorCode ?? 'Assertion failed'
+  }
+}
+
 interface CollectionRunHistoryDialogProps {
   collectionId: string
   collectionName: string
@@ -120,9 +141,19 @@ export function CollectionRunHistoryDialog({
                         {result.errorCode ? ` · ${result.errorCode}` : ''}
                       </p>
                       {result.assertions.map((assertion, index) => (
-                        <p className={assertion.passed ? 'run-assertion-passed' : 'run-assertion-failed'} key={`${assertion.name}-${index}`}>
-                          {assertion.passed ? '✓' : '✕'} {assertion.name}{assertion.errorCode ? ` · ${assertion.errorCode}` : ''}
-                        </p>
+                        <div className="run-assertion" key={`${assertion.name}-${index}`}>
+                          <p className={assertion.passed ? 'run-assertion-passed' : 'run-assertion-failed'}>
+                            {assertion.passed ? '✓' : '✕'} {assertion.name}
+                            {!assertion.passed && ` · ${assertionErrorMessage(assertion.errorCode)}`}
+                          </p>
+                          {!assertion.passed && (assertion.path || assertion.expected || assertion.actual) && (
+                            <dl className="run-assertion-diagnostics">
+                              {assertion.path && <div><dt>Path</dt><dd><code>{assertion.path}</code></dd></div>}
+                              {assertion.expected && <div><dt>Expected</dt><dd>{assertion.expected}</dd></div>}
+                              {assertion.actual && <div><dt>Actual</dt><dd>{assertion.actual}</dd></div>}
+                            </dl>
+                          )}
+                        </div>
                       ))}
                       {result.responsePreview && (
                         <details className="run-response">

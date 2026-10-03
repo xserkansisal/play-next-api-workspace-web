@@ -129,8 +129,17 @@ export interface CollectionRunResult {
   responseSizeBytes: number | null
   responsePreview: string | null
   responseTruncated: boolean
-  assertions: Array<{ name: string; passed: boolean; errorCode?: string }>
+  assertions: CollectionRunAssertion[]
   errorCode: string | null
+}
+
+export interface CollectionRunAssertion {
+  name: string
+  passed: boolean
+  errorCode?: string
+  path?: string
+  expected?: string
+  actual?: string
 }
 
 export interface CollectionRunDetail {

@@ -29,7 +29,17 @@ const run: CollectionRunDetail = {
     responseSizeBytes: 14,
     responsePreview: '{"error":"bad"}',
     responseTruncated: false,
-    assertions: [{ name: 'returns success', passed: false, errorCode: 'ASSERTION_FAILED' }],
+    assertions: [
+      {
+        name: 'OpenAPI response body schema',
+        passed: false,
+        errorCode: 'CONTRACT_SCHEMA_MISMATCH',
+        path: '$.user.id',
+        expected: 'string',
+        actual: 'integer',
+      },
+      { name: 'response received', passed: true },
+    ],
     errorCode: null,
   }],
 }
@@ -59,6 +69,13 @@ describe('collection run history dialog', () => {
     )
 
     expect(await screen.findByText(/Create user/)).toBeInTheDocument()
+    expect(screen.getByText(/OpenAPI response body schema · Response body does not match the OpenAPI schema/)).toBeInTheDocument()
+    expect(screen.getByText('$.user.id')).toBeInTheDocument()
+    expect(screen.getByText('Expected')).toBeInTheDocument()
+    expect(screen.getByText('string')).toBeInTheDocument()
+    expect(screen.getByText('Actual')).toBeInTheDocument()
+    expect(screen.getByText('integer')).toBeInTheDocument()
+    expect(screen.getByText('✓ response received')).toBeInTheDocument()
     expect(screen.getByText('Response previews may contain sensitive data from your API.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /passed.*1\/1 passed/i }))
     await waitFor(() => expect(getRun).toHaveBeenCalledWith('collection-1', 'run-2'))

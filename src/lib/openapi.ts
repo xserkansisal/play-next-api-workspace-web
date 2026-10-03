@@ -80,6 +80,7 @@ export interface OpenApiSyncChange {
   itemId?: string
   candidateItemIds?: string[]
   changedFields?: string[]
+  contractChanged?: boolean
   before?: Partial<OpenApiRequestFields>
   after?: Partial<OpenApiRequestFields>
   recreatable?: boolean

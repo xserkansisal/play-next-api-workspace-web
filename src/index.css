@@ -552,6 +552,11 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .run-result-heading > strong { overflow-wrap: anywhere; font-size: 12px; }
 .run-result > p { margin: 6px 0 0; color: #777e8c; font-size: 11px; overflow-wrap: anywhere; }
 .run-result > p.run-assertion-passed, .run-result > p.run-assertion-failed { margin-left: 8px; }
+.run-assertion-diagnostics { display: grid; gap: 3px; margin: 4px 0 0 22px; color: #777e8c; font-size: 10px; }
+.run-assertion-diagnostics > div { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 6px; }
+.run-assertion-diagnostics dt { font-weight: 600; }
+.run-assertion-diagnostics dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.run-assertion-diagnostics code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .run-response { margin-top: 9px; }
 .run-response summary { color: #606775; font-size: 11px; cursor: pointer; }
 .run-response pre { max-height: 220px; overflow: auto; padding: 9px; border-radius: 5px; color: var(--foreground); background: var(--editor-bg); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -671,6 +676,7 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .openapi-sync-change-head { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 11px; }
 .openapi-sync-path { overflow: hidden; color: #343a46; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .openapi-sync-operation { color: #858b97; font-size: 10px; }
+.openapi-sync-contract-notice { margin: 3px 0; color: #845c0b; font-size: 10px; line-height: 1.5; }
 .openapi-sync-meta { margin: 0; color: #646b77; font-size: 10px; line-height: 1.5; }
 .openapi-sync-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 2px; color: #414753; font-size: 11px; }
 .openapi-sync-choice label { display: inline-flex; align-items: center; gap: 5px; }
@@ -2151,7 +2157,9 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .openapi-sync-path,
 :root[data-theme='dark'] .openapi-sync-choice { color: #e2e4eb; }
 :root[data-theme='dark'] .openapi-sync-section > p,
+:root[data-theme='dark'] .run-assertion-diagnostics { color: #a9adba; }
 :root[data-theme='dark'] .openapi-sync-meta,
+:root[data-theme='dark'] .openapi-sync-contract-notice,
 :root[data-theme='dark'] .openapi-sync-operation { color: #a0a5b2; }
 :root[data-theme='dark'] .openapi-sync-change.needs-choice { background: #3a1f22; }
 :root[data-theme='dark'] .openapi-sync-notice { border-color: #83714b; color: #ffe8b8; background: #2c281f; }

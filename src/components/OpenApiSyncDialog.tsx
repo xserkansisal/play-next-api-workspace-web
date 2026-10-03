@@ -271,6 +271,7 @@ export function OpenApiSyncDialog({ collections, initialCollectionId, onCancel, 
 
   function renderChange(change: OpenApiSyncChange) {
     const name = requestName(change.itemId)
+    const contractChanged = change.contractChanged || change.changedFields?.includes('responses')
     const folderChanged = change.afterFolderPath && change.beforeFolderPath
       && change.afterFolderPath.join('/') !== change.beforeFolderPath.join('/')
     const needsChoice = highlightConflicts && change.kind === 'conflict' && !decisions.conflicts[change.key]
@@ -282,9 +283,14 @@ export function OpenApiSyncDialog({ collections, initialCollectionId, onCancel, 
           {change.operationId && <span className="openapi-sync-operation">{change.operationId}</span>}
         </div>
         {name && <p className="openapi-sync-meta">Request: {name}</p>}
+        {contractChanged && (
+          <p className="openapi-sync-contract-notice">
+            Response contract changed. After applying this sync, future runs will validate its status, content type, and body against the updated OpenAPI definition.
+          </p>
+        )}
         {folderChanged && <p className="openapi-sync-meta">Folder: {change.beforeFolderPath!.join(' / ') || 'Collection root'} → {change.afterFolderPath!.join(' / ') || 'Collection root'}</p>}
-        {(change.changedFields?.length ?? 0) > 0 && (
-          <p className="openapi-sync-meta">Changed: {change.changedFields!.join(', ')}</p>
+        {(change.changedFields?.filter((field) => field !== 'responses').length ?? 0) > 0 && (
+          <p className="openapi-sync-meta">Changed: {change.changedFields!.filter((field) => field !== 'responses').join(', ')}</p>
         )}
         <FieldDiff change={change} />
         {renderDecision(change)}

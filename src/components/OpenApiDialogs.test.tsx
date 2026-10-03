@@ -134,6 +134,29 @@ describe('OpenApiSyncDialog', () => {
     expect(onApply.mock.calls[0][1]).toMatchObject({ adopt: {}, deleteItemIds: [], recreate: [], conflicts: { 'operationId:updateProduct': 'keep' } })
   })
 
+  it('shows response contract changes as informational and not as an extra sync decision', async () => {
+    const user = userEvent.setup()
+    const preview = makePreview()
+    preview.changes[1] = {
+      ...preview.changes[1]!,
+      changedFields: ['url', 'responses'],
+      contractChanged: true,
+    }
+    render(<OpenApiSyncDialog
+      collections={[collection]}
+      onCancel={vi.fn()}
+      onPreview={vi.fn().mockResolvedValue(preview)}
+      onApply={vi.fn().mockResolvedValue({ result: applyResult })}
+      onComplete={vi.fn()}
+    />)
+
+    await choosePreview(user)
+    expect(screen.getByText(/Response contract changed\. After applying this sync/)).toBeInTheDocument()
+    expect(screen.getByText('Changed: url')).toBeInTheDocument()
+    expect(screen.queryByText('Changed: url, responses')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resolve 1 conflict(s)' })).toBeEnabled()
+  })
+
   it('clears choices and re-previews when the preview is stale', async () => {
     const user = userEvent.setup()
     const onPreview = vi.fn().mockResolvedValueOnce(makePreview('a')).mockResolvedValueOnce(makePreview('b'))
