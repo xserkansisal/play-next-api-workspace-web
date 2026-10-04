@@ -769,8 +769,8 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .account-menu [data-slot="button"] { height: 38px; padding-right: 14px; padding-left: 14px; border-radius: 8px; font-size: 13px; font-weight: 500; }
 .attribution-line { margin: 6px 0 0; color: #747b88; font-size: 12px; }
 
-.sign-in-screen { display: flex; height: 100dvh; align-items: center; justify-content: center; background: #f6f7f9; }
-.sign-in-card { display: flex; width: min(380px, 92vw); flex-direction: column; gap: 12px; padding: 32px 28px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 18px 60px #11182715; }
+.sign-in-screen { display: flex; min-height: 100dvh; align-items: center; justify-content: center; padding: 24px 0; background: #f6f7f9; }
+.sign-in-card { display: flex; width: min(430px, 92vw); flex-direction: column; gap: 12px; padding: 32px 28px 24px; border: 1px solid var(--border); border-radius: 12px; background: #fff; box-shadow: 0 18px 60px #11182715; }
 .sign-in-logo { display: block; width: min(220px, 100%); height: auto; margin: 0 auto 8px; }
 .sign-in-logo-dark { display: none; }
 :root[data-theme='dark'] .sign-in-logo-light { display: none; }
@@ -782,6 +782,22 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 .sign-in-card .text-field { height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
 .sign-in-actions { display: flex; gap: 8px; }
 .sign-in-actions > * { flex: 1; }
+.sign-in-feature-spotlight { min-height: 99px; margin-top: 3px; padding-top: 15px; border-top: 1px solid rgba(81, 69, 45, .14); }
+.sign-in-feature-heading { margin: 0 0 11px; color: #7a6035; font-size: 9px; font-weight: 750; letter-spacing: .11em; text-transform: uppercase; }
+.sign-in-feature-heading > span { margin-right: 4px; color: #bc8120; font-size: 12px; }
+.sign-in-feature-slides { min-height: 48px; }
+.sign-in-feature-slide { display: none; }
+.sign-in-feature-slide.is-active { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: center; gap: 11px; animation: sign-in-feature-in .24s ease-out; }
+.sign-in-feature-icon { display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid rgba(229, 194, 125, .46); border-radius: 9px; color: #8c641c; background: rgba(251, 176, 45, .13); font: 12px var(--mono); }
+.sign-in-feature-slide strong, .sign-in-feature-slide small { display: block; }
+.sign-in-feature-slide strong { margin-bottom: 3px; color: #403b33; font-size: 11px; }
+.sign-in-feature-slide small { color: #716b61; font-size: 10px; line-height: 1.45; }
+@keyframes sign-in-feature-in { from { opacity: .4; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-height: 680px) {
+  .sign-in-screen { align-items: flex-start; }
+  .sign-in-screen .sign-in-card { margin: 12px 0; }
+  .sign-in-screen .sign-in-logo { width: min(180px, 100%); margin-bottom: 2px; }
+}
 .link-button { align-self: center; margin-top: 4px; border: 0; color: #845c0b; background: transparent; font-size: 12px; text-decoration: underline; }
 
 .extract-bar { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -2206,9 +2222,14 @@ body { margin: 0; min-width: 360px; min-height: 100vh; }
 :root[data-theme='dark'] .sign-in-screen .sign-in-card .text-field { border-color: rgba(255, 255, 255, .15); background: rgba(255, 255, 255, .06); }
 .sign-in-screen .sign-in-card [data-slot="button"] { border-radius: 999px; }
 .sign-in-screen .sign-in-card button[type="submit"] { color: #0b0b0d; background: #fbb02d; box-shadow: 0 6px 20px rgba(251, 176, 45, .45); }
+:root[data-theme='dark'] .sign-in-screen .sign-in-feature-spotlight { border-top-color: rgba(255, 255, 255, .14); }
+:root[data-theme='dark'] .sign-in-screen .sign-in-feature-heading { color: #e5c47c; }
+:root[data-theme='dark'] .sign-in-screen .sign-in-feature-icon { border-color: rgba(249, 213, 140, .25); color: #ffe9bc; background: rgba(249, 213, 140, .12); }
+:root[data-theme='dark'] .sign-in-screen .sign-in-feature-slide strong { color: #f1eee7; }
+:root[data-theme='dark'] .sign-in-screen .sign-in-feature-slide small { color: #b9b4a9; }
 @keyframes sign-in-rise { from { opacity: 0; transform: translateY(16px); } }
 @media (prefers-reduced-motion: reduce) {
-  .glass-blob, .glass-x, .sign-in-screen .sign-in-card { animation: none; }
+  .glass-blob, .glass-x, .sign-in-screen .sign-in-card, .sign-in-feature-slide { animation: none; }
 }
 
 /* App-wide glass theme: floating translucent surfaces over the animated backdrop.

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -19,6 +19,7 @@ function authErrorResponse(status: number, code: string, message: string) {
 
 describe('SignIn', () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllEnvs()
   })
@@ -28,6 +29,23 @@ describe('SignIn', () => {
 
     expect(container.querySelector('.sign-in-logo-light')).toHaveAttribute('src', '/assets/play-next-logo.png')
     expect(container.querySelector('.sign-in-logo-dark')).toHaveAttribute('src', '/assets/play-next-logo-dark.png')
+  })
+
+  it('rotates through contextual workspace features on the email sign-in step', () => {
+    vi.useFakeTimers()
+    const { container } = render(<SignIn onSignedIn={vi.fn()} />)
+    const slides = container.querySelectorAll('.sign-in-feature-slide')
+
+    expect(slides).toHaveLength(8)
+    expect(screen.getByRole('group', { name: 'Workspace features' })).toBeInTheDocument()
+    expect(slides[0]).toHaveAttribute('aria-hidden', 'false')
+    expect(slides[1]).toHaveAttribute('aria-hidden', 'true')
+
+    act(() => { vi.advanceTimersByTime(6500) })
+
+    expect(slides[0]).toHaveAttribute('aria-hidden', 'true')
+    expect(slides[1]).toHaveAttribute('aria-hidden', 'false')
+    expect(slides[1]).toHaveTextContent('Turn OpenAPI into runnable requests')
   })
 
   it('requests a code, then reports the specific domain-rejection error', async () => {

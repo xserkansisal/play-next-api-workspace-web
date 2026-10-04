@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { GlassBackdrop } from '@/components/GlassBackdrop'
@@ -7,6 +7,106 @@ import { authApi, describeAuthError } from '@/lib/auth'
 import type { AuthUser } from '@/lib/auth'
 
 const MAX_CODE_ATTEMPTS = 5
+const FEATURE_ROTATION_MS = 6500
+
+const signInFeatures = [
+  {
+    icon: '⌁',
+    title: 'Work together in real time',
+    description: 'See who’s viewing a resource and keep up with team changes as they happen.',
+  },
+  {
+    icon: '{ }',
+    title: 'Turn OpenAPI into runnable requests',
+    description: 'Import a spec, preview changes and sync operations with your collection.',
+  },
+  {
+    icon: '✓',
+    title: 'Test more than the response code',
+    description: 'Run collections and folders with scripts and assertions.',
+  },
+  {
+    icon: '↶',
+    title: 'Recover with version history',
+    description: 'Review request changes and restore collection snapshots when needed.',
+  },
+  {
+    icon: '◉',
+    title: 'Keep environments with your team',
+    description: 'Manage shared environments and resolve variables right in your requests.',
+  },
+  {
+    icon: '⌘',
+    title: 'Reuse scripts across your team',
+    description: 'Share pre-request and post-response scripts across requests.',
+  },
+  {
+    icon: '⇄',
+    title: 'Bring your Postman workspace',
+    description: 'Import and export collections and environments.',
+  },
+  {
+    icon: '♙',
+    title: 'Give teammates the right access',
+    description: 'Organize teams with owner, member and viewer roles.',
+  },
+]
+
+function SignInFeatureSpotlight() {
+  const [activeIndex, setActiveIndex] = useState(0)
+
+  useEffect(() => {
+    let timer: number | undefined
+
+    const stop = () => {
+      if (timer !== undefined) {
+        window.clearInterval(timer)
+        timer = undefined
+      }
+    }
+    const start = () => {
+      if (document.hidden || timer !== undefined) return
+      timer = window.setInterval(() => {
+        setActiveIndex((index) => (index + 1) % signInFeatures.length)
+      }, FEATURE_ROTATION_MS)
+    }
+    const onVisibilityChange = () => {
+      if (document.hidden) stop()
+      else start()
+    }
+
+    start()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
+  return (
+    <section className="sign-in-feature-spotlight" role="group" aria-label="Workspace features">
+      <p className="sign-in-feature-heading"><span aria-hidden="true">✦</span> What you can do here</p>
+      <div className="sign-in-feature-slides" aria-live="off">
+        {signInFeatures.map((feature, index) => (
+          <div
+            className={`sign-in-feature-slide ${index === activeIndex ? 'is-active' : ''}`}
+            key={feature.title}
+            role="group"
+            aria-roledescription="slide"
+            aria-label={feature.title}
+            aria-hidden={index !== activeIndex}
+          >
+            <span className="sign-in-feature-icon" aria-hidden="true">{feature.icon}</span>
+            <span>
+              <strong>{feature.title}</strong>
+              <small>{feature.description}</small>
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 function devLoginEnabled(): boolean {
   return import.meta.env.DEV && import.meta.env.VITE_DEV_LOGIN === 'true'
@@ -141,6 +241,7 @@ export function SignIn({ onSignedIn }: SignInProps) {
           </label>
           {error && <p className="inline-error" role="alert">{error}</p>}
           <Button type="submit" disabled={pending}>{pending ? 'Sending…' : 'Send code'}</Button>
+          <SignInFeatureSpotlight />
         </form>
       </div>
     )
